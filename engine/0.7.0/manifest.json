@@ -1,0 +1,25 @@
+{
+  "schema": "dcf.github.engine.manifest.v1",
+  "version": "0.7.0",
+  "builtAt": "2026-07-08T00:00:00.000Z",
+  "encoding": "base64-concat",
+  "chunks": [
+    "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/engine/0.7.0/chunks/000.b64",
+    "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/engine/0.7.0/chunks/001.b64",
+    "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/engine/0.7.0/chunks/002.b64",
+    "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/engine/0.7.0/chunks/003.b64",
+    "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/engine/0.7.0/chunks/004.b64",
+    "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/engine/0.7.0/chunks/005.b64",
+    "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/engine/0.7.0/chunks/006.b64",
+    "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/engine/0.7.0/chunks/007.b64",
+    "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/engine/0.7.0/chunks/008.b64",
+    "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/engine/0.7.0/chunks/009.b64",
+    "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/engine/0.7.0/chunks/010.b64",
+    "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/engine/0.7.0/chunks/011.b64",
+    "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/engine/0.7.0/chunks/012.b64",
+    "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/engine/0.7.0/chunks/013.b64",
+    "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/engine/0.7.0/chunks/014.b64",
+    "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/engine/0.7.0/chunks/015.b64",
+    "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/engine/0.7.0/chunks/016.b64"
+  ]
+}
