@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         DCF ChatGPT Microcore
 // @namespace    https://chatgpt.com/
-// @version      0.8.10
-// @description  DCF light capability-bus kernel with module-rail UISugar tabs. No remote eval, no chunks.
+// @version      0.9.0
+// @description  DCF hot-update completeness baseline: functions, UI, content, settings, and module navigation.
 // @updateURL    https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.meta.js
 // @downloadURL  https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.user.js
 // @supportURL   https://github.com/ysr7255007-maker/dcf-chatgpt-microcore
