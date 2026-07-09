@@ -13,6 +13,8 @@ After `0.7.2`, the browser reported a hard Content Security Policy failure: eval
 
 A process error also occurred: an implementation limitation around uploading a full userscript through the available connector was allowed to distort the runtime architecture. That should not have happened. Upload or deployment friction must be solved at the release pipeline level, not by adding fragile runtime indirection to the user-facing script.
 
+The direct `GitHub.update_file` path was then tested against the root userscript. It succeeded for a native single-file DCF release artifact. This proves the correct path is not chunking or runtime bootloading; the root `.user.js` can be replaced directly through the GitHub contents update flow when the complete text is supplied as `content`.
+
 ## Decision
 
 The multi-chunk GitHub raw loading design is rejected as the long-term release structure.
@@ -25,7 +27,7 @@ The browser may cache non-authoritative runtime data for startup speed and fallb
 
 Implementation constraints in the assistant/tooling layer must not be converted into product architecture. If a full `.user.js` cannot be uploaded through one mechanism, the correct response is to use a proper release path, build pipeline, Git push, or ask for the missing capability; not to invent runtime chunking or eval-based loading.
 
-## Immediate mitigation
+## Immediate mitigation and correction
 
 Release `0.7.1` was a compatibility stopgap:
 
@@ -43,6 +45,13 @@ Release `0.7.2` was a compatibility fix on top of `0.7.1`:
 
 The CSP failure supersedes these mitigations. They should not be treated as a viable release path.
 
+Release `0.8.1` corrects the official root update path:
+
+- `dcf-chatgpt-microcore.user.js` is a native single-file userscript;
+- `dcf-chatgpt-microcore.meta.js` is updated to the same version;
+- the official update/download URLs remain the same;
+- no remote engine loading is required for the installed userscript to run.
+
 ## Rejected option
 
 Continuing to publish every engine change as 17+ chunk files is rejected. It creates needless operational complexity, increases request count, makes verification harder, and turns small script changes into many repository writes.
@@ -51,14 +60,16 @@ Continuing to download remote JavaScript and evaluate it at runtime is rejected 
 
 Treating connector upload inconvenience as a reason to complicate runtime architecture is rejected.
 
-## Next target
+Skipping the direct full-file upload attempt before moving to a build pipeline is rejected. The first release-path test should be direct root `.user.js` replacement; build automation is only justified after a concrete failure or for later repeatability.
 
-Release `0.8.0` must collapse the code into a single native Tampermonkey release artifact:
+## Current target
+
+The stable target is a native Tampermonkey release artifact:
 
 - `dcf-chatgpt-microcore.user.js` contains the whole DCF script;
 - `dcf-chatgpt-microcore.meta.js` contains only the Tampermonkey metadata;
 - no `Function(source)`, no eval, no remote engine execution;
-- legacy `dcf.local.engine.v1` auto-boot is disabled.
+- legacy local-engine auto-boot is disabled or absent.
 
 The final choice should favor fewer moving parts and easier recovery over architectural cleverness.
 
