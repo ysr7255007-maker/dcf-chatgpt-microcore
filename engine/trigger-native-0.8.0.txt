@@ -1,0 +1,1 @@
+Trigger native single-file userscript generation for DCF 0.8.0.
