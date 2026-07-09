@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         DCF ChatGPT Microcore
 // @namespace    https://chatgpt.com/
-// @version      0.8.6
-// @description  DCF light capability-bus kernel with guarded automatic module ingestion and safe feedback. No remote eval, no chunks.
+// @version      0.8.7
+// @description  DCF light capability-bus kernel with fixed command dispatch and lightweight diagnostics. No remote eval, no chunks.
 // @updateURL    https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.meta.js
 // @downloadURL  https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.user.js
 // @supportURL   https://github.com/ysr7255007-maker/dcf-chatgpt-microcore
