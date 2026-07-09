@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DCF ChatGPT Microcore
 // @namespace    https://chatgpt.com/
-// @version      0.7.1
+// @version      0.7.2
 // @description  DCF GitHub bootloader for the Dialogue Control Framework engine.
 // @updateURL    https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.meta.js
 // @downloadURL  https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.user.js
@@ -12,6 +12,7 @@
 // @connect      cdn.jsdelivr.net
 // @grant        GM_xmlhttpRequest
 // @grant        GM_setClipboard
+// @run-at       document-idle
 // ==/UserScript==
 
 (function () {
@@ -24,6 +25,7 @@
   const CACHE_KEY = "dcf.github.engine.cache.v1";
   const CHECK_KEY = "dcf.github.engine.lastCheck.v1";
   const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+  const LEGACY_LOCAL_ENGINE_BOOT_FLAG = "__DCF_LOCAL_ENGINE_BOOTING__";
 
   boot();
 
@@ -138,6 +140,14 @@
   }
 
   function run(source, version) {
-    Function(source + "\n//# sourceURL=dcf-github-engine-" + String(version).replace(/[^a-z0-9_.-]/gi, "_") + ".user.js")();
+    const hadOwnFlag = Object.prototype.hasOwnProperty.call(window, LEGACY_LOCAL_ENGINE_BOOT_FLAG);
+    const previousFlag = window[LEGACY_LOCAL_ENGINE_BOOT_FLAG];
+    window[LEGACY_LOCAL_ENGINE_BOOT_FLAG] = true;
+    try {
+      Function(source + "\n//# sourceURL=dcf-github-engine-" + String(version).replace(/[^a-z0-9_.-]/gi, "_") + ".user.js")();
+    } finally {
+      if (hadOwnFlag) window[LEGACY_LOCAL_ENGINE_BOOT_FLAG] = previousFlag;
+      else delete window[LEGACY_LOCAL_ENGINE_BOOT_FLAG];
+    }
   }
 })();
