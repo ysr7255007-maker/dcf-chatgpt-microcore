@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         DCF ChatGPT Microcore
 // @namespace    https://chatgpt.com/
-// @version      0.8.3
-// @description  DCF language ammunition sidebar with module hot-update. No remote eval, no chunks.
+// @version      0.8.4
+// @description  DCF kernel-only maintenance wrapper and declarative module hot-update runtime. No remote eval, no chunks.
 // @updateURL    https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.meta.js
 // @downloadURL  https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.user.js
 // @supportURL   https://github.com/ysr7255007-maker/dcf-chatgpt-microcore
@@ -14,126 +14,518 @@
 
 (function () {
   "use strict";
-  const VERSION = "0.8.3";
-  const STATE_KEY = "dcf.native.state.v1";
-  const AMMO_KEY = "dcf.ammo.store.v1";
-  const MODULE_KEY = "dcf.module.registry.v1";
-  const LEGACY_KEYS = ["dcf.github.engine." + "cache.v1", "dcf.github.engine." + "lastCheck.v1", "dcf.local.engine." + "v1"];
-  const RUN_RE = /<<<DCF_RUN\b\s*([\s\S]*?)\s*DCF_RUN>>>/g;
-  const MAINT_RE = /<<<DCF_MAINT\b\s*([\s\S]*?)\s*DCF_MAINT>>>/g;
-  const AMMO_RE = /<<<DCF_AMMO\b\s*([\s\S]*?)\s*DCF_AMMO>>>/g;
+
+  const VERSION = "0.8.4";
+  const STATE_KEY = "dcf.kernel.state.v1";
+  const MODULE_KEY = "dcf.kernel.modules.v1";
+  const LOG_KEY = "dcf.kernel.maintenance.log.v1";
+  const LEGACY_KEYS = [
+    "dcf.github.engine." + "cache.v1",
+    "dcf.github.engine." + "lastCheck.v1",
+    "dcf.local.engine." + "v1",
+    "dcf.ammo.store.v1",
+    "dcf.module.registry.v1",
+  ];
 
   const state = loadState();
-  const ammo = loadAmmo();
-  const modules = loadModules();
-  let scanData = { run: [], maint: [], ammo: [], textLength: 0, at: "" };
-  let timer = null;
-
+  const registry = loadRegistry();
   const host = document.createElement("div");
   host.id = "dcf-chatgpt-microcore-host";
-  const root = host.attachShadow({ mode: "open" });
-  root.innerHTML = `<style>
-    :host{all:initial}.side{position:fixed;top:72px;right:12px;bottom:86px;width:min(352px,calc(100vw - 28px));z-index:2147483646;display:flex;flex-direction:column;border:1px solid rgba(130,130,130,.28);border-radius:18px;background:rgba(250,250,250,.94);color:#111827;box-shadow:0 18px 50px rgba(0,0,0,.16);backdrop-filter:blur(14px);font:13px/1.42 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overflow:hidden}.side[data-side=left]{left:12px;right:auto}@media(prefers-color-scheme:dark){.side{background:rgba(23,23,23,.92);color:#f5f5f5;border-color:rgba(210,210,210,.16);box-shadow:0 18px 50px rgba(0,0,0,.38)}}
-    .top{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 11px 8px;border-bottom:1px solid rgba(130,130,130,.18)}.title{font-size:14px;font-weight:780}.sub{margin-top:1px;font-size:11px;opacity:.62;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mod{border:1px solid rgba(37,99,235,.45);border-radius:999px;padding:7px 10px;background:#2563eb;color:white;cursor:pointer;font:700 12px/1 system-ui}
-    .tabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:8px 10px;border-bottom:1px solid rgba(130,130,130,.14)}.tab{border:1px solid rgba(130,130,130,.18);border-radius:11px;padding:7px 0;background:transparent;color:inherit;cursor:pointer;font:650 12px/1 system-ui}.tab[aria-selected=true]{background:rgba(37,99,235,.12);border-color:rgba(37,99,235,.35)}
-    .content{flex:1;overflow:auto;padding:10px}.line{margin:0 0 10px;font-size:12px;opacity:.68}.notice{border:1px solid rgba(5,150,105,.25);background:rgba(5,150,105,.09);border-radius:12px;padding:8px 9px;margin:0 0 10px;font-size:12px}.block{border:1px solid rgba(130,130,130,.18);border-radius:15px;background:rgba(127,127,127,.045);margin-bottom:10px;overflow:hidden}.head{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;border:0;padding:11px 12px;color:inherit;background:transparent;text-align:left;cursor:pointer;font:inherit}.bt{font-size:13px;font-weight:760}.bd{margin-top:2px;font-size:12px;opacity:.62}.body{padding:0 12px 12px;border-top:1px solid rgba(130,130,130,.12)}
-    .actions{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}.a{border:1px solid rgba(130,130,130,.23);border-radius:10px;padding:7px 9px;background:rgba(127,127,127,.07);color:inherit;cursor:pointer;font:12px/1.1 system-ui}.a.primary{background:rgba(37,99,235,.14);border-color:rgba(37,99,235,.35);font-weight:700}.a.warn{background:rgba(217,119,6,.12);border-color:rgba(217,119,6,.32)}.a.hot{background:rgba(124,58,237,.12);border-color:rgba(124,58,237,.32);font-weight:700}.a:disabled{opacity:.45;cursor:not-allowed}
-    .card{border:1px solid rgba(130,130,130,.16);border-radius:12px;padding:9px;background:rgba(255,255,255,.32);margin-top:8px}.card.sel{outline:2px solid rgba(37,99,235,.35)}@media(prefers-color-scheme:dark){.card{background:rgba(255,255,255,.035)}}.pick{cursor:pointer}.name{font-weight:720;font-size:12px}.desc{margin-top:3px;font-size:12px;opacity:.62}.small{font-size:12px;opacity:.66}.sec{font-weight:720;margin:12px 0 7px}.mini{font-size:11px;opacity:.56;margin-top:4px}.field{margin-top:9px}.field label{display:block;font-size:12px;font-weight:680;margin-bottom:5px}textarea{width:100%;min-height:84px;box-sizing:border-box;resize:vertical;border-radius:12px;border:1px solid rgba(130,130,130,.22);padding:8px 9px;background:rgba(255,255,255,.55);color:inherit;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}@media(prefers-color-scheme:dark){textarea{background:rgba(0,0,0,.18)}}
-    .back{position:fixed;inset:0;z-index:2147483647;display:grid;place-items:center;background:rgba(0,0,0,.20)}.modal{width:min(460px,calc(100vw - 32px));max-height:min(720px,calc(100vh - 40px));border-radius:18px;border:1px solid rgba(130,130,130,.25);background:Canvas;color:CanvasText;box-shadow:0 18px 60px rgba(0,0,0,.25);overflow:auto;font:13px/1.45 system-ui}.mh{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid rgba(130,130,130,.18)}.mb{padding:13px 14px 15px}.row{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid rgba(130,130,130,.12)}.badge{border:1px solid rgba(37,99,235,.26);color:#2563eb;border-radius:999px;padding:2px 7px;font-size:11px;white-space:nowrap}
-  </style><aside class="side" aria-label="DCF ChatGPT Microcore"></aside>`;
-  const panel = root.querySelector(".side");
-  document.documentElement.appendChild(host);
-  panel.addEventListener("click", onClick);
-  panel.addEventListener("input", onInput);
-  render();
-  setTimeout(scan, 0);
-  new MutationObserver(() => { clearTimeout(timer); timer = setTimeout(scan, 500); }).observe(document.body, { childList: true, subtree: true, characterData: true });
 
-  function scan() {
-    const text = document.body?.innerText || "";
-    scanData = { run: textBlocks(text, RUN_RE), maint: textBlocks(text, MAINT_RE), ammo: ammoBlocks(text), textLength: text.length, at: new Date().toISOString() };
-    render();
-  }
-  function textBlocks(text, re) { const out = []; re.lastIndex = 0; let m; while ((m = re.exec(text)) && out.length < 30) { const raw = m[1].trim(); out.push({ id: hash(raw), raw, summary: summarize(raw) }); } return out; }
-  function ammoBlocks(text) { const out = []; AMMO_RE.lastIndex = 0; let m; while ((m = AMMO_RE.exec(text)) && out.length < 30) { const raw = m[1].trim(), parsed = parseAmmo(raw); out.push({ id: parsed?.id || hash(raw), raw, parsed, summary: parsed?.title || summarize(raw) }); } return out; }
-  function parseAmmo(raw) { try { return normalizeAmmo(JSON.parse(raw)); } catch { return null; } }
-  function summarize(raw) { const first = raw.split(/\n+/).map(x => x.trim()).find(Boolean) || "empty block"; return first.length > 82 ? first.slice(0, 82) + "…" : first; }
+  const root = host.attachShadow({ mode: "open" });
+  root.innerHTML = `
+    <style>
+      :host{all:initial}
+      .shell{position:fixed;top:72px;right:12px;bottom:86px;width:min(352px,calc(100vw - 28px));z-index:2147483646;display:flex;flex-direction:column;border:1px solid rgba(130,130,130,.28);border-radius:18px;background:rgba(250,250,250,.94);color:#111827;box-shadow:0 18px 50px rgba(0,0,0,.16);backdrop-filter:blur(14px);font:13px/1.42 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overflow:hidden}
+      .shell[data-side=left]{left:12px;right:auto}
+      @media(prefers-color-scheme:dark){.shell{background:rgba(23,23,23,.92);color:#f5f5f5;border-color:rgba(210,210,210,.16);box-shadow:0 18px 50px rgba(0,0,0,.38)}}
+      .top{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 11px 8px;border-bottom:1px solid rgba(130,130,130,.18)}
+      .title{font-size:14px;font-weight:780}.sub{margin-top:1px;font-size:11px;opacity:.62;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .pill{border:1px solid rgba(37,99,235,.35);border-radius:999px;padding:6px 9px;background:rgba(37,99,235,.10);color:inherit;font:700 11px/1 system-ui;white-space:nowrap}
+      .tabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:8px 10px;border-bottom:1px solid rgba(130,130,130,.14)}
+      .tab{border:1px solid rgba(130,130,130,.18);border-radius:11px;padding:7px 0;background:transparent;color:inherit;cursor:pointer;font:650 12px/1 system-ui}
+      .tab[aria-selected=true]{background:rgba(37,99,235,.12);border-color:rgba(37,99,235,.35)}
+      .content{flex:1;overflow:auto;padding:10px}.line{margin:0 0 10px;font-size:12px;opacity:.70}
+      .notice{border:1px solid rgba(5,150,105,.25);background:rgba(5,150,105,.09);border-radius:12px;padding:8px 9px;margin:0 0 10px;font-size:12px}
+      .warnbox{border:1px solid rgba(217,119,6,.35);background:rgba(217,119,6,.10);border-radius:12px;padding:8px 9px;margin:0 0 10px;font-size:12px}
+      .block{border:1px solid rgba(130,130,130,.18);border-radius:15px;background:rgba(127,127,127,.045);margin-bottom:10px;overflow:hidden}
+      .head{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;border:0;padding:11px 12px;color:inherit;background:transparent;text-align:left;cursor:pointer;font:inherit}
+      .bt{font-size:13px;font-weight:760}.bd{margin-top:2px;font-size:12px;opacity:.62}.body{padding:0 12px 12px;border-top:1px solid rgba(130,130,130,.12)}
+      .actions{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}.a{border:1px solid rgba(130,130,130,.23);border-radius:10px;padding:7px 9px;background:rgba(127,127,127,.07);color:inherit;cursor:pointer;font:12px/1.1 system-ui}
+      .a.primary{background:rgba(37,99,235,.14);border-color:rgba(37,99,235,.35);font-weight:700}.a.hot{background:rgba(124,58,237,.12);border-color:rgba(124,58,237,.32);font-weight:700}.a.warn{background:rgba(217,119,6,.12);border-color:rgba(217,119,6,.32)}
+      .card{border:1px solid rgba(130,130,130,.16);border-radius:12px;padding:9px;background:rgba(255,255,255,.32);margin-top:8px}@media(prefers-color-scheme:dark){.card{background:rgba(255,255,255,.035)}}
+      .name{font-weight:720;font-size:12px}.desc{margin-top:3px;font-size:12px;opacity:.66}.mini{font-size:11px;opacity:.56;margin-top:4px}
+      .field{margin-top:9px}.field label{display:block;font-size:12px;font-weight:680;margin-bottom:5px}
+      textarea{width:100%;min-height:96px;box-sizing:border-box;resize:vertical;border-radius:12px;border:1px solid rgba(130,130,130,.22);padding:8px 9px;background:rgba(255,255,255,.55);color:inherit;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+      @media(prefers-color-scheme:dark){textarea{background:rgba(0,0,0,.18)}}
+      .empty{border:1px dashed rgba(130,130,130,.26);border-radius:14px;padding:12px;font-size:12px;opacity:.72}
+      .row{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid rgba(130,130,130,.12)}
+      .badge{border:1px solid rgba(37,99,235,.26);color:#2563eb;border-radius:999px;padding:2px 7px;font-size:11px;white-space:nowrap}
+    </style>
+    <aside class="shell" aria-label="DCF Kernel Maintenance Wrapper"></aside>
+  `;
+  const shell = root.querySelector(".shell");
+  document.documentElement.appendChild(host);
+
+  shell.addEventListener("click", onClick);
+  shell.addEventListener("input", onInput);
+  render();
 
   function render() {
-    panel.dataset.side = state.side;
-    panel.innerHTML = `<div class="top"><div><div class="title">DCF 弹药发射器</div><div class="sub">native ${VERSION} · ${esc(ammo.moduleVersion)} · ${ammo.items.length} 条弹药</div></div><button class="mod" data-act="modal">模块管理</button></div><div class="tabs"><button class="tab" aria-selected="${state.tab === "main"}" data-act="tab" data-tab="main">主视图</button><button class="tab" aria-selected="${state.tab === "maint"}" data-act="tab" data-tab="maint">维护</button></div><div class="content">${state.notice ? `<div class="notice">${esc(state.notice)}</div>` : ""}${state.tab === "maint" ? maintView() : mainView()}</div>${state.modal ? modal() : ""}`;
+    shell.dataset.side = state.side;
+    shell.innerHTML = `
+      <div class="top">
+        <div>
+          <div class="title">DCF Kernel</div>
+          <div class="sub">native ${VERSION} · maintenance wrapper only</div>
+        </div>
+        <span class="pill">${registry.modules.length} modules</span>
+      </div>
+      <div class="tabs">
+        <button class="tab" aria-selected="${state.tab === "maint"}" data-act="tab" data-tab="maint">维护</button>
+        <button class="tab" aria-selected="${state.tab === "modules"}" data-act="tab" data-tab="modules">模块</button>
+      </div>
+      <div class="content">
+        ${state.notice ? `<div class="notice">${esc(state.notice)}</div>` : ""}
+        ${state.tab === "modules" ? modulesView() : maintenanceView()}
+      </div>
+    `;
   }
-  function mainView() { return `<p class="line">语言弹药优先展开 · 页面 ${scanData.textLength || 0} 字 · 已检测 ${scanData.ammo.length} 条生成弹药</p>${block("ammo", "语言弹药", "生成、更新、发送；高频动作在这里完成。", ammoView())}${block("workflow", "协作流程", "用于多轮任务的结构化启动与交接。", workflowView())}${block("capture", "捕获与沉淀", "把当前页面状态复制为可沉淀材料。", captureView())}${block("system", "系统状态", "版本、位置、运行状态与基础检查。", systemView())}`; }
-  function block(id, title, desc, body) { const open = state.block === id; return `<section class="block"><button class="head" data-act="block" data-block="${esc(id)}"><span><div class="bt">${esc(title)}</div><div class="bd">${esc(desc)}</div></span><span>${open ? "−" : "+"}</span></button>${open ? `<div class="body">${body}</div>` : ""}</section>`; }
-  function ammoView() { const selected = selectedAmmo(); return `<div class="actions"><button class="a primary" data-act="gen">生成弹药</button><button class="a primary" data-act="gen-send">生成并发送</button><button class="a" data-act="upd" ${selected ? "" : "disabled"}>更新选中</button><button class="a" data-act="auto">自动发送：${ammo.autoSend ? "开" : "关"}</button></div><div class="field"><label>更新要求</label><textarea data-role="update">${esc(ammo.updateRequest || "")}</textarea></div><div class="sec">已保存弹药</div>${ammo.items.map(storedCard).join("") || `<div class="small">暂无保存弹药。</div>`}<div class="sec">刚生成 / 页面检测到的弹药</div>${scanData.ammo.length ? scanData.ammo.map(detectedCard).join("") : `<div class="small">点击“生成弹药”后，模型输出的 DCF_AMMO 块会在这里出现。</div>`}`; }
-  function storedCard(x) { const sel = ammo.selectedId === x.id; return `<div class="card ${sel ? "sel" : ""}"><div class="pick" data-act="select" data-id="${esc(x.id)}"><div class="name">${esc(x.title)}</div><div class="desc">${esc(x.purpose || x.kind || x.id)}</div><div class="mini">${esc(x.id)} · v${esc(x.version || 1)}</div></div><div class="actions"><button class="a primary" data-act="insert" data-id="${esc(x.id)}">插入</button><button class="a primary" data-act="send" data-id="${esc(x.id)}">插入并发送</button><button class="a" data-act="copy" data-id="${esc(x.id)}">复制</button></div></div>`; }
-  function detectedCard(x) { return `<div class="card"><div class="name">${esc(x.summary)}</div><div class="desc">${esc(x.parsed?.purpose || "可保存为语言弹药")}</div><div class="mini">detected: ${esc(x.id)}</div><div class="actions"><button class="a primary" data-act="save-det" data-id="${esc(x.id)}">保存</button><button class="a" data-act="insert-det" data-id="${esc(x.id)}">插入</button><button class="a" data-act="copy-det" data-id="${esc(x.id)}">复制</button></div></div>`; }
-  function workflowView() { return `<div class="small">当前先提供低风险文本发射能力，后续接入插件化流程。</div><div class="actions"><button class="a primary" data-act="handoff">插入交接框架</button><button class="a" data-act="consensus">插入项目共识</button></div>`; }
-  function captureView() { return `<div class="small">捕获当前页面中的 DCF 块和基础状态，方便沉淀为弹药或 ADR 材料。</div><div class="actions"><button class="a primary" data-act="summary">复制当前摘要</button><button class="a" data-act="scan">重扫页面</button></div>`; }
-  function systemView() { return `<div class="small">DCF ${VERSION} 已作为完整 Tampermonkey userscript 运行。当前侧边：${state.side === "right" ? "右侧" : "左侧"}。</div><div class="actions"><button class="a" data-act="side">切换左右侧</button><button class="a hot" data-act="hot">热更新自测</button><button class="a warn" data-act="clear">清理旧缓存</button></div>`; }
-  function maintView() { return `<p class="line">维护视图处理模块级与系统级操作，不挤占主发射视图。</p><section class="block"><button class="head"><span><div class="bt">运行状态</div><div class="bd">版本、扫描、热更新、旧缓存和页面摘要。</div></span></button><div class="body"><div class="small">version: ${VERSION}</div><div class="small">ammo module: ${esc(ammo.moduleVersion)}</div><div class="small">last hot update: ${esc(ammo.lastHotUpdate?.at || "none")}</div><div class="small">scan: ${esc(scanData.at || "pending")}</div><div class="small">text: ${scanData.textLength || 0} · RUN ${scanData.run.length} · MAINT ${scanData.maint.length} · AMMO ${scanData.ammo.length}</div><div class="actions"><button class="a primary" data-act="scan">重扫页面</button><button class="a hot" data-act="hot">热更新自测</button><button class="a" data-act="diag">复制诊断</button><button class="a warn" data-act="clear">清理旧缓存</button></div></div></section><div class="sec">当前摘要</div><textarea readonly>${esc(summaryJson())}</textarea>`; }
-  function modal() { return `<div class="back" data-act="close-modal"><section class="modal"><div class="mh"><strong>模块管理</strong><button class="a" data-act="close-modal">关闭</button></div><div class="mb"><div class="small">这里测试弹药模块数据热更新：更新模块数据、弹药包和配置，不执行远程代码，也不需要刷新页面。</div>${modRow("语言弹药", ammo.moduleVersion, "生成、更新、发送弹药的主模块")}${modRow("协作流程", "内置", "多步任务入口，占位待插件化")}${modRow("维护", "内置", "系统级与模块级维护操作")}<div class="actions"><button class="a hot" data-act="hot">热更新测试弹药包</button><button class="a primary" data-act="defaults">装载默认模块</button><button class="a warn" data-act="reset-ammo">重置弹药库</button></div><div class="field"><label>粘贴弹药包 JSON 后应用热更新</label><textarea data-role="pack" placeholder='{"schema":"dcf.ammo_pack.v1","moduleVersion":"custom-1","items":[{"id":"example","title":"示例弹药","kind":"prompt","purpose":"...","body":"..."}]}'></textarea></div><div class="actions"><button class="a primary" data-act="apply-pack">应用热更新</button><button class="a" data-act="sample">复制样例</button></div></div></section></div>`; }
-  function modRow(n, b, d) { return `<div class="row"><div><div class="name">${esc(n)}</div><div class="desc">${esc(d)}</div></div><span class="badge">${esc(b)}</span></div>`; }
 
-  function onInput(e) { const n = e.target; if (n?.dataset?.role === "update") { ammo.updateRequest = n.value; saveAmmo(); } }
-  function onClick(e) { const n = e.target.closest("[data-act]"); if (!n) return; if (n.classList.contains("back") && e.target.closest(".modal")) return; act(n.dataset.act, n); }
-  function act(a, n) {
-    if (a === "tab") { state.tab = n.dataset.tab === "maint" ? "maint" : "main"; saveState(); render(); return; }
-    if (a === "block") { state.block = n.dataset.block || "ammo"; saveState(); render(); return; }
-    if (a === "modal") { state.modal = true; render(); return; }
-    if (a === "close-modal") { state.modal = false; render(); return; }
-    if (a === "scan") { state.modal = false; scan(); return; }
-    if (a === "summary") { copy(summaryJson()); msg("当前摘要已复制。", true); return; }
-    if (a === "diag") { copy(diagJson()); msg("诊断信息已复制。", true); return; }
-    if (a === "gen" || a === "gen-send") { insert(generatePrompt(), a === "gen-send" || ammo.autoSend); return; }
-    if (a === "upd") { const x = selectedAmmo(); if (x) insert(updatePrompt(x), ammo.autoSend); return; }
-    if (a === "auto") { ammo.autoSend = !ammo.autoSend; saveAmmo(); msg(`自动发送已${ammo.autoSend ? "开启" : "关闭"}。`, true); return; }
-    if (a === "select") { ammo.selectedId = n.dataset.id || ammo.selectedId; saveAmmo(); render(); return; }
-    if (a === "insert" || a === "send" || a === "copy") { storedAction(a, n.dataset.id); return; }
-    if (a === "save-det" || a === "insert-det" || a === "copy-det") { detectedAction(a, n.dataset.id); return; }
-    if (a === "consensus") { insert(consensusPrompt(), ammo.autoSend); return; }
-    if (a === "handoff") { insert(handoffPrompt(), ammo.autoSend); return; }
-    if (a === "side") { state.side = state.side === "right" ? "left" : "right"; saveState(); render(); return; }
-    if (a === "hot") { applyPack(hotPack(), "self-test"); return; }
-    if (a === "apply-pack") { applyPackFromText(); return; }
-    if (a === "sample") { copy(JSON.stringify(samplePack(), null, 2)); msg("弹药包样例已复制。", true); return; }
-    if (a === "defaults") { addDefaults(true); ammo.moduleVersion = "language-ammo.builtin.0.8.3"; saveAmmo(); state.modal = false; msg("默认弹药模块已装载。", true); return; }
-    if (a === "reset-ammo") { localStorage.removeItem(AMMO_KEY); Object.assign(ammo, loadAmmo()); state.modal = false; msg("弹药库已重置。", true); return; }
-    if (a === "clear") { LEGACY_KEYS.forEach(k => localStorage.removeItem(k)); state.modal = false; msg("旧缓存已清理。", true); scan(); }
+  function maintenanceView() {
+    return `
+      <div class="warnbox">当前内核只保留维护框架和声明式模块运行时。业务 UI 与插件能力必须通过模块包热更新进入，不再写入 userscript 主体。</div>
+      ${section("status", "内核状态", "版本、模块注册表、热维护记录。", statusBody())}
+      ${section("install", "热更新入口", "粘贴模块包 JSON 后即时装载，不刷新页面，不执行远程代码。", installBody())}
+      ${section("repair", "自我纠错维护", "用于阻止把模块需求继续写进内核。", repairBody())}
+      ${section("danger", "恢复与清理", "只处理内核和历史错误状态。", dangerBody())}
+    `;
   }
-  function storedAction(a, id) { const x = getAmmo(id); if (!x) return; if (a === "copy") { copy(x.body); msg(`已复制：${x.title}`, true); return; } insert(x.body, a === "send"); }
-  function detectedAction(a, id) { const x = scanData.ammo.find(b => b.id === id); if (!x) return; if (a === "copy-det") { copy(x.raw); msg("检测到的弹药原文已复制。", true); return; } if (a === "insert-det") { insert(x.parsed?.body || x.raw, false); return; } if (x.parsed) { upsert(x.parsed); ammo.selectedId = x.parsed.id; saveAmmo(); msg(`已保存弹药：${x.parsed.title}`, true); } else msg("该 DCF_AMMO 块不是合法 JSON，无法保存。", true); }
-  function applyPackFromText() { const t = root.querySelector("[data-role='pack']")?.value?.trim(); if (!t) return msg("没有可应用的弹药包 JSON。", true); try { applyPack(JSON.parse(t), "pasted-json"); } catch (e) { msg(`弹药包 JSON 解析失败：${e.message}`, true); } }
-  function applyPack(pack, source) { if (!pack || !Array.isArray(pack.items)) return msg("弹药包缺少 items 数组，热更新未应用。", true); const items = pack.items.map(normalizeAmmo).filter(Boolean); if (!items.length) return msg("弹药包没有合法弹药，热更新未应用。", true); if (pack.mode === "replace") ammo.items = []; items.forEach(upsert); ammo.moduleVersion = String(pack.moduleVersion || `hot-${Date.now()}`); ammo.lastHotUpdate = { at: new Date().toISOString(), source, itemCount: items.length }; modules.language_ammo = { version: ammo.moduleVersion, lastHotUpdate: ammo.lastHotUpdate }; if (!selectedAmmo()) ammo.selectedId = items[0].id; saveAmmo(); saveModules(); state.tab = "main"; state.block = "ammo"; state.modal = false; msg(`热更新完成：${items.length} 条弹药，模块 ${ammo.moduleVersion}。`, true); }
-  function msg(t, rerender) { state.notice = t; saveState(); if (rerender) render(); }
 
-  function generatePrompt() { return ["请从当前对话中提炼 DCF 语言弹药。", "目标：把已经讨论成熟、下次可复用的表达方式、判断框架、角色协议或多步协作流程，整理成可以长期保存和精确发射的弹药。", "不要写泛泛总结；只沉淀真正可复用、可执行、可插入下一次对话的语言工具。", "生成后用户会把 DCF_AMMO 块保存进 DCF 弹药模块。", "", "请按下面 JSON 结构输出一条或多条弹药。每条弹药必须包裹在独立的 DCF_AMMO 块中：", "<<<DCF_AMMO", JSON.stringify({ id: "suggested.stable.id.v1", title: "弹药标题", kind: "framework_prompt | role_protocol | workflow_prompt | handoff | expression | judgment_frame", version: 1, purpose: "这条弹药解决什么高频认知/协作问题", trigger: "什么时候应该发射它", body: "可直接插入对话的完整提示词正文", notes: "边界、禁区、维护说明" }, null, 2), "DCF_AMMO>>>"].join("\n"); }
-  function updatePrompt(x) { const req = ammo.updateRequest?.trim() || "将当前对话中新增的有效内容融合进原弹药，保留原有边界，去掉过时或容易误导的部分。"; return ["请作为 Grok / 当前对话中的融合模型，更新下面这条 DCF 语言弹药。", "你要把“原有弹药内容 + 用户更新要求 + 当前对话中新出现的有效内容”融合为一条新版弹药。", "不要简单追加；要重写成稳定、短路径、可直接发射的版本。", "可以保留原 id；只有语义边界发生明显变化时才改 id。", "", "用户更新要求：", req, "", "原有弹药：", JSON.stringify(x, null, 2), "", "输出必须是一个 DCF_AMMO 块：", "<<<DCF_AMMO", JSON.stringify({ ...x, version: Number(x.version || 1) + 1, body: "更新后的可直接发射正文" }, null, 2), "DCF_AMMO>>>"].join("\n"); }
-  function maintenancePrompt() { return ["<<<DCF_MAINT", JSON.stringify({ schema: "dcf.maintenance.request.v1", version: VERSION, request: "Summarize the current conversation state, decisions, errors, and next concrete action. Keep it suitable for ADR/update logging.", at: new Date().toISOString(), source: location.href }, null, 2), "DCF_MAINT>>>"].join("\n"); }
-  function consensusPrompt() { return ["<<<DCF_CONSENSUS_COMPACT", "DCF is not just a userscript. It is a low-friction language ammunition firing system for personal cognitive infrastructure.", "", "Layer 1: persist, version, evolve, retrieve, combine, and precisely fire high-quality prompts, expressions, judgment frameworks, role protocols, handoffs, and multi-step collaboration flows.", "", "Layer 2: reduce user friction through a small stable kernel, replaceable plugins, failure isolation, reliable publishing, and text-driven evolution.", "", "Published runtime should remain a complete Tampermonkey .user.js. Do not reintroduce remote code execution, runtime chunk loading, or localStorage-as-code. GitHub is a publishing/version/ammo source, not a browser runtime code execution source.", "", "Before changing anything, classify the task: product intent, ammo model, plugin architecture, runtime userscript, supply chain, documentation, or ADR.", "DCF_CONSENSUS_COMPACT>>>"].join("\n"); }
-  function handoffPrompt() { return ["<<<DCF_RUN", JSON.stringify({ schema: "dcf.handoff.frame.v1", version: VERSION, purpose: "Help a new AI session take over DCF work without losing project intent.", project: "DCF ChatGPT Microcore", framing: "low-friction language ammunition firing system", ask: "Restate the current project understanding, classify the next task by layer, preserve native userscript release boundaries, then proceed with the smallest verifiable next action." }, null, 2), "DCF_RUN>>>"].join("\n"); }
-  function summaryJson() { return JSON.stringify({ schema: "dcf.native.summary.v1", version: VERSION, ui: "embedded-sidebar", ammoModule: ammo.moduleVersion, url: location.href, title: document.title, at: new Date().toISOString(), textLength: scanData.textLength || 0, runBlocks: scanData.run.map(({ id, summary }) => ({ id, summary })), maintBlocks: scanData.maint.map(({ id, summary }) => ({ id, summary })), ammoBlocks: scanData.ammo.map(({ id, summary, parsed }) => ({ id, summary, parsed: Boolean(parsed) })) }, null, 2); }
-  function diagJson() { return JSON.stringify({ schema: "dcf.native.diagnostics.v1", version: VERSION, ui: "embedded-sidebar", tab: state.tab, block: state.block, side: state.side, ammoCount: ammo.items.length, selectedAmmo: ammo.selectedId, ammoModule: ammo.moduleVersion, lastHotUpdate: ammo.lastHotUpdate || null, legacyKeysPresent: LEGACY_KEYS.filter(k => localStorage.getItem(k) !== null), scan: JSON.parse(summaryJson()) }, null, 2); }
-  function hotPack() { const at = new Date().toISOString(); return { schema: "dcf.ammo_pack.v1", moduleVersion: `language-ammo.hot.${at.replace(/[-:.TZ]/g, "").slice(0, 14)}`, mode: "merge", items: [{ id: "dcf.hot_update_probe.v1", title: "热更新探针", kind: "diagnostic_prompt", version: 1, purpose: "证明 DCF 包裹体可以在不刷新页面、不重装 userscript 的情况下热更新语言弹药模块数据。", trigger: "模块管理中点击热更新测试后，用来验证新弹药是否即时出现在主视图。", body: `请确认：DCF 语言弹药模块已在 ${at} 完成一次数据热更新。请只回复你看到了这条热更新探针，并说明这证明的是数据/弹药包热更新，不是远程代码执行。`, notes: "这是自测弹药。可以保留作为热更新证据，也可以重置弹药库删除。" }] }; }
-  function samplePack() { return { schema: "dcf.ammo_pack.v1", moduleVersion: "language-ammo.custom.sample.v1", mode: "merge", items: [{ id: "custom.example.v1", title: "自定义弹药样例", kind: "workflow_prompt", version: 1, purpose: "演示如何通过模块管理粘贴 JSON 热更新弹药包。", trigger: "需要测试自定义弹药包导入时。", body: "请基于当前对话，执行这个自定义弹药样例。", notes: "替换为真实弹药后再应用。" }] }; }
+  function modulesView() {
+    if (!registry.modules.length) {
+      return `<div class="empty">当前没有业务模块。请回到“维护 → 热更新入口”，通过模块包 JSON 装载模块。内核不会内置语言弹药 UI。</div>`;
+    }
+    return registry.modules.map(renderModule).join("");
+  }
 
-  function selectedAmmo() { return getAmmo(ammo.selectedId) || ammo.items[0] || null; }
-  function getAmmo(id) { return ammo.items.find(x => x.id === id) || null; }
-  function upsert(x) { const y = normalizeAmmo(x); if (!y) return; const i = ammo.items.findIndex(z => z.id === y.id); if (i >= 0) ammo.items[i] = { ...ammo.items[i], ...y, updatedAt: new Date().toISOString() }; else ammo.items.unshift({ ...y, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }); }
-  function normalizeAmmo(x) { if (!x || typeof x !== "object") return null; const body = String(x.body || x.prompt || "").trim(), title = String(x.title || x.name || "").trim(); if (!body || !title) return null; return { id: String(x.id || `ammo.${hash(title + body)}`).trim(), title, kind: String(x.kind || "prompt"), version: Number(x.version || 1), purpose: String(x.purpose || ""), trigger: String(x.trigger || ""), body, notes: String(x.notes || ""), updatedAt: x.updatedAt || new Date().toISOString() }; }
-  function defaults() { return [{ id: "dcf.consensus.project-frame.v1", title: "项目共识", kind: "consensus_prompt", version: 1, purpose: "让新窗口先理解 DCF 的双层定位，再继续工作。", trigger: "新 AI 窗口、新工具、新阶段接手 DCF 前。", body: consensusPrompt(), notes: "来自仓库 docs/prompts/dcf-consensus-insertion-guide.md 的紧凑版。" }, { id: "dcf.maintenance.request.v1", title: "维护请求", kind: "maintenance_prompt", version: 1, purpose: "让当前模型沉淀对话状态、决策、错误和下一步。", trigger: "准备交接、更新 ADR、切换窗口或阶段结束时。", body: maintenancePrompt(), notes: "输出适合后续维护和 ADR 候选。" }, { id: "dcf.handoff.frame.v1", title: "交接框架", kind: "handoff_prompt", version: 1, purpose: "帮助新窗口作为新的项目协作者接手，而不是机械执行清单。", trigger: "需要把 DCF 工作交给另一个模型或窗口时。", body: handoffPrompt(), notes: "保留项目定位和边界。" }]; }
-  function addDefaults(force) { const d = defaults(); if (force) ammo.items = []; d.forEach(x => { if (!getAmmo(x.id)) ammo.items.push({ ...x, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }); }); if (!ammo.selectedId || !getAmmo(ammo.selectedId)) ammo.selectedId = d[0]?.id || null; }
-  function loadAmmo() { let v; try { v = JSON.parse(localStorage.getItem(AMMO_KEY) || "{}"); } catch { v = {}; } const s = { schema: "dcf.ammo.store.v1", moduleVersion: v.moduleVersion || "language-ammo.builtin.0.8.3", selectedId: v.selectedId || null, autoSend: Boolean(v.autoSend), updateRequest: String(v.updateRequest || ""), lastHotUpdate: v.lastHotUpdate || null, items: Array.isArray(v.items) ? v.items.map(normalizeAmmo).filter(Boolean) : [] }; defaults().forEach(x => { if (!s.items.some(y => y.id === x.id)) s.items.push({ ...x, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }); }); if (!s.selectedId || !s.items.some(x => x.id === s.selectedId)) s.selectedId = s.items[0]?.id || null; return s; }
-  function saveAmmo() { localStorage.setItem(AMMO_KEY, JSON.stringify(ammo)); }
-  function loadModules() { try { return { language_ammo: { version: "language-ammo.builtin.0.8.3" }, ...(JSON.parse(localStorage.getItem(MODULE_KEY) || "{}") || {}) }; } catch { return { language_ammo: { version: "language-ammo.builtin.0.8.3" } }; } }
-  function saveModules() { localStorage.setItem(MODULE_KEY, JSON.stringify(modules)); }
-  function loadState() { try { return { tab: "main", block: "ammo", side: "right", modal: false, notice: "", ...(JSON.parse(localStorage.getItem(STATE_KEY) || "{}") || {}) }; } catch { return { tab: "main", block: "ammo", side: "right", modal: false, notice: "" }; } }
-  function saveState() { localStorage.setItem(STATE_KEY, JSON.stringify({ tab: state.tab === "maint" ? "maint" : "main", block: state.block || "ammo", side: state.side === "left" ? "left" : "right", notice: state.notice || "" })); }
-  function insert(text, send) { const t = composer(); if (!t) { copy(text); alert("DCF 未找到输入框，内容已复制到剪贴板。"); return; } t.focus(); if (t instanceof HTMLTextAreaElement || t instanceof HTMLInputElement) { const s = t.selectionStart ?? t.value.length, e = t.selectionEnd ?? t.value.length; t.value = t.value.slice(0, s) + text + t.value.slice(e); t.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: text })); } else { document.execCommand("insertText", false, text); t.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: text })); } if (send) setTimeout(clickSend, 650); }
-  function clickSend() { for (const sel of ["button[data-testid='send-button']", "button[aria-label='Send prompt']", "button[aria-label*='Send']", "button[aria-label*='发送']", "form button[type='submit']"]) { const b = document.querySelector(sel); if (b instanceof HTMLButtonElement && !b.disabled && visible(b)) { b.click(); return true; } } msg("已插入，但未找到可点击的发送按钮。请手动发送。", true); return false; }
-  function composer() { for (const sel of ["#prompt-textarea", "textarea[data-id='root']", "textarea", "[contenteditable='true']", "div.ProseMirror"]) { const n = document.querySelector(sel); if (n instanceof HTMLElement && visible(n) && !host.contains(n)) return n; } return null; }
-  function visible(n) { const r = n.getBoundingClientRect(); return r.width > 0 && r.height > 0; }
-  function copy(text) { if (typeof GM_setClipboard === "function") GM_setClipboard(text); else navigator.clipboard?.writeText(text); }
-  function hash(text) { let v = 5381; for (let i = 0; i < text.length; i++) v = ((v << 5) + v) ^ text.charCodeAt(i); return `h${(v >>> 0).toString(16)}`; }
-  function esc(v) { return String(v).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;"); }
+  function section(id, title, desc, body) {
+    const open = state.section === id;
+    return `<section class="block"><button class="head" data-act="section" data-section="${esc(id)}"><span><div class="bt">${esc(title)}</div><div class="bd">${esc(desc)}</div></span><span>${open ? "−" : "+"}</span></button>${open ? `<div class="body">${body}</div>` : ""}</section>`;
+  }
+
+  function statusBody() {
+    const last = registry.lastHotUpdate;
+    return `
+      <div class="small">kernel: ${VERSION}</div>
+      <div class="small">module schema: dcf.module_pack.v1</div>
+      <div class="small">registered modules: ${registry.modules.length}</div>
+      <div class="small">last hot update: ${esc(last?.at || "none")}</div>
+      <div class="actions">
+        <button class="a primary" data-act="copy-diag">复制诊断</button>
+        <button class="a" data-act="side">切换左右侧</button>
+      </div>
+    `;
+  }
+
+  function installBody() {
+    return `
+      <div class="field">
+        <label>模块包 JSON</label>
+        <textarea data-role="pack" placeholder='{"schema":"dcf.module_pack.v1","mode":"merge","modules":[{"id":"example.module","title":"示例模块","version":"1.0.0","blocks":[{"id":"hello","title":"示例功能块","description":"通过热更新出现","actions":[{"id":"insert","label":"插入文本","kind":"insert_text","text":"hello"}]}]}]}'></textarea>
+      </div>
+      <div class="actions">
+        <button class="a primary" data-act="apply-pack">应用热更新</button>
+        <button class="a hot" data-act="probe">热更新自检模块</button>
+        <button class="a" data-act="copy-sample">复制模块包样例</button>
+      </div>
+    `;
+  }
+
+  function repairBody() {
+    return `
+      <div class="small">这个维护提示用于约束后续 AI：模块需求不得默认改内核；先通过模块包、配置、声明式 UI 和热维护路径解决。</div>
+      <div class="actions">
+        <button class="a primary" data-act="insert-repair">插入维护纠错提示</button>
+        <button class="a" data-act="copy-repair">复制维护纠错提示</button>
+      </div>
+    `;
+  }
+
+  function dangerBody() {
+    return `
+      <div class="small">清理历史 remote engine、0.8.3 内嵌模块状态和当前模块注册表。清理后内核仍保留维护框架。</div>
+      <div class="actions">
+        <button class="a warn" data-act="clear-legacy">清理历史错误状态</button>
+        <button class="a warn" data-act="reset-modules">清空模块注册表</button>
+      </div>
+    `;
+  }
+
+  function renderModule(module) {
+    const blocks = Array.isArray(module.blocks) ? module.blocks : [];
+    return `<section class="block"><button class="head" data-act="noop"><span><div class="bt">${esc(module.title || module.id)}</div><div class="bd">${esc(module.description || `module ${module.id}`)}</div></span><span class="badge">${esc(module.version || "v?")}</span></button><div class="body">${blocks.length ? blocks.map((b, i) => renderBlock(module, b, i)).join("") : `<div class="empty">模块没有声明功能块。</div>`}<div class="actions"><button class="a warn" data-act="disable-module" data-module="${esc(module.id)}">卸载模块</button></div></div></section>`;
+  }
+
+  function renderBlock(module, block, index) {
+    const actions = Array.isArray(block.actions) ? block.actions : [];
+    return `<div class="card"><div class="name">${esc(block.title || block.id || `block-${index + 1}`)}</div><div class="desc">${esc(block.description || "")}</div>${actions.length ? `<div class="actions">${actions.map((a, i) => `<button class="a ${a.primary ? "primary" : ""}" data-act="module-action" data-module="${esc(module.id)}" data-block="${index}" data-action-index="${i}">${esc(a.label || a.id || a.kind || `action-${i + 1}`)}</button>`).join("")}</div>` : `<div class="mini">没有声明动作。</div>`}</div>`;
+  }
+
+  function onInput(event) {
+    const node = event.target;
+    if (node?.dataset?.role === "pack") state.packDraft = node.value;
+  }
+
+  function onClick(event) {
+    const node = event.target.closest("[data-act]");
+    if (!node) return;
+    const act = node.dataset.act;
+    if (act === "noop") return;
+    if (act === "tab") { state.tab = node.dataset.tab === "modules" ? "modules" : "maint"; saveState(); render(); return; }
+    if (act === "section") { state.section = node.dataset.section || "status"; saveState(); render(); return; }
+    if (act === "copy-diag") { copyText(diagnostics()); notice("诊断已复制。"); return; }
+    if (act === "side") { state.side = state.side === "left" ? "right" : "left"; saveState(); render(); return; }
+    if (act === "apply-pack") { applyPackFromTextarea(); return; }
+    if (act === "probe") { applyPack(probePack(), "kernel-self-test"); return; }
+    if (act === "copy-sample") { copyText(JSON.stringify(samplePack(), null, 2)); notice("模块包样例已复制。"); return; }
+    if (act === "insert-repair") { insertText(repairPrompt(), false); return; }
+    if (act === "copy-repair") { copyText(repairPrompt()); notice("维护纠错提示已复制。"); return; }
+    if (act === "clear-legacy") { clearLegacy(); return; }
+    if (act === "reset-modules") { registry.modules = []; registry.lastHotUpdate = { at: new Date().toISOString(), source: "reset" }; saveRegistry(); state.tab = "maint"; notice("模块注册表已清空。"); return; }
+    if (act === "disable-module") { disableModule(node.dataset.module); return; }
+    if (act === "module-action") { runModuleAction(node); }
+  }
+
+  function applyPackFromTextarea() {
+    const text = root.querySelector("[data-role='pack']")?.value?.trim() || state.packDraft || "";
+    if (!text) { notice("没有可应用的模块包 JSON。"); return; }
+    try { applyPack(JSON.parse(text), "pasted-json"); } catch (error) { notice(`模块包 JSON 解析失败：${error.message}`); }
+  }
+
+  function applyPack(pack, source) {
+    const normalized = normalizePack(pack);
+    if (!normalized.ok) { notice(normalized.error); return; }
+    if (normalized.pack.mode === "replace") registry.modules = [];
+    for (const module of normalized.pack.modules) upsertModule(module);
+    registry.lastHotUpdate = {
+      at: new Date().toISOString(),
+      source,
+      packId: normalized.pack.packId,
+      moduleCount: normalized.pack.modules.length,
+    };
+    writeLog({ type: "module_hot_update", ...registry.lastHotUpdate });
+    saveRegistry();
+    state.tab = "modules";
+    state.section = "status";
+    notice(`热更新完成：${normalized.pack.modules.length} 个模块已装载。`);
+  }
+
+  function normalizePack(pack) {
+    if (!pack || typeof pack !== "object") return { ok: false, error: "模块包不是对象。" };
+    if (pack.schema !== "dcf.module_pack.v1") return { ok: false, error: "模块包 schema 必须是 dcf.module_pack.v1。" };
+    if (!Array.isArray(pack.modules)) return { ok: false, error: "模块包缺少 modules 数组。" };
+    const modules = pack.modules.map(normalizeModule).filter(Boolean);
+    if (!modules.length) return { ok: false, error: "模块包没有合法模块。" };
+    return {
+      ok: true,
+      pack: {
+        packId: String(pack.pack_id || pack.packId || `pack.${hash(JSON.stringify(pack))}`),
+        mode: pack.mode === "replace" ? "replace" : "merge",
+        modules,
+      },
+    };
+  }
+
+  function normalizeModule(module) {
+    if (!module || typeof module !== "object") return null;
+    const id = String(module.id || "").trim();
+    const title = String(module.title || "").trim();
+    if (!id || !title) return null;
+    return {
+      id,
+      title,
+      version: String(module.version || "1.0.0"),
+      description: String(module.description || ""),
+      blocks: Array.isArray(module.blocks) ? module.blocks.map(normalizeBlock).filter(Boolean) : [],
+      installedAt: new Date().toISOString(),
+    };
+  }
+
+  function normalizeBlock(block) {
+    if (!block || typeof block !== "object") return null;
+    const id = String(block.id || `block.${hash(JSON.stringify(block))}`);
+    const actions = Array.isArray(block.actions) ? block.actions.map(normalizeAction).filter(Boolean) : [];
+    return {
+      id,
+      title: String(block.title || id),
+      description: String(block.description || ""),
+      actions,
+    };
+  }
+
+  function normalizeAction(action) {
+    if (!action || typeof action !== "object") return null;
+    const kind = String(action.kind || "").trim();
+    if (!["insert_text", "insert_and_send", "copy_text", "notice"].includes(kind)) return null;
+    return {
+      id: String(action.id || `action.${hash(JSON.stringify(action))}`),
+      label: String(action.label || kind),
+      kind,
+      text: String(action.text || ""),
+      message: String(action.message || ""),
+      primary: Boolean(action.primary),
+    };
+  }
+
+  function upsertModule(module) {
+    const index = registry.modules.findIndex((item) => item.id === module.id);
+    if (index >= 0) registry.modules[index] = module;
+    else registry.modules.push(module);
+  }
+
+  function disableModule(id) {
+    registry.modules = registry.modules.filter((item) => item.id !== id);
+    registry.lastHotUpdate = { at: new Date().toISOString(), source: "disable", moduleId: id };
+    writeLog({ type: "module_disable", ...registry.lastHotUpdate });
+    saveRegistry();
+    notice(`已卸载模块：${id}`);
+  }
+
+  function runModuleAction(node) {
+    const module = registry.modules.find((item) => item.id === node.dataset.module);
+    const block = module?.blocks?.[Number(node.dataset.block)];
+    const action = block?.actions?.[Number(node.dataset.actionIndex)];
+    if (!action) return;
+    if (action.kind === "insert_text") { insertText(action.text, false); return; }
+    if (action.kind === "insert_and_send") { insertText(action.text, true); return; }
+    if (action.kind === "copy_text") { copyText(action.text); notice(action.message || "模块文本已复制。"); return; }
+    if (action.kind === "notice") { notice(action.message || action.text || "模块动作已执行。"); }
+  }
+
+  function probePack() {
+    const at = new Date().toISOString();
+    return {
+      schema: "dcf.module_pack.v1",
+      pack_id: "dcf.kernel.hot_update_probe.pack.v1",
+      mode: "merge",
+      modules: [{
+        id: "dcf.hot_update_probe.module",
+        title: "热更新探针模块",
+        version: at,
+        description: "这个模块不是内核内置 UI；它通过模块包热更新进入模块区。",
+        blocks: [{
+          id: "probe",
+          title: "探针动作",
+          description: "点击后向输入框插入一段验证文字。",
+          actions: [{
+            id: "insert_probe",
+            label: "插入探针",
+            kind: "insert_text",
+            primary: true,
+            text: `请确认：DCF 在 ${at} 通过包裹体完成了一次模块包热更新。这个结果证明的是声明式模块数据热更新，不是 userscript 底层发版，也不是远程代码执行。`,
+          }, {
+            id: "copy_probe",
+            label: "复制探针",
+            kind: "copy_text",
+            text: `DCF hot-update probe ${at}`,
+            message: "热更新探针文本已复制。",
+          }],
+        }],
+      }],
+    };
+  }
+
+  function samplePack() {
+    return {
+      schema: "dcf.module_pack.v1",
+      pack_id: "custom.sample.pack.v1",
+      mode: "merge",
+      modules: [{
+        id: "custom.sample.module",
+        title: "自定义样例模块",
+        version: "1.0.0",
+        description: "通过 DCF 包裹体热更新装载的声明式模块。",
+        blocks: [{
+          id: "hello",
+          title: "样例功能块",
+          description: "这个功能块不是 userscript 内核代码。",
+          actions: [{
+            id: "insert",
+            label: "插入样例文本",
+            kind: "insert_text",
+            primary: true,
+            text: "这段文字来自热更新模块包，而不是 DCF 内核硬编码功能。",
+          }, {
+            id: "copy",
+            label: "复制样例文本",
+            kind: "copy_text",
+            text: "DCF declarative module sample",
+            message: "样例文本已复制。",
+          }],
+        }],
+      }],
+    };
+  }
+
+  function repairPrompt() {
+    return [
+      "<<<DCF_MAINT",
+      JSON.stringify({
+        schema: "dcf.kernel.maintenance.repair.v1",
+        kernel_version: VERSION,
+        task: "Stop treating module/plugin requirements as kernel code changes.",
+        required_behavior: [
+          "First classify the request as kernel, module package, ammo pack, configuration, documentation, or ADR.",
+          "Only modify userscript kernel when the maintenance wrapper or declarative module runtime itself is insufficient.",
+          "For UI and feature changes, produce a dcf.module_pack.v1 package and apply it through the DCF wrapper.",
+          "Do not implement plugin-specific behavior by adding functions to dcf-chatgpt-microcore.user.js.",
+          "After changes, verify by applying a module package without refreshing the page or changing userscript version.",
+        ],
+        current_contract: "DCF core is a maintenance wrapper and declarative module hot-update runtime. Business UI and plugin behavior must enter through module packages.",
+      }, null, 2),
+      "DCF_MAINT>>>",
+    ].join("\n");
+  }
+
+  function diagnostics() {
+    return JSON.stringify({
+      schema: "dcf.kernel.diagnostics.v1",
+      version: VERSION,
+      url: location.href,
+      title: document.title,
+      at: new Date().toISOString(),
+      state: { tab: state.tab, section: state.section, side: state.side },
+      modules: registry.modules.map((module) => ({
+        id: module.id,
+        title: module.title,
+        version: module.version,
+        blocks: module.blocks.length,
+      })),
+      lastHotUpdate: registry.lastHotUpdate || null,
+      legacyKeysPresent: LEGACY_KEYS.filter((key) => localStorage.getItem(key) !== null),
+    }, null, 2);
+  }
+
+  function clearLegacy() {
+    LEGACY_KEYS.forEach((key) => localStorage.removeItem(key));
+    writeLog({ type: "clear_legacy", at: new Date().toISOString() });
+    notice("历史错误状态已清理。");
+  }
+
+  function insertText(text, send) {
+    const target = findComposer();
+    if (!target) {
+      copyText(text);
+      alert("DCF 未找到输入框，内容已复制到剪贴板。");
+      return;
+    }
+    target.focus();
+    if (target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement) {
+      const start = target.selectionStart ?? target.value.length;
+      const end = target.selectionEnd ?? target.value.length;
+      target.value = target.value.slice(0, start) + text + target.value.slice(end);
+      target.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: text }));
+    } else {
+      document.execCommand("insertText", false, text);
+      target.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: text }));
+    }
+    if (send) setTimeout(clickSend, 650);
+  }
+
+  function clickSend() {
+    for (const selector of ["button[data-testid='send-button']", "button[aria-label='Send prompt']", "button[aria-label*='Send']", "button[aria-label*='发送']", "form button[type='submit']"]) {
+      const button = document.querySelector(selector);
+      if (button instanceof HTMLButtonElement && !button.disabled && visible(button)) {
+        button.click();
+        return true;
+      }
+    }
+    notice("已插入，但未找到可点击的发送按钮。请手动发送。");
+    return false;
+  }
+
+  function findComposer() {
+    for (const selector of ["#prompt-textarea", "textarea[data-id='root']", "textarea", "[contenteditable='true']", "div.ProseMirror"]) {
+      const node = document.querySelector(selector);
+      if (node instanceof HTMLElement && visible(node) && !host.contains(node)) return node;
+    }
+    return null;
+  }
+
+  function visible(node) {
+    const rect = node.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  }
+
+  function copyText(text) {
+    if (typeof GM_setClipboard === "function") GM_setClipboard(text);
+    else navigator.clipboard?.writeText(text);
+  }
+
+  function notice(text) {
+    state.notice = text;
+    saveState();
+    render();
+  }
+
+  function loadState() {
+    try {
+      return { tab: "maint", section: "status", side: "right", notice: "", packDraft: "", ...(JSON.parse(localStorage.getItem(STATE_KEY) || "{}") || {}) };
+    } catch {
+      return { tab: "maint", section: "status", side: "right", notice: "", packDraft: "" };
+    }
+  }
+
+  function saveState() {
+    localStorage.setItem(STATE_KEY, JSON.stringify({
+      tab: state.tab === "modules" ? "modules" : "maint",
+      section: state.section || "status",
+      side: state.side === "left" ? "left" : "right",
+      notice: state.notice || "",
+    }));
+  }
+
+  function loadRegistry() {
+    try {
+      const value = JSON.parse(localStorage.getItem(MODULE_KEY) || "{}") || {};
+      return {
+        schema: "dcf.kernel.modules.v1",
+        modules: Array.isArray(value.modules) ? value.modules.map(normalizeModule).filter(Boolean) : [],
+        lastHotUpdate: value.lastHotUpdate || null,
+      };
+    } catch {
+      return { schema: "dcf.kernel.modules.v1", modules: [], lastHotUpdate: null };
+    }
+  }
+
+  function saveRegistry() {
+    localStorage.setItem(MODULE_KEY, JSON.stringify(registry));
+  }
+
+  function writeLog(entry) {
+    try {
+      const old = JSON.parse(localStorage.getItem(LOG_KEY) || "[]");
+      const next = Array.isArray(old) ? old.slice(-49) : [];
+      next.push({ ...entry, at: entry.at || new Date().toISOString() });
+      localStorage.setItem(LOG_KEY, JSON.stringify(next));
+    } catch {
+      localStorage.setItem(LOG_KEY, JSON.stringify([{ ...entry, at: new Date().toISOString() }]));
+    }
+  }
+
+  function hash(text) {
+    let value = 5381;
+    for (let index = 0; index < text.length; index += 1) value = ((value << 5) + value) ^ text.charCodeAt(index);
+    return `h${(value >>> 0).toString(16)}`;
+  }
+
+  function esc(value) {
+    return String(value)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
 })();
