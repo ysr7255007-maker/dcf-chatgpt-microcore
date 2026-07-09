@@ -11,6 +11,8 @@ After the `0.7.1` mitigation, one observed failure mode was: the script updated 
 
 After `0.7.2`, the browser reported a hard Content Security Policy failure: evaluating a downloaded string as JavaScript violates ChatGPT's CSP because `unsafe-eval` is not allowed. This means the remote-engine-by-string-eval model is not merely inconvenient; it is structurally invalid on ChatGPT pages.
 
+A process error also occurred: an implementation limitation around uploading a full userscript through the available connector was allowed to distort the runtime architecture. That should not have happened. Upload or deployment friction must be solved at the release pipeline level, not by adding fragile runtime indirection to the user-facing script.
+
 ## Decision
 
 The multi-chunk GitHub raw loading design is rejected as the long-term release structure.
@@ -20,6 +22,8 @@ The remote bootloader design that downloads JavaScript text and runs it through 
 DCF should use GitHub as the reliable version source, but the normal release unit must be a complete Tampermonkey `.user.js` updated by Tampermonkey native `@updateURL` / `@downloadURL`.
 
 The browser may cache non-authoritative runtime data for startup speed and fallback, but that cache must not be the authoritative code release source.
+
+Implementation constraints in the assistant/tooling layer must not be converted into product architecture. If a full `.user.js` cannot be uploaded through one mechanism, the correct response is to use a proper release path, build pipeline, Git push, or ask for the missing capability; not to invent runtime chunking or eval-based loading.
 
 ## Immediate mitigation
 
@@ -44,6 +48,8 @@ The CSP failure supersedes these mitigations. They should not be treated as a vi
 Continuing to publish every engine change as 17+ chunk files is rejected. It creates needless operational complexity, increases request count, makes verification harder, and turns small script changes into many repository writes.
 
 Continuing to download remote JavaScript and evaluate it at runtime is rejected because it is blocked by ChatGPT's CSP.
+
+Treating connector upload inconvenience as a reason to complicate runtime architecture is rejected.
 
 ## Next target
 
