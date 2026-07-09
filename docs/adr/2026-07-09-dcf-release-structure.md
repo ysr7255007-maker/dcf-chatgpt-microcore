@@ -23,9 +23,23 @@ The remote bootloader design that downloads JavaScript text and runs it through 
 
 DCF should use GitHub as the reliable version source, but the normal release unit must be a complete Tampermonkey `.user.js` updated by Tampermonkey native `@updateURL` / `@downloadURL`.
 
+Future runtime releases should replace the root `.user.js` as a complete artifact. This is acceptable and expected for Tampermonkey userscripts. It does not require hand-maintaining one giant source file: development may remain modular, and a build script may generate the final single-file artifact. The installed/released artifact remains full-file.
+
 The browser may cache non-authoritative runtime data for startup speed and fallback, but that cache must not be the authoritative code release source.
 
 Implementation constraints in the assistant/tooling layer must not be converted into product architecture. If a full `.user.js` cannot be uploaded through one mechanism, the correct response is to use a proper release path, build pipeline, Git push, or ask for the missing capability; not to invent runtime chunking or eval-based loading.
+
+## Release update policy
+
+For each public DCF userscript release:
+
+- bump `@version` in both `dcf-chatgpt-microcore.user.js` and `dcf-chatgpt-microcore.meta.js`;
+- upload/replace the complete generated `dcf-chatgpt-microcore.user.js` file;
+- upload/replace the complete `dcf-chatgpt-microcore.meta.js` metadata file;
+- keep `@updateURL` and `@downloadURL` pointing to the root files on `main`;
+- verify the root script has no runtime remote-code execution path such as `Function(source)`, eval-based engine loading, GitHub chunk manifest loading, or CDN chunk loading.
+
+Git will record the change as a normal file update. Even when the release artifact is uploaded as a complete file, the repository diff, commit history, and review should focus on the actual changed lines or generated artifact comparison.
 
 ## Immediate mitigation and correction
 
