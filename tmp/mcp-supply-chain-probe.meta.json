@@ -1,0 +1,11 @@
+{
+  "project": "dcf-chatgpt-microcore",
+  "probe": "github-mcp-supply-chain",
+  "date": "2026-07-09",
+  "branch": "research/mcp-supply-chain-upload-2026-07-09",
+  "expected": {
+    "runtime_architecture": "native Tampermonkey userscript",
+    "mcp_role": "supply-chain backend only",
+    "forbidden": ["runtime eval", "remote engine loading", "chunk manifest as runtime release path"]
+  }
+}

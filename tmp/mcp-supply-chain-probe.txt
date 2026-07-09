@@ -1,0 +1,6 @@
+DCF GitHub MCP supply-chain probe
+branch: research/mcp-supply-chain-upload-2026-07-09
+purpose: verify create/update + readback before touching DCF release artifacts
+sentinel-start: DCF_MCP_PROBE_START_2026_07_09
+payload: language-ammo-system / native-userscript-release / no-runtime-eval / supply-chain-only
+sentinel-end: DCF_MCP_PROBE_END_2026_07_09
