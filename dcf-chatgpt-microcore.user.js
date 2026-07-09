@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         DCF ChatGPT Microcore
 // @namespace    https://chatgpt.com/
-// @version      0.8.5
-// @description  DCF light capability-bus kernel with automatic module ingestion and feedback. No remote eval, no chunks.
+// @version      0.8.6
+// @description  DCF light capability-bus kernel with guarded automatic module ingestion and safe feedback. No remote eval, no chunks.
 // @updateURL    https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.meta.js
 // @downloadURL  https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.user.js
 // @supportURL   https://github.com/ysr7255007-maker/dcf-chatgpt-microcore
@@ -24,7 +24,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "0.8.5";
+  const VERSION = "0.8.6";
   const STATE_KEY = "dcf.kernel.state.v1";
   const REGISTRY_KEY = "dcf.kernel.registry.v1";
   const LOG_KEY = "dcf.kernel.log.v1";
@@ -40,58 +40,23 @@
   ];
 
   const CAPABILITY_NAMES = [
-    "ui.notice",
-    "ui.rerender",
-    "ui.addStyle",
-    "ui.notify",
-    "ui.setTab",
-    "ui.setSection",
-    "ui.showModule",
-    "composer.find",
-    "composer.read",
-    "composer.insert",
-    "composer.replace",
-    "composer.append",
-    "composer.clear",
-    "composer.send",
-    "conversation.readText",
-    "conversation.getPageInfo",
-    "conversation.findBlocks",
-    "conversation.findModulePacks",
-    "conversation.observe",
+    "ui.notice", "ui.rerender", "ui.addStyle", "ui.notify", "ui.setTab", "ui.setSection", "ui.showModule",
+    "composer.find", "composer.read", "composer.insert", "composer.replace", "composer.append", "composer.clear", "composer.send",
+    "conversation.readText", "conversation.getPageInfo", "conversation.findBlocks", "conversation.findModulePacks", "conversation.observe",
     "clipboard.write",
-    "store.get",
-    "store.set",
-    "store.delete",
-    "store.list",
-    "store.snapshot",
-    "store.restore",
-    "module.list",
-    "module.get",
-    "module.install",
-    "module.update",
-    "module.enable",
-    "module.disable",
-    "module.remove",
-    "module.reload",
-    "package.detect",
-    "package.apply",
-    "package.fetchAndApply",
-    "package.listInstalled",
+    "store.get", "store.set", "store.delete", "store.list", "store.snapshot", "store.restore",
+    "module.list", "module.get", "module.install", "module.update", "module.enable", "module.disable", "module.remove", "module.reload",
+    "package.detect", "package.apply", "package.fetchAndApply", "package.listInstalled",
     "network.fetchData",
-    "log.write",
-    "log.list",
-    "log.clear",
-    "maintenance.feedback",
-    "maintenance.diagnose",
-    "maintenance.requestKernelChange",
+    "log.write", "log.list", "log.clear",
+    "maintenance.feedback", "maintenance.diagnose", "maintenance.requestKernelChange",
   ];
 
   const state = loadState();
   const registry = loadRegistry();
   const capabilities = makeCapabilities();
   let scanTimer = null;
-  let lastScan = { at: "", packs: 0, textLength: 0 };
+  let lastScan = { at: "", packs: 0, ignored: 0, textLength: 0 };
 
   const host = document.createElement("div");
   host.id = "dcf-chatgpt-microcore-host";
@@ -108,22 +73,13 @@
       .tabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:8px 10px;border-bottom:1px solid rgba(130,130,130,.14)}
       .tab{border:1px solid rgba(130,130,130,.18);border-radius:11px;padding:7px 0;background:transparent;color:inherit;cursor:pointer;font:650 12px/1 system-ui}
       .tab[aria-selected=true]{background:rgba(37,99,235,.12);border-color:rgba(37,99,235,.35)}
-      .content{flex:1;overflow:auto;padding:10px}.line{margin:0 0 10px;font-size:12px;opacity:.70}
-      .notice{border:1px solid rgba(5,150,105,.25);background:rgba(5,150,105,.09);border-radius:12px;padding:8px 9px;margin:0 0 10px;font-size:12px}
-      .warnbox{border:1px solid rgba(217,119,6,.35);background:rgba(217,119,6,.10);border-radius:12px;padding:8px 9px;margin:0 0 10px;font-size:12px}
-      .block{border:1px solid rgba(130,130,130,.18);border-radius:15px;background:rgba(127,127,127,.045);margin-bottom:10px;overflow:hidden}
-      .head{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;border:0;padding:11px 12px;color:inherit;background:transparent;text-align:left;cursor:pointer;font:inherit}
+      .content{flex:1;overflow:auto;padding:10px}.small{font-size:12px;opacity:.72}.notice{border:1px solid rgba(5,150,105,.25);background:rgba(5,150,105,.09);border-radius:12px;padding:8px 9px;margin:0 0 10px;font-size:12px}.warnbox{border:1px solid rgba(217,119,6,.35);background:rgba(217,119,6,.10);border-radius:12px;padding:8px 9px;margin:0 0 10px;font-size:12px}
+      .block{border:1px solid rgba(130,130,130,.18);border-radius:15px;background:rgba(127,127,127,.045);margin-bottom:10px;overflow:hidden}.head{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;border:0;padding:11px 12px;color:inherit;background:transparent;text-align:left;cursor:pointer;font:inherit}
       .bt{font-size:13px;font-weight:760}.bd{margin-top:2px;font-size:12px;opacity:.62}.body{padding:0 12px 12px;border-top:1px solid rgba(130,130,130,.12)}
-      .actions{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}.a{border:1px solid rgba(130,130,130,.23);border-radius:10px;padding:7px 9px;background:rgba(127,127,127,.07);color:inherit;cursor:pointer;font:12px/1.1 system-ui}
-      .a.primary{background:rgba(37,99,235,.14);border-color:rgba(37,99,235,.35);font-weight:700}.a.hot{background:rgba(124,58,237,.12);border-color:rgba(124,58,237,.32);font-weight:700}.a.warn{background:rgba(217,119,6,.12);border-color:rgba(217,119,6,.32)}
-      .card{border:1px solid rgba(130,130,130,.16);border-radius:12px;padding:9px;background:rgba(255,255,255,.32);margin-top:8px}@media(prefers-color-scheme:dark){.card{background:rgba(255,255,255,.035)}}
-      .name{font-weight:720;font-size:12px}.desc{margin-top:3px;font-size:12px;opacity:.66}.mini{font-size:11px;opacity:.56;margin-top:4px}.kv{font:11px/1.35 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;opacity:.72;word-break:break-all}
-      .field{margin-top:9px}.field label{display:block;font-size:12px;font-weight:680;margin-bottom:5px}
-      textarea{width:100%;min-height:92px;box-sizing:border-box;resize:vertical;border-radius:12px;border:1px solid rgba(130,130,130,.22);padding:8px 9px;background:rgba(255,255,255,.55);color:inherit;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-      @media(prefers-color-scheme:dark){textarea{background:rgba(0,0,0,.18)}}
-      .empty{border:1px dashed rgba(130,130,130,.26);border-radius:14px;padding:12px;font-size:12px;opacity:.72}
-      .badge{border:1px solid rgba(37,99,235,.26);color:#2563eb;border-radius:999px;padding:2px 7px;font-size:11px;white-space:nowrap}
-      .chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}.chip{border:1px solid rgba(130,130,130,.20);border-radius:999px;padding:2px 6px;font-size:11px;opacity:.76}
+      .actions{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}.a{border:1px solid rgba(130,130,130,.23);border-radius:10px;padding:7px 9px;background:rgba(127,127,127,.07);color:inherit;cursor:pointer;font:12px/1.1 system-ui}.a.primary{background:rgba(37,99,235,.14);border-color:rgba(37,99,235,.35);font-weight:700}.a.hot{background:rgba(124,58,237,.12);border-color:rgba(124,58,237,.32);font-weight:700}.a.warn{background:rgba(217,119,6,.12);border-color:rgba(217,119,6,.32)}
+      .card{border:1px solid rgba(130,130,130,.16);border-radius:12px;padding:9px;background:rgba(255,255,255,.32);margin-top:8px}@media(prefers-color-scheme:dark){.card{background:rgba(255,255,255,.035)}}.name{font-weight:720;font-size:12px}.desc{margin-top:3px;font-size:12px;opacity:.66}.mini{font-size:11px;opacity:.56;margin-top:4px}.kv{font:11px/1.35 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;opacity:.72;word-break:break-all}
+      .field{margin-top:9px}.field label{display:block;font-size:12px;font-weight:680;margin-bottom:5px}textarea{width:100%;min-height:92px;box-sizing:border-box;resize:vertical;border-radius:12px;border:1px solid rgba(130,130,130,.22);padding:8px 9px;background:rgba(255,255,255,.55);color:inherit;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}@media(prefers-color-scheme:dark){textarea{background:rgba(0,0,0,.18)}}
+      .empty{border:1px dashed rgba(130,130,130,.26);border-radius:14px;padding:12px;font-size:12px;opacity:.72}.badge{border:1px solid rgba(37,99,235,.26);color:#2563eb;border-radius:999px;padding:2px 7px;font-size:11px;white-space:nowrap}.chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}.chip{border:1px solid rgba(130,130,130,.20);border-radius:999px;padding:2px 6px;font-size:11px;opacity:.76}
     </style>
     <aside class="shell" aria-label="DCF Light Capability Bus"></aside>
   `;
@@ -140,40 +96,26 @@
   function render() {
     shell.dataset.side = state.side;
     shell.innerHTML = `
-      <div class="top">
-        <div>
-          <div class="title">DCF Kernel</div>
-          <div class="sub">native ${VERSION} · light capability bus</div>
-        </div>
-        <span class="pill">${registry.modules.length} modules</span>
-      </div>
-      <div class="tabs">
-        <button class="tab" aria-selected="${state.tab === "maint"}" data-act="tab" data-tab="maint">维护</button>
-        <button class="tab" aria-selected="${state.tab === "modules"}" data-act="tab" data-tab="modules">模块</button>
-      </div>
-      <div class="content">
-        ${state.notice ? `<div class="notice">${esc(state.notice)}</div>` : ""}
-        ${state.tab === "modules" ? modulesView() : maintenanceView()}
-      </div>
+      <div class="top"><div><div class="title">DCF Kernel</div><div class="sub">native ${VERSION} · guarded capability bus</div></div><span class="pill">${registry.modules.length} modules</span></div>
+      <div class="tabs"><button class="tab" aria-selected="${state.tab === "maint"}" data-act="tab" data-tab="maint">维护</button><button class="tab" aria-selected="${state.tab === "modules"}" data-act="tab" data-tab="modules">模块</button></div>
+      <div class="content">${state.notice ? `<div class="notice">${esc(state.notice)}</div>` : ""}${state.tab === "modules" ? modulesView() : maintenanceView()}</div>
     `;
   }
 
   function maintenanceView() {
     return `
-      <div class="warnbox">当前内核是小型能力总线：接口尽量完整暴露给模块，业务能力通过 DCF_MODULE_PACK 自动热更新进入；失败、拒绝和缺能力会自动回馈。</div>
+      <div class="warnbox">0.8.6：自动摄取器会忽略说明性占位块；反馈不会覆盖你的输入草稿。业务能力仍必须通过模块包进入。</div>
       ${section("status", "内核状态", "版本、自动摄取、最近安装。", statusBody())}
-      ${section("caps", "能力接口", "模块可通过 kernel.call / command steps 调用的能力面。", capabilitiesBody())}
-      ${section("install", "模块包入口", "可粘贴测试，也会自动扫描当前对话中的 DCF_MODULE_PACK。", installBody())}
-      ${section("events", "轻量日志", "最近事件、拒绝和反馈状态。", eventsBody())}
+      ${section("caps", "能力接口", "模块可通过 command steps 调用的能力面。", capabilitiesBody())}
+      ${section("install", "模块包入口", "自动扫描真实 DCF_MODULE_PACK；粘贴区仅用于调试。", installBody())}
+      ${section("events", "轻量日志", "最近事件、忽略、拒绝和反馈状态。", eventsBody())}
       ${section("repair", "自我纠错", "防止模块需求退化为内核硬编码。", repairBody())}
       ${section("danger", "恢复", "清理历史错误状态、安装账本或模块。", dangerBody())}
     `;
   }
 
   function modulesView() {
-    if (!registry.modules.length) {
-      return `<div class="empty">当前没有业务模块。模块必须通过 DCF_MODULE_PACK 自动热更新或维护入口装载；内核不内置语言弹药 UI。</div>`;
-    }
+    if (!registry.modules.length) return `<div class="empty">当前没有业务模块。模块必须通过真实 DCF_MODULE_PACK 自动热更新或维护入口装载；内核不内置语言弹药 UI。</div>`;
     return registry.modules.map(renderModule).join("");
   }
 
@@ -184,54 +126,22 @@
 
   function statusBody() {
     const last = registry.lastHotUpdate;
-    return `
-      <div class="small">kernel: ${VERSION}</div>
-      <div class="small">auto ingest: on · last scan: ${esc(lastScan.at || "pending")}</div>
-      <div class="small">page text: ${lastScan.textLength || 0} · packs seen: ${lastScan.packs || 0}</div>
-      <div class="small">modules: ${registry.modules.length} · installed packs: ${Object.keys(registry.installedPacks).length}</div>
-      <div class="small">last hot update: ${esc(last?.at || "none")}</div>
-      <div class="actions">
-        <button class="a primary" data-act="copy-diag">复制诊断</button>
-        <button class="a" data-act="scan-now">立即扫描</button>
-        <button class="a" data-act="side">切换左右侧</button>
-      </div>
-    `;
+    return `<div class="small">kernel: ${VERSION}</div><div class="small">auto ingest: on · last scan: ${esc(lastScan.at || "pending")}</div><div class="small">page text: ${lastScan.textLength || 0} · packs seen: ${lastScan.packs || 0} · ignored: ${lastScan.ignored || 0}</div><div class="small">modules: ${registry.modules.length} · installed packs: ${Object.keys(registry.installedPacks).length}</div><div class="small">last hot update: ${esc(last?.at || "none")}</div><div class="actions"><button class="a primary" data-act="copy-diag">复制诊断</button><button class="a" data-act="scan-now">立即扫描</button><button class="a" data-act="side">切换左右侧</button></div>`;
   }
 
   function capabilitiesBody() {
     const groups = groupCapabilities();
-    return Object.keys(groups).map((group) => `
-      <div class="card">
-        <div class="name">${esc(group)}.*</div>
-        <div class="chips">${groups[group].map((name) => `<span class="chip">${esc(name)}</span>`).join("")}</div>
-      </div>
-    `).join("");
+    return Object.keys(groups).map((group) => `<div class="card"><div class="name">${esc(group)}.*</div><div class="chips">${groups[group].map((name) => `<span class="chip">${esc(name)}</span>`).join("")}</div></div>`).join("");
   }
 
   function installBody() {
-    return `
-      <div class="small">自动安装的正式入口是聊天里的 DCF_MODULE_PACK 块；这里的粘贴区只用于调试。安装成功或失败会尝试自动发送 DCF_FEEDBACK。</div>
-      <div class="field">
-        <label>调试用模块包 JSON</label>
-        <textarea data-role="pack" placeholder='{"schema":"dcf.module_pack.v1","pack_id":"example.pack","revision":"1","modules":[{"id":"example.module","title":"示例模块","commands":[{"id":"hello","label":"插入文本","steps":[{"call":"composer.insert","with":{"text":"hello"}}]}]}]}'></textarea>
-      </div>
-      <div class="actions">
-        <button class="a primary" data-act="apply-pack">手动应用调试包</button>
-        <button class="a hot" data-act="probe">生成自检包并安装</button>
-        <button class="a" data-act="copy-sample">复制模块包样例</button>
-      </div>
-    `;
+    return `<div class="small">真实模块包必须是 JSON 对象，且 schema 为 dcf.module_pack.v1。说明文字中的省略号或占位内容会被忽略，不再向对话发送失败反馈。</div><div class="field"><label>调试用模块包 JSON</label><textarea data-role="pack" placeholder='{"schema":"dcf.module_pack.v1","pack_id":"example.pack","revision":"1","modules":[{"id":"example.module","title":"示例模块","commands":[{"id":"hello","label":"插入文本","steps":[{"call":"composer.insert","with":{"text":"hello"}}]}]}]}'></textarea></div><div class="actions"><button class="a primary" data-act="apply-pack">手动应用调试包</button><button class="a hot" data-act="probe">生成自检包并安装</button><button class="a" data-act="copy-sample">复制模块包样例</button></div>`;
   }
 
   function eventsBody() {
     const events = recentEvents(10);
     const rejects = registry.rejections.slice(-5).reverse();
-    return `
-      <div class="small">最近事件只保留短日志，完整信息可复制诊断。</div>
-      ${events.length ? events.map(renderEvent).join("") : `<div class="empty">暂无事件。</div>`}
-      ${rejects.length ? `<div class="card"><div class="name">最近拒绝</div>${rejects.map((item) => `<div class="mini">${esc(item.at)} · ${esc(item.reason)} · ${esc(item.sourceHash || "")}</div>`).join("")}</div>` : ""}
-      <div class="actions"><button class="a" data-act="copy-log">复制日志</button><button class="a warn" data-act="clear-log">清空日志</button></div>
-    `;
+    return `<div class="small">最近事件只保留短日志。重复安装、占位块忽略、反馈回退都会记录在这里。</div>${events.length ? events.map(renderEvent).join("") : `<div class="empty">暂无事件。</div>`}${rejects.length ? `<div class="card"><div class="name">最近拒绝</div>${rejects.map((item) => `<div class="mini">${esc(item.at)} · ${esc(item.reason)} · ${esc(item.sourceHash || "")}</div>`).join("")}</div>` : ""}<div class="actions"><button class="a" data-act="copy-log">复制日志</button><button class="a warn" data-act="clear-log">清空日志</button></div>`;
   }
 
   function renderEvent(event) {
@@ -239,33 +149,15 @@
   }
 
   function repairBody() {
-    return `
-      <div class="small">用于回馈给当前对话：模块需要新能力时，先走 capability request，不把业务需求直接写进内核。</div>
-      <div class="actions">
-        <button class="a primary" data-act="insert-repair">插入纠错提示</button>
-        <button class="a" data-act="copy-repair">复制纠错提示</button>
-      </div>
-    `;
+    return `<div class="small">模块需要新能力时，先通过 capability request 回馈，不把业务需求直接写进内核。</div><div class="actions"><button class="a primary" data-act="insert-repair">插入纠错提示</button><button class="a" data-act="copy-repair">复制纠错提示</button></div>`;
   }
 
   function dangerBody() {
-    return `
-      <div class="small">保持脚本小而可读。恢复动作只清理本地状态，不改变 GitHub，不改变底层脚本。</div>
-      <div class="actions">
-        <button class="a warn" data-act="clear-legacy">清理历史错误状态</button>
-        <button class="a warn" data-act="clear-ledger">清空安装账本</button>
-        <button class="a warn" data-act="reset-modules">清空模块</button>
-      </div>
-    `;
+    return `<div class="small">恢复动作只清理本地状态，不改变 GitHub，不改变底层脚本。</div><div class="actions"><button class="a warn" data-act="clear-legacy">清理历史错误状态</button><button class="a warn" data-act="clear-ledger">清空安装账本</button><button class="a warn" data-act="reset-modules">清空模块</button></div>`;
   }
 
   function renderModule(module) {
-    const blocks = module.blocks.length ? module.blocks : [{
-      id: "commands",
-      title: "模块命令",
-      description: module.description || "",
-      commands: module.commands,
-    }];
+    const blocks = module.blocks.length ? module.blocks : [{ id: "commands", title: "模块命令", description: module.description || "", commands: module.commands }];
     return `<section class="block"><button class="head" data-act="noop"><span><div class="bt">${esc(module.title)}</div><div class="bd">${esc(module.description || module.id)}</div></span><span class="badge">${esc(module.disabled ? "disabled" : module.version)}</span></button><div class="body"><div class="mini">${esc(module.id)}</div>${module.permissions.length ? `<div class="chips">${module.permissions.map((p) => `<span class="chip">${esc(p)}</span>`).join("")}</div>` : ""}${blocks.map((block, blockIndex) => renderBlock(module, block, blockIndex)).join("")}<div class="actions"><button class="a warn" data-act="disable-module" data-module="${esc(module.id)}">卸载模块</button></div></div></section>`;
   }
 
@@ -300,7 +192,7 @@
     if (act === "clear-ledger") { registry.installedPacks = {}; registry.seenBlocks = {}; registry.rejections = []; saveRegistry(); notice("安装账本已清空。"); return; }
     if (act === "reset-modules") { registry.modules = []; registry.lastHotUpdate = { at: now(), source: "reset" }; saveRegistry(); writeLog({ type: "module_reset", status: "ok" }); state.tab = "maint"; notice("模块已清空。"); return; }
     if (act === "disable-module") { disableModule(node.dataset.module); return; }
-    if (act === "run-command") { runCommandFromNode(node); }
+    if (act === "run-command") runCommandFromNode(node);
   }
 
   function scheduleScan(delay) {
@@ -311,31 +203,54 @@
   function autoScan(manual) {
     const text = readPageText();
     const found = findModulePackBlocks(text);
-    lastScan = { at: now(), packs: found.length, textLength: text.length };
-    for (const block of found) processPackBlock(block, manual);
+    let ignored = 0;
+    lastScan = { at: now(), packs: found.length, ignored: 0, textLength: text.length };
+    for (const block of found) {
+      const result = processPackBlock(block, manual);
+      if (result === "ignored") ignored += 1;
+    }
+    lastScan.ignored = ignored;
     render();
   }
 
   function processPackBlock(block, manual) {
     const raw = block.raw;
     const sourceHash = hash(raw);
-    if (registry.seenBlocks[sourceHash] && !manual) return;
+    if (registry.seenBlocks[sourceHash] && !manual) return "seen";
+    const candidate = classifyPackCandidate(raw);
+
+    if (!candidate.shouldParse) {
+      registry.seenBlocks[sourceHash] = { status: "ignored", at: now(), reason: candidate.reason };
+      writeLog({ type: "package_ignore", status: "ignored", reason: candidate.reason, sourceHash });
+      saveRegistry();
+      return "ignored";
+    }
+
     let pack;
     try {
-      pack = JSON.parse(raw);
+      pack = JSON.parse(raw.trim());
     } catch (error) {
+      registry.seenBlocks[sourceHash] = { status: "rejected", at: now(), reason: "json_parse_failed" };
       rememberRejected(sourceHash, "json_parse_failed", error.message);
-      emitFeedback({
-        event: "module_install",
-        status: "failed",
-        reason: "json_parse_failed",
-        error: error.message,
-        source_hash: sourceHash,
-      });
-      return;
+      emitFeedback({ event: "module_install", status: "failed", reason: "json_parse_failed", error: error.message, source_hash: sourceHash });
+      return "failed";
     }
+
     const result = applyPack(pack, { source: "auto-scan", sourceHash, feedback: true });
-    if (result.status === "skipped") registry.seenBlocks[sourceHash] = { status: "skipped", at: now(), reason: result.reason };
+    if (result.status === "skipped") {
+      registry.seenBlocks[sourceHash] = { status: "skipped", at: now(), reason: result.reason };
+      saveRegistry();
+    }
+    return result.status;
+  }
+
+  function classifyPackCandidate(raw) {
+    const text = String(raw || "").trim();
+    if (!text) return { shouldParse: false, reason: "empty_block" };
+    if (text === "..." || text.startsWith("...")) return { shouldParse: false, reason: "placeholder_ellipsis" };
+    if (!text.startsWith("{")) return { shouldParse: false, reason: "not_json_object" };
+    if (!text.includes("\"schema\"") && !text.includes("'schema'")) return { shouldParse: false, reason: "missing_schema_marker" };
+    return { shouldParse: true };
   }
 
   function applyPackFromTextarea() {
@@ -361,6 +276,7 @@
     const key = `${normalized.pack.packId}@${normalized.pack.revision}`;
     if (!opts.force && registry.installedPacks[key]) {
       registry.seenBlocks[opts.sourceHash] = { status: "installed_duplicate", at: now(), key };
+      saveRegistry();
       return { status: "skipped", reason: "already_installed", key };
     }
 
@@ -387,17 +303,7 @@
     state.section = "status";
     notice(`自动热更新完成：${record.moduleCount} 个模块已装载。`);
 
-    if (opts.feedback) {
-      emitFeedback({
-        event: "module_install",
-        status: "ok",
-        pack_id: record.pack_id,
-        revision: record.revision,
-        installed_modules: record.modules,
-        warnings,
-        source_hash: opts.sourceHash,
-      });
-    }
+    if (opts.feedback) emitFeedback({ event: "module_install", status: "ok", pack_id: record.pack_id, revision: record.revision, installed_modules: record.modules, warnings, source_hash: opts.sourceHash });
     return { status: "ok", record };
   }
 
@@ -407,15 +313,7 @@
     if (!Array.isArray(pack.modules)) return { ok: false, reason: "missing_modules", error: "模块包缺少 modules 数组。" };
     const modules = pack.modules.map(normalizeModule).filter(Boolean);
     if (!modules.length) return { ok: false, reason: "no_valid_modules", error: "模块包没有合法模块。" };
-    return {
-      ok: true,
-      pack: {
-        packId: String(pack.pack_id || pack.packId || `pack.${hash(JSON.stringify(pack))}`),
-        revision: String(pack.revision || pack.version || hash(JSON.stringify(pack))).slice(0, 80),
-        mode: pack.mode === "replace" ? "replace" : "merge",
-        modules,
-      },
-    };
+    return { ok: true, pack: { packId: String(pack.pack_id || pack.packId || `pack.${hash(JSON.stringify(pack))}`), revision: String(pack.revision || pack.version || hash(JSON.stringify(pack))).slice(0, 80), mode: pack.mode === "replace" ? "replace" : "merge", modules } };
   }
 
   function normalizeModule(module) {
@@ -426,30 +324,14 @@
     const templates = isPlainObject(module.templates) ? module.templates : {};
     const commands = Array.isArray(module.commands) ? module.commands.map((command) => normalizeCommand(command, templates)).filter(Boolean) : [];
     const blocks = Array.isArray(module.blocks) ? module.blocks.map((block) => normalizeBlock(block, templates)).filter(Boolean) : [];
-    return {
-      id,
-      title,
-      version: String(module.version || "1.0.0"),
-      description: String(module.description || ""),
-      permissions: Array.isArray(module.permissions) ? module.permissions.map(String) : [],
-      templates,
-      commands,
-      blocks,
-      installedAt: now(),
-      disabled: Boolean(module.disabled),
-    };
+    return { id, title, version: String(module.version || "1.0.0"), description: String(module.description || ""), permissions: Array.isArray(module.permissions) ? module.permissions.map(String) : [], templates, commands, blocks, installedAt: now(), disabled: Boolean(module.disabled) };
   }
 
   function normalizeBlock(block, templates) {
     if (!block || typeof block !== "object") return null;
     const id = String(block.id || `block.${hash(JSON.stringify(block))}`);
     const sourceCommands = Array.isArray(block.commands) ? block.commands : (Array.isArray(block.actions) ? block.actions.map(actionToCommand) : []);
-    return {
-      id,
-      title: String(block.title || id),
-      description: String(block.description || ""),
-      commands: sourceCommands.map((command) => normalizeCommand(command, templates)).filter(Boolean),
-    };
+    return { id, title: String(block.title || id), description: String(block.description || ""), commands: sourceCommands.map((command) => normalizeCommand(command, templates)).filter(Boolean) };
   }
 
   function normalizeCommand(command, templates) {
@@ -457,19 +339,9 @@
     const id = String(command.id || `command.${hash(JSON.stringify(command))}`);
     const label = String(command.label || command.title || id);
     const steps = Array.isArray(command.steps) ? command.steps.map(normalizeStep).filter(Boolean) : [];
-    if (!steps.length && command.kind) {
-      const converted = actionToCommand(command);
-      return normalizeCommand(converted, templates);
-    }
+    if (!steps.length && command.kind) return normalizeCommand(actionToCommand(command), templates);
     if (!steps.length) return null;
-    return {
-      id,
-      label,
-      description: String(command.description || ""),
-      primary: Boolean(command.primary),
-      feedback: Boolean(command.feedback),
-      steps,
-    };
+    return { id, label, description: String(command.description || ""), primary: Boolean(command.primary), feedback: Boolean(command.feedback), steps };
   }
 
   function actionToCommand(action) {
@@ -487,11 +359,7 @@
     if (!step || typeof step !== "object") return null;
     const call = String(step.call || "").trim();
     if (!call) return null;
-    return {
-      call,
-      with: isPlainObject(step.with) ? step.with : {},
-      as: step.as ? String(step.as) : "",
-    };
+    return { call, with: isPlainObject(step.with) ? step.with : {}, as: step.as ? String(step.as) : "" };
   }
 
   function collectPackWarnings(pack) {
@@ -525,13 +393,7 @@
   }
 
   async function runCommand(module, command) {
-    const vars = {
-      now: now(),
-      page_url: location.href,
-      page_title: document.title,
-      module_id: module.id,
-      module_title: module.title,
-    };
+    const vars = { now: now(), page_url: location.href, page_title: document.title, module_id: module.id, module_title: module.title };
     let last = null;
     for (const step of command.steps) {
       const payload = interpolateObject(step.with || {}, vars, module);
@@ -550,14 +412,9 @@
       emitFeedback({ event: "capability_call", status: "failed", module_id: module?.id || "", capability: name, reason: error.code, suggestion: "maintenance.requestKernelChange" });
       throw error;
     }
-
-    if (module?.permissions?.length && !permissionCovers(module.permissions, name)) {
-      writeLog({ type: "permission_note", status: "warning", module_id: module.id, capability: name, reason: "undeclared_permission_but_allowed" });
-    }
-
+    if (module?.permissions?.length && !permissionCovers(module.permissions, name)) writeLog({ type: "permission_note", status: "warning", module_id: module.id, capability: name, reason: "undeclared_permission_but_allowed" });
     try {
-      const result = await Promise.resolve(capabilities[name](payload || {}, context || {}));
-      return result;
+      return await Promise.resolve(capabilities[name](payload || {}, context || {}));
     } catch (error) {
       writeLog({ type: "capability_call", status: "failed", capability: name, module_id: module?.id || "", reason: error.message });
       emitFeedback({ event: "capability_call", status: "failed", module_id: module?.id || "", capability: name, reason: "runtime_error", error: error.message });
@@ -569,26 +426,11 @@
     return {
       "ui.notice": ({ text }) => { notice(String(text || "")); return { ok: true }; },
       "ui.rerender": () => { render(); return { ok: true }; },
-      "ui.addStyle": ({ css }) => {
-        const text = String(css || "");
-        if (typeof GM_addStyle === "function") GM_addStyle(text);
-        else {
-          const style = document.createElement("style");
-          style.textContent = text;
-          document.head.appendChild(style);
-        }
-        return { ok: true };
-      },
-      "ui.notify": ({ title, text }) => {
-        const message = String(text || "");
-        if (typeof GM_notification === "function") GM_notification({ title: String(title || "DCF"), text: message, silent: true });
-        else notice(message);
-        return { ok: true };
-      },
+      "ui.addStyle": ({ css }) => { const text = String(css || ""); if (typeof GM_addStyle === "function") GM_addStyle(text); else { const style = document.createElement("style"); style.textContent = text; document.head.appendChild(style); } return { ok: true }; },
+      "ui.notify": ({ title, text }) => { const message = String(text || ""); if (typeof GM_notification === "function") GM_notification({ title: String(title || "DCF"), text: message, silent: true }); else notice(message); return { ok: true }; },
       "ui.setTab": ({ tab }) => { state.tab = tab === "modules" ? "modules" : "maint"; saveState(); render(); return { ok: true, tab: state.tab }; },
       "ui.setSection": ({ section }) => { state.section = String(section || "status"); saveState(); render(); return { ok: true, section: state.section }; },
       "ui.showModule": ({ module_id }) => { state.tab = "modules"; saveState(); render(); return { ok: true, module_id: String(module_id || "") }; },
-
       "composer.find": () => ({ ok: Boolean(findComposer()) }),
       "composer.read": () => ({ text: readComposer() }),
       "composer.insert": ({ text }) => insertText(String(text || ""), { send: false, mode: "insert" }),
@@ -596,22 +438,18 @@
       "composer.append": ({ text }) => insertText(String(text || ""), { send: false, mode: "append" }),
       "composer.clear": () => insertText("", { send: false, mode: "replace" }),
       "composer.send": () => ({ ok: clickSend() }),
-
       "conversation.readText": () => ({ text: readPageText(), length: readPageText().length }),
       "conversation.getPageInfo": () => ({ url: location.href, title: document.title, at: now() }),
       "conversation.findBlocks": ({ tag }) => ({ blocks: findTaggedBlocks(String(tag || "DCF_MODULE_PACK"), readPageText()) }),
       "conversation.findModulePacks": () => ({ blocks: findModulePackBlocks(readPageText()).map((block) => ({ hash: block.hash, summary: block.raw.slice(0, 120) })) }),
       "conversation.observe": () => ({ ok: true, mode: "kernel_mutation_observer" }),
-
       "clipboard.write": ({ text }) => { copyText(String(text || "")); return { ok: true }; },
-
       "store.get": ({ namespace, key, defaultValue }) => ({ value: kvGet(namespace, key, defaultValue) }),
       "store.set": ({ namespace, key, value }) => { kvSet(namespace, key, value); return { ok: true }; },
       "store.delete": ({ namespace, key }) => { kvDelete(namespace, key); return { ok: true }; },
       "store.list": ({ namespace }) => ({ keys: kvList(namespace) }),
       "store.snapshot": ({ namespace }) => ({ namespace: String(namespace || "global"), values: kvSnapshot(namespace) }),
       "store.restore": ({ namespace, values }) => { kvRestore(namespace, values); return { ok: true }; },
-
       "module.list": () => ({ modules: registry.modules.map(publicModule) }),
       "module.get": ({ module_id }) => ({ module: publicModule(registry.modules.find((module) => module.id === module_id)) }),
       "module.install": ({ module }) => { const normalized = normalizeModule(module); if (!normalized) throw new Error("invalid module"); upsertModule(normalized); saveRegistry(); render(); return { ok: true, module: publicModule(normalized) }; },
@@ -620,29 +458,17 @@
       "module.disable": ({ module_id }) => { const module = registry.modules.find((item) => item.id === module_id); if (module) module.disabled = true; saveRegistry(); render(); return { ok: Boolean(module) }; },
       "module.remove": ({ module_id }) => { disableModule(String(module_id || "")); return { ok: true }; },
       "module.reload": () => { saveRegistry(); render(); return { ok: true }; },
-
       "package.detect": () => ({ packs: findModulePackBlocks(readPageText()).map((block) => ({ hash: block.hash, text: block.raw })) }),
       "package.apply": ({ pack, text }) => applyPack(pack || JSON.parse(String(text || "{}")), { source: "capability", feedback: true, force: false }),
-      "package.fetchAndApply": async ({ url }) => {
-        const fetched = await networkFetchData({ url, responseType: "json" });
-        if (!fetched.ok || !fetched.json) throw new Error(fetched.error || `fetch failed: ${fetched.status}`);
-        return applyPack(fetched.json, { source: "network.fetchData", feedback: true, force: false });
-      },
+      "package.fetchAndApply": async ({ url }) => { const fetched = await networkFetchData({ url, responseType: "json" }); if (!fetched.ok || !fetched.json) throw new Error(fetched.error || `fetch failed: ${fetched.status}`); return applyPack(fetched.json, { source: "network.fetchData", feedback: true, force: false }); },
       "package.listInstalled": () => ({ installedPacks: registry.installedPacks }),
-
       "network.fetchData": networkFetchData,
-
       "log.write": ({ entry }) => { writeLog({ type: "module_log", status: "ok", entry }); return { ok: true }; },
       "log.list": ({ limit }) => ({ events: recentEvents(Number(limit || 20)) }),
       "log.clear": () => { setLog([]); return { ok: true }; },
-
       "maintenance.feedback": ({ feedback, send }) => emitFeedback(feedback || {}, { send: send !== false }),
       "maintenance.diagnose": () => ({ diagnostics: JSON.parse(diagnostics()) }),
-      "maintenance.requestKernelChange": ({ capability, reason, module_id }) => {
-        const request = { schema: "dcf.kernel_capability_request.v1", capability: String(capability || ""), reason: String(reason || ""), module_id: String(module_id || ""), at: now() };
-        emitFeedback({ event: "kernel_capability_request", status: "requested", request });
-        return { ok: true, request };
-      },
+      "maintenance.requestKernelChange": ({ capability, reason, module_id }) => { const request = { schema: "dcf.kernel_capability_request.v1", capability: String(capability || ""), reason: String(reason || ""), module_id: String(module_id || ""), at: now() }; emitFeedback({ event: "kernel_capability_request", status: "requested", request }); return { ok: true, request }; },
     };
   }
 
@@ -650,25 +476,12 @@
     const target = String(url || "");
     if (!/^https?:\/\//i.test(target)) throw new Error("network.fetchData only accepts http/https data URLs.");
     const parsedType = responseType === "json" ? "json" : "text";
-    const request = {
-      method: method || "GET",
-      url: target,
-      headers: isPlainObject(headers) ? headers : {},
-      data: body == null ? undefined : String(body),
-      timeout: Number(timeout || 15000),
-    };
-
+    const request = { method: method || "GET", url: target, headers: isPlainObject(headers) ? headers : {}, data: body == null ? undefined : String(body), timeout: Number(timeout || 15000) };
     if (typeof GM_xmlhttpRequest === "function") {
       return await new Promise((resolve, reject) => {
-        GM_xmlhttpRequest({
-          ...request,
-          onload: (response) => resolve(parseNetworkResponse(response.status, response.responseText || "", parsedType)),
-          onerror: () => reject(new Error("network request failed")),
-          ontimeout: () => reject(new Error("network request timed out")),
-        });
+        GM_xmlhttpRequest({ ...request, onload: (response) => resolve(parseNetworkResponse(response.status, response.responseText || "", parsedType)), onerror: () => reject(new Error("network request failed")), ontimeout: () => reject(new Error("network request timed out")) });
       });
     }
-
     const response = await fetch(target, { method: request.method, headers: request.headers, body: request.data });
     const text = await response.text();
     return parseNetworkResponse(response.status, text, parsedType);
@@ -684,14 +497,16 @@
 
   function emitFeedback(data, options) {
     const opts = { send: true, ...options };
-    const feedback = {
-      schema: "dcf.feedback.v1",
-      kernel_version: VERSION,
-      at: now(),
-      ...compactValue(data || {}),
-    };
+    const feedback = { schema: "dcf.feedback.v1", kernel_version: VERSION, at: now(), ...compactValue(data || {}) };
     const text = ["<<<DCF_FEEDBACK", JSON.stringify(feedback, null, 2), "DCF_FEEDBACK>>>"].join("\n");
     writeLog({ type: "feedback", status: "queued", event: feedback.event || "unknown", feedback_status: feedback.status || "" });
+    const composerText = readComposer().trim();
+    if (composerText) {
+      copyText(text);
+      notice("已生成反馈，但输入框非空；为避免覆盖草稿，反馈已复制到剪贴板。");
+      writeLog({ type: "feedback", status: "clipboard_fallback", reason: "composer_not_empty" });
+      return { ok: false, fallback: "clipboard", reason: "composer_not_empty" };
+    }
     const result = insertText(text, { send: opts.send, mode: "replace", quiet: true });
     if (!result.ok) {
       copyText(text);
@@ -706,13 +521,9 @@
     const opts = { send: false, mode: "insert", quiet: false, ...options };
     const target = findComposer();
     if (!target) {
-      if (!opts.quiet) {
-        copyText(text);
-        alert("DCF 未找到输入框，内容已复制到剪贴板。");
-      }
+      if (!opts.quiet) { copyText(text); alert("DCF 未找到输入框，内容已复制到剪贴板。"); }
       return { ok: false, reason: "composer_not_found" };
     }
-
     target.focus();
     const value = String(text || "");
     if (target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement) {
@@ -739,7 +550,6 @@
       document.execCommand("insertText", false, value);
       target.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: value }));
     }
-
     if (opts.send) setTimeout(clickSend, 650);
     return { ok: true };
   }
@@ -754,10 +564,7 @@
   function clickSend() {
     for (const selector of ["button[data-testid='send-button']", "button[aria-label='Send prompt']", "button[aria-label*='Send']", "button[aria-label*='发送']", "form button[type='submit']"]) {
       const button = document.querySelector(selector);
-      if (button instanceof HTMLButtonElement && !button.disabled && visible(button)) {
-        button.click();
-        return true;
-      }
+      if (button instanceof HTMLButtonElement && !button.disabled && visible(button)) { button.click(); return true; }
     }
     notice("已插入，但未找到可点击的发送按钮。请手动发送。");
     return false;
@@ -812,20 +619,10 @@
 
   function publicModule(module) {
     if (!module) return null;
-    return {
-      id: module.id,
-      title: module.title,
-      version: module.version,
-      description: module.description,
-      permissions: module.permissions,
-      commands: module.commands.length,
-      blocks: module.blocks.length,
-      disabled: Boolean(module.disabled),
-    };
+    return { id: module.id, title: module.title, version: module.version, description: module.description, permissions: module.permissions, commands: module.commands.length, blocks: module.blocks.length, disabled: Boolean(module.disabled) };
   }
 
   function rememberRejected(sourceHash, reason, error) {
-    registry.seenBlocks[sourceHash] = { status: "rejected", at: now(), reason };
     registry.rejections.push({ at: now(), sourceHash, reason, error: String(error || "") });
     registry.rejections = registry.rejections.slice(-30);
     writeLog({ type: "module_install", status: "failed", reason, sourceHash, error: String(error || "") });
@@ -863,16 +660,10 @@
   }
 
   function resolveTemplateValue(key, vars, module) {
-    if (key.startsWith("template.")) {
-      const name = key.slice("template.".length);
-      return module?.templates?.[name];
-    }
+    if (key.startsWith("template.")) return module?.templates?.[key.slice("template.".length)];
     const parts = key.split(".");
     let value = vars;
-    for (const part of parts) {
-      if (value == null) return undefined;
-      value = value[part];
-    }
+    for (const part of parts) { if (value == null) return undefined; value = value[part]; }
     return value;
   }
 
@@ -880,24 +671,24 @@
     const at = now();
     return {
       schema: "dcf.module_pack.v1",
-      pack_id: "dcf.kernel.auto_ingest_probe.pack.v1",
+      pack_id: "dcf.kernel.ingestion_guard_probe.pack.v1",
       revision: at,
       mode: "merge",
       modules: [{
-        id: "dcf.auto_ingest_probe",
-        title: "自动安装探针",
+        id: "dcf.ingestion_guard_probe",
+        title: "摄取保护探针",
         version: at,
-        description: "通过 DCF_MODULE_PACK / package.apply 安装的能力总线测试模块。",
+        description: "验证 0.8.6 能忽略说明性占位块，并通过能力总线执行模块命令。",
         permissions: ["composer.*", "clipboard.*", "ui.*", "maintenance.*"],
         commands: [{
           id: "insert_probe",
           label: "插入探针",
           primary: true,
-          steps: [{ call: "composer.insert", with: { text: `请确认：DCF Kernel ${VERSION} 已通过能力总线安装模块，并成功执行 composer.insert。时间：${at}` } }],
+          steps: [{ call: "composer.insert", with: { text: `请确认：DCF Kernel ${VERSION} 已安装摄取保护探针，并通过 composer.insert 执行。时间：${at}` } }],
         }, {
           id: "feedback_probe",
           label: "发送反馈探针",
-          steps: [{ call: "maintenance.feedback", with: { feedback: { event: "probe_command", status: "ok", module_id: "dcf.auto_ingest_probe" }, send: true } }],
+          steps: [{ call: "maintenance.feedback", with: { feedback: { event: "probe_command", status: "ok", module_id: "dcf.ingestion_guard_probe" }, send: true } }],
         }],
       }],
     };
@@ -906,18 +697,16 @@
   function samplePack() {
     return {
       schema: "dcf.module_pack.v1",
-      pack_id: "dcf.sample.light_bus.pack.v1",
+      pack_id: "dcf.sample.ingestion_guard.pack.v1",
       revision: "1",
       mode: "merge",
       modules: [{
-        id: "dcf.sample.light_bus",
-        title: "轻量能力总线样例",
+        id: "dcf.sample.ingestion_guard",
+        title: "摄取保护样例",
         version: "1.0.0",
         description: "展示模块如何通过 command steps 调用内核能力。",
         permissions: ["composer.*", "clipboard.*", "ui.*", "conversation.*"],
-        templates: {
-          hello: "这段文字来自 DCF_MODULE_PACK 自动安装模块，不是内核硬编码业务功能。",
-        },
+        templates: { hello: "这段文字来自 DCF_MODULE_PACK 自动安装模块，不是内核硬编码业务功能。" },
         commands: [{
           id: "insert_template",
           label: "插入模板",
@@ -926,34 +715,27 @@
         }, {
           id: "copy_page_info",
           label: "复制页面信息",
-          steps: [
-            { call: "conversation.getPageInfo", as: "page" },
-            { call: "clipboard.write", with: { text: "{{page}}" } },
-            { call: "ui.notice", with: { text: "页面信息已复制。" } },
-          ],
+          steps: [{ call: "conversation.getPageInfo", as: "page" }, { call: "clipboard.write", with: { text: "{{page}}" } }, { call: "ui.notice", with: { text: "页面信息已复制。" } }],
         }],
       }],
     };
   }
 
   function repairPrompt() {
-    return [
-      "<<<DCF_MAINT",
-      JSON.stringify({
-        schema: "dcf.kernel.maintenance.repair.v1",
-        kernel_version: VERSION,
-        task: "Maintain DCF as a light capability-bus kernel, not a business-feature userscript.",
-        required_behavior: [
-          "Classify requests as kernel capability, module pack, ammo pack, configuration, documentation, or ADR.",
-          "Expose generic kernel abilities through capability calls instead of adding module-specific code.",
-          "Module/UI/workflow changes must be delivered as dcf.module_pack.v1 and auto-ingested from the conversation.",
-          "Install and capability failures must produce concise DCF_FEEDBACK.",
-          "Keep maintenance light: small log, diagnostics, recovery, no heavy governance system.",
-        ],
-        current_contract: "DCF core is a small readable Tampermonkey kernel with capability bus, auto module ingest, auto feedback, registry, and rollback-friendly local state.",
-      }, null, 2),
-      "DCF_MAINT>>>",
-    ].join("\n");
+    return ["<<<DCF_MAINT", JSON.stringify({
+      schema: "dcf.kernel.maintenance.repair.v1",
+      kernel_version: VERSION,
+      task: "Maintain DCF as a light capability-bus kernel, not a business-feature userscript.",
+      required_behavior: [
+        "Classify requests as kernel capability, module pack, ammo pack, configuration, documentation, or ADR.",
+        "Expose generic kernel abilities through capability calls instead of adding module-specific code.",
+        "Module/UI/workflow changes must be delivered as dcf.module_pack.v1 and auto-ingested from the conversation.",
+        "Ignore documentation placeholders instead of reporting them as module install failures.",
+        "Install and capability failures must produce concise DCF_FEEDBACK without overwriting user drafts.",
+        "Keep maintenance light: small log, diagnostics, recovery, no heavy governance system.",
+      ],
+      current_contract: "DCF core is a small readable Tampermonkey kernel with guarded auto-ingest, capability bus, auto feedback, registry, and rollback-friendly local state.",
+    }, null, 2), "DCF_MAINT>>>"].join("\n");
   }
 
   function diagnostics() {
@@ -981,65 +763,21 @@
     notice("历史错误状态已清理。");
   }
 
-  function kvKey(namespace, key) {
-    return KV_PREFIX + String(namespace || "global") + "." + String(key || "");
-  }
-
-  function kvGet(namespace, key, defaultValue) {
-    const full = kvKey(namespace, key);
-    try {
-      if (typeof GM_getValue === "function") return GM_getValue(full, defaultValue);
-      const raw = localStorage.getItem(full);
-      return raw == null ? defaultValue : JSON.parse(raw);
-    } catch {
-      return defaultValue;
-    }
-  }
-
-  function kvSet(namespace, key, value) {
-    const full = kvKey(namespace, key);
-    if (typeof GM_setValue === "function") GM_setValue(full, value);
-    else localStorage.setItem(full, JSON.stringify(value));
-  }
-
-  function kvDelete(namespace, key) {
-    const full = kvKey(namespace, key);
-    if (typeof GM_deleteValue === "function") GM_deleteValue(full);
-    else localStorage.removeItem(full);
-  }
-
-  function kvList(namespace) {
-    const prefix = KV_PREFIX + String(namespace || "global") + ".";
-    if (typeof GM_listValues === "function") return GM_listValues().filter((key) => key.startsWith(prefix)).map((key) => key.slice(prefix.length));
-    return Object.keys(localStorage).filter((key) => key.startsWith(prefix)).map((key) => key.slice(prefix.length));
-  }
-
-  function kvSnapshot(namespace) {
-    const out = {};
-    for (const key of kvList(namespace)) out[key] = kvGet(namespace, key, null);
-    return out;
-  }
-
-  function kvRestore(namespace, values) {
-    if (!isPlainObject(values)) return;
-    for (const [key, value] of Object.entries(values)) kvSet(namespace, key, value);
-  }
+  function kvKey(namespace, key) { return KV_PREFIX + String(namespace || "global") + "." + String(key || ""); }
+  function kvGet(namespace, key, defaultValue) { const full = kvKey(namespace, key); try { if (typeof GM_getValue === "function") return GM_getValue(full, defaultValue); const raw = localStorage.getItem(full); return raw == null ? defaultValue : JSON.parse(raw); } catch { return defaultValue; } }
+  function kvSet(namespace, key, value) { const full = kvKey(namespace, key); if (typeof GM_setValue === "function") GM_setValue(full, value); else localStorage.setItem(full, JSON.stringify(value)); }
+  function kvDelete(namespace, key) { const full = kvKey(namespace, key); if (typeof GM_deleteValue === "function") GM_deleteValue(full); else localStorage.removeItem(full); }
+  function kvList(namespace) { const prefix = KV_PREFIX + String(namespace || "global") + "."; if (typeof GM_listValues === "function") return GM_listValues().filter((key) => key.startsWith(prefix)).map((key) => key.slice(prefix.length)); return Object.keys(localStorage).filter((key) => key.startsWith(prefix)).map((key) => key.slice(prefix.length)); }
+  function kvSnapshot(namespace) { const out = {}; for (const key of kvList(namespace)) out[key] = kvGet(namespace, key, null); return out; }
+  function kvRestore(namespace, values) { if (!isPlainObject(values)) return; for (const [key, value] of Object.entries(values)) kvSet(namespace, key, value); }
 
   function loadState() {
-    try {
-      return { tab: "maint", section: "status", side: "right", notice: "", packDraft: "", ...(JSON.parse(localStorage.getItem(STATE_KEY) || "{}") || {}) };
-    } catch {
-      return { tab: "maint", section: "status", side: "right", notice: "", packDraft: "" };
-    }
+    try { return { tab: "maint", section: "status", side: "right", notice: "", packDraft: "", ...(JSON.parse(localStorage.getItem(STATE_KEY) || "{}") || {}) }; }
+    catch { return { tab: "maint", section: "status", side: "right", notice: "", packDraft: "" }; }
   }
 
   function saveState() {
-    localStorage.setItem(STATE_KEY, JSON.stringify({
-      tab: state.tab === "modules" ? "modules" : "maint",
-      section: state.section || "status",
-      side: state.side === "left" ? "left" : "right",
-      notice: state.notice || "",
-    }));
+    localStorage.setItem(STATE_KEY, JSON.stringify({ tab: state.tab === "modules" ? "modules" : "maint", section: state.section || "status", side: state.side === "left" ? "left" : "right", notice: state.notice || "" }));
   }
 
   function loadRegistry() {
@@ -1058,101 +796,21 @@
     }
   }
 
-  function saveRegistry() {
-    localStorage.setItem(REGISTRY_KEY, JSON.stringify(registry));
-  }
-
-  function getLog() {
-    try {
-      const value = JSON.parse(localStorage.getItem(LOG_KEY) || "[]");
-      return Array.isArray(value) ? value : [];
-    } catch {
-      return [];
-    }
-  }
-
-  function setLog(events) {
-    localStorage.setItem(LOG_KEY, JSON.stringify(Array.isArray(events) ? events.slice(-40) : []));
-  }
-
-  function writeLog(entry) {
-    const next = getLog().slice(-39);
-    next.push({ at: entry.at || now(), ...entry });
-    setLog(next);
-  }
-
-  function recentEvents(limit) {
-    return getLog().slice(-Number(limit || 20)).reverse();
-  }
-
-  function compactEvent(event) {
-    const out = { ...event };
-    delete out.entry;
-    return out;
-  }
-
-  function compactValue(value) {
-    if (Array.isArray(value)) return value.slice(0, 20).map(compactValue);
-    if (isPlainObject(value)) {
-      const out = {};
-      for (const [key, item] of Object.entries(value).slice(0, 40)) out[key] = compactValue(item);
-      return out;
-    }
-    if (typeof value === "string" && value.length > 700) return value.slice(0, 700) + "…";
-    return value;
-  }
-
-  function groupCapabilities() {
-    const groups = {};
-    for (const name of CAPABILITY_NAMES) {
-      const group = name.split(".")[0];
-      if (!groups[group]) groups[group] = [];
-      groups[group].push(name);
-    }
-    return groups;
-  }
-
-  function registerMenu() {
-    if (typeof GM_registerMenuCommand !== "function") return;
-    GM_registerMenuCommand("DCF: copy diagnostics", () => copyText(diagnostics()));
-    GM_registerMenuCommand("DCF: scan module packs", () => autoScan(true));
-  }
-
-  function copyText(text) {
-    if (typeof GM_setClipboard === "function") GM_setClipboard(String(text || ""));
-    else navigator.clipboard?.writeText(String(text || ""));
-  }
-
-  function visible(node) {
-    const rect = node.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0;
-  }
-
-  function now() {
-    return new Date().toISOString();
-  }
-
-  function safeStringify(value) {
-    try { return JSON.stringify(value); } catch { return String(value); }
-  }
-
-  function isPlainObject(value) {
-    return value && typeof value === "object" && !Array.isArray(value);
-  }
-
-  function hash(text) {
-    let value = 5381;
-    const source = String(text || "");
-    for (let index = 0; index < source.length; index += 1) value = ((value << 5) + value) ^ source.charCodeAt(index);
-    return `h${(value >>> 0).toString(16)}`;
-  }
-
-  function esc(value) {
-    return String(value)
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#039;");
-  }
+  function saveRegistry() { localStorage.setItem(REGISTRY_KEY, JSON.stringify(registry)); }
+  function getLog() { try { const value = JSON.parse(localStorage.getItem(LOG_KEY) || "[]"); return Array.isArray(value) ? value : []; } catch { return []; } }
+  function setLog(events) { localStorage.setItem(LOG_KEY, JSON.stringify(Array.isArray(events) ? events.slice(-40) : [])); }
+  function writeLog(entry) { const next = getLog().slice(-39); next.push({ at: entry.at || now(), ...entry }); setLog(next); }
+  function recentEvents(limit) { return getLog().slice(-Number(limit || 20)).reverse(); }
+  function compactEvent(event) { const out = { ...event }; delete out.entry; return out; }
+  function compactValue(value) { if (Array.isArray(value)) return value.slice(0, 20).map(compactValue); if (isPlainObject(value)) { const out = {}; for (const [key, item] of Object.entries(value).slice(0, 40)) out[key] = compactValue(item); return out; } if (typeof value === "string" && value.length > 700) return value.slice(0, 700) + "…"; return value; }
+  function groupCapabilities() { const groups = {}; for (const name of CAPABILITY_NAMES) { const group = name.split(".")[0]; if (!groups[group]) groups[group] = []; groups[group].push(name); } return groups; }
+  function registerMenu() { if (typeof GM_registerMenuCommand !== "function") return; GM_registerMenuCommand("DCF: copy diagnostics", () => copyText(diagnostics())); GM_registerMenuCommand("DCF: scan module packs", () => autoScan(true)); }
+  function copyText(text) { if (typeof GM_setClipboard === "function") GM_setClipboard(String(text || "")); else navigator.clipboard?.writeText(String(text || "")); }
+  function notice(text) { state.notice = String(text || ""); saveState(); render(); }
+  function visible(node) { const rect = node.getBoundingClientRect(); return rect.width > 0 && rect.height > 0; }
+  function now() { return new Date().toISOString(); }
+  function safeStringify(value) { try { return JSON.stringify(value); } catch { return String(value); } }
+  function isPlainObject(value) { return value && typeof value === "object" && !Array.isArray(value); }
+  function hash(text) { let value = 5381; const source = String(text || ""); for (let index = 0; index < source.length; index += 1) value = ((value << 5) + value) ^ source.charCodeAt(index); return `h${(value >>> 0).toString(16)}`; }
+  function esc(value) { return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;"); }
 })();
