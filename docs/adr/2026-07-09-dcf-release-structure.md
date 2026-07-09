@@ -15,7 +15,7 @@ A process error also occurred: an implementation limitation around uploading a f
 
 The direct `GitHub.update_file` path was then tested against the root userscript. It succeeded for a native single-file DCF release artifact. This proves the correct path is not chunking or runtime bootloading; the root `.user.js` can be replaced directly through the GitHub contents update flow when the complete text is supplied as `content`.
 
-An attempt to use the GitHub official remote MCP server from ChatGPT web showed a connector state where some enabled actions could not be invoked until reconnecting and refreshing permissions, but reconnect did not open a GitHub authorization page. This is treated as an unresolved ChatGPT-web-to-GitHub-remote-MCP OAuth compatibility issue, not as a reason to change DCF runtime architecture.
+An attempt to use the GitHub official remote MCP server from ChatGPT web in an old window showed a connector state where some enabled actions could not be invoked until reconnecting and refreshing permissions, but reconnect did not open a GitHub authorization page. Later discussion clarified that this was a window/tool-mount issue rather than a reason to introduce another publishing architecture. The current practical release path can use the official GitHub connector/MCP as long as the artifact is prepared in the sandbox and submitted as complete content through the GitHub write action.
 
 A documentation gap was identified: the repository had release-structure notes but lacked a maintenance skill and a reusable consensus-insertion guide that explain DCF's two-layer purpose and how a new AI session should enter the project without reducing it to a userscript bug. This gap has been closed by adding `docs/skills/dcf-maintenance-skill.md` and `docs/prompts/dcf-consensus-insertion-guide.md`.
 
@@ -33,7 +33,9 @@ The browser may cache non-authoritative runtime data for startup speed and fallb
 
 Implementation constraints in the assistant/tooling layer must not be converted into product architecture. If a full `.user.js` cannot be uploaded through one mechanism, the correct response is to use a proper release path, build pipeline, Git push, or ask for the missing capability; not to invent runtime chunking or eval-based loading.
 
-Do not depend on GitHub official remote MCP inside ChatGPT web until its OAuth flow works end-to-end in this host. A better GitHub MCP or wrapper may improve the release toolchain, but it remains a publishing backend only.
+For the current scale, the official GitHub connector/MCP is sufficient for DCF publishing when combined with sandbox preprocessing. The assistant does not need to emit a large userscript character-by-character in user-visible prose. It may read or generate the artifact inside the sandbox, compute the exact text or base64 form required by the GitHub action, submit that complete value through the tool call, and then read back the repository file to verify integrity.
+
+A third-party GitHub MCP or custom wrapper should only be introduced after a concrete missing capability is demonstrated, such as an unavailable write action, missing branch/PR workflow, or inability to submit complete content. It is not needed merely because the release artifact is large.
 
 DCF's documentation must also preserve project intent. Maintenance skills, consensus prompts, and handoff materials are part of the language-ammunition layer and should be stored in the repository rather than remaining only in chat history.
 
@@ -41,11 +43,13 @@ DCF's documentation must also preserve project intent. Maintenance skills, conse
 
 For each public DCF userscript release:
 
+- generate or assemble the complete `dcf-chatgpt-microcore.user.js` artifact in the sandbox or build environment;
 - bump `@version` in both `dcf-chatgpt-microcore.user.js` and `dcf-chatgpt-microcore.meta.js`;
 - upload/replace the complete generated `dcf-chatgpt-microcore.user.js` file;
 - upload/replace the complete `dcf-chatgpt-microcore.meta.js` metadata file;
 - keep `@updateURL` and `@downloadURL` pointing to the root files on `main`;
-- verify the root script has no runtime remote-code execution path such as `Function(source)`, eval-based engine loading, GitHub chunk manifest loading, or CDN chunk loading.
+- verify the root script has no runtime remote-code execution path such as `Function(source)`, eval-based engine loading, GitHub chunk manifest loading, or CDN chunk loading;
+- read the uploaded files back from GitHub and verify version, expected beginning, expected ending, size/hash when applicable, and absence of truncation or path-string/base64-string mistakes.
 
 Git will record the change as a normal file update. Even when the release artifact is uploaded as a complete file, the repository diff, commit history, and review should focus on the actual changed lines or generated artifact comparison.
 
@@ -98,6 +102,10 @@ Skipping the direct full-file upload attempt before moving to a build pipeline i
 Treating a failed or incomplete ChatGPT web MCP authorization attempt as a reason to reintroduce runtime bootloading is rejected.
 
 Leaving maintenance skills and consensus prompts only in chat history is rejected. They are part of the project's language-ammunition infrastructure and should be versioned in the repository.
+
+Assuming that full-file publishing requires the model to manually type the entire artifact into visible chat is rejected. Large artifacts should be prepared by script or file processing, passed through the GitHub tool interface as complete content, and verified by read-back.
+
+Introducing another GitHub MCP or custom wrapper before the official connector/MCP path has a concrete demonstrated deficiency is rejected.
 
 ## Current target
 
