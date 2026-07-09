@@ -15,6 +15,8 @@ A process error also occurred: an implementation limitation around uploading a f
 
 The direct `GitHub.update_file` path was then tested against the root userscript. It succeeded for a native single-file DCF release artifact. This proves the correct path is not chunking or runtime bootloading; the root `.user.js` can be replaced directly through the GitHub contents update flow when the complete text is supplied as `content`.
 
+An attempt to use the GitHub official remote MCP server from ChatGPT web showed a connector state where some enabled actions could not be invoked until reconnecting and refreshing permissions, but reconnect did not open a GitHub authorization page. This is treated as an unresolved ChatGPT-web-to-GitHub-remote-MCP OAuth compatibility issue, not as a reason to change DCF runtime architecture.
+
 ## Decision
 
 The multi-chunk GitHub raw loading design is rejected as the long-term release structure.
@@ -28,6 +30,8 @@ Future runtime releases should replace the root `.user.js` as a complete artifac
 The browser may cache non-authoritative runtime data for startup speed and fallback, but that cache must not be the authoritative code release source.
 
 Implementation constraints in the assistant/tooling layer must not be converted into product architecture. If a full `.user.js` cannot be uploaded through one mechanism, the correct response is to use a proper release path, build pipeline, Git push, or ask for the missing capability; not to invent runtime chunking or eval-based loading.
+
+Do not depend on GitHub official remote MCP inside ChatGPT web until its OAuth flow works end-to-end in this host. A better GitHub MCP or wrapper may improve the release toolchain, but it remains a publishing backend only.
 
 ## Release update policy
 
@@ -75,6 +79,8 @@ Continuing to download remote JavaScript and evaluate it at runtime is rejected 
 Treating connector upload inconvenience as a reason to complicate runtime architecture is rejected.
 
 Skipping the direct full-file upload attempt before moving to a build pipeline is rejected. The first release-path test should be direct root `.user.js` replacement; build automation is only justified after a concrete failure or for later repeatability.
+
+Treating a failed or incomplete ChatGPT web MCP authorization attempt as a reason to reintroduce runtime bootloading is rejected.
 
 ## Current target
 
