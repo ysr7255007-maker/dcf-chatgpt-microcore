@@ -17,6 +17,8 @@ The direct `GitHub.update_file` path was then tested against the root userscript
 
 An attempt to use the GitHub official remote MCP server from ChatGPT web showed a connector state where some enabled actions could not be invoked until reconnecting and refreshing permissions, but reconnect did not open a GitHub authorization page. This is treated as an unresolved ChatGPT-web-to-GitHub-remote-MCP OAuth compatibility issue, not as a reason to change DCF runtime architecture.
 
+A documentation gap was identified: the repository had release-structure notes but lacked a maintenance skill and a reusable consensus-insertion guide that explain DCF's two-layer purpose and how a new AI session should enter the project without reducing it to a userscript bug. This gap has been closed by adding `docs/skills/dcf-maintenance-skill.md` and `docs/prompts/dcf-consensus-insertion-guide.md`.
+
 ## Decision
 
 The multi-chunk GitHub raw loading design is rejected as the long-term release structure.
@@ -33,6 +35,8 @@ Implementation constraints in the assistant/tooling layer must not be converted 
 
 Do not depend on GitHub official remote MCP inside ChatGPT web until its OAuth flow works end-to-end in this host. A better GitHub MCP or wrapper may improve the release toolchain, but it remains a publishing backend only.
 
+DCF's documentation must also preserve project intent. Maintenance skills, consensus prompts, and handoff materials are part of the language-ammunition layer and should be stored in the repository rather than remaining only in chat history.
+
 ## Release update policy
 
 For each public DCF userscript release:
@@ -44,6 +48,17 @@ For each public DCF userscript release:
 - verify the root script has no runtime remote-code execution path such as `Function(source)`, eval-based engine loading, GitHub chunk manifest loading, or CDN chunk loading.
 
 Git will record the change as a normal file update. Even when the release artifact is uploaded as a complete file, the repository diff, commit history, and review should focus on the actual changed lines or generated artifact comparison.
+
+## Documentation and consensus policy
+
+DCF repository documentation should include not only code and release notes, but also the operating language needed to preserve project intent across AI sessions.
+
+Current project-intent documents:
+
+- `docs/skills/dcf-maintenance-skill.md`: reusable maintenance protocol for AI sessions that modify DCF.
+- `docs/prompts/dcf-consensus-insertion-guide.md`: reusable prompt and usage guide for aligning a new AI session with DCF's two-layer model before project work begins.
+
+These documents are treated as language ammunition. They should evolve with the project and can later be represented as first-class ammo entries.
 
 ## Immediate mitigation and correction
 
@@ -82,6 +97,8 @@ Skipping the direct full-file upload attempt before moving to a build pipeline i
 
 Treating a failed or incomplete ChatGPT web MCP authorization attempt as a reason to reintroduce runtime bootloading is rejected.
 
+Leaving maintenance skills and consensus prompts only in chat history is rejected. They are part of the project's language-ammunition infrastructure and should be versioned in the repository.
+
 ## Current target
 
 The stable target is a native Tampermonkey release artifact:
@@ -90,6 +107,12 @@ The stable target is a native Tampermonkey release artifact:
 - `dcf-chatgpt-microcore.meta.js` contains only the Tampermonkey metadata;
 - no `Function(source)`, no eval, no remote engine execution;
 - legacy local-engine auto-boot is disabled or absent.
+
+The product target is a low-friction language ammunition firing system:
+
+- language ammunition becomes a first-class, persistent, versioned, evolvable object;
+- the control architecture remains small, pluginized, replaceable, and failure-isolated;
+- GitHub remains a publishing, documentation, and ammunition supply source rather than a browser runtime code execution source.
 
 The final choice should favor fewer moving parts and easier recovery over architectural cleverness.
 
