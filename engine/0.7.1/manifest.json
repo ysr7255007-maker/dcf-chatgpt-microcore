@@ -1,0 +1,33 @@
+{
+  "schema": "dcf.github.engine.manifest.v1",
+  "version": "0.7.0",
+  "builtAt": "2026-07-09T00:00:00.000Z",
+  "encoding": "base64-concat",
+  "note": "0.7.1 bootloader compatibility manifest. Engine chunks remain 0.7.0 and are served through jsDelivr to avoid GitHub raw rate limiting.",
+  "chunks": [
+    "https://cdn.jsdelivr.net/gh/ysr7255007-maker/dcf-chatgpt-microcore@main/engine/0.7.0/chunks/000.b64",
+    "https://cdn.jsdelivr.net/gh/ysr7255007-maker/dcf-chatgpt-microcore@main/engine/0.7.0/chunks/001.b64",
+    "https://cdn.jsdelivr.net/gh/ysr7255007-maker/dcf-chatgpt-microcore@main/engine/0.7.0/patch-parts/002-0.b64",
+    "https://cdn.jsdelivr.net/gh/ysr7255007-maker/dcf-chatgpt-microcore@main/engine/0.7.0/patch-parts/002-1.b64",
+    "https://cdn.jsdelivr.net/gh/ysr7255007-maker/dcf-chatgpt-microcore@main/engine/0.7.0/chunks/003.b64",
+    "https://cdn.jsdelivr.net/gh/ysr7255007-maker/dcf-chatgpt-microcore@main/engine/0.7.0/chunks/004.b64",
+    "https://cdn.jsdelivr.net/gh/ysr7255007-maker/dcf-chatgpt-microcore@main/engine/0.7.0/chunks/005.b64",
+    "https://cdn.jsdelivr.net/gh/ysr7255007-maker/dcf-chatgpt-microcore@main/engine/0.7.0/chunks/006.b64",
+    "https://cdn.jsdelivr.net/gh/ysr7255007-maker/dcf-chatgpt-microcore@main/engine/0.7.0/chunks/007.b64",
+    "https://cdn.jsdelivr.net/gh/ysr7255007-maker/dcf-chatgpt-microcore@main/engine/0.7.0/chunks/008.b64",
+    "https://cdn.jsdelivr.net/gh/ysr7255007-maker/dcf-chatgpt-microcore@main/engine/0.7.0/chunks/009.b64",
+    "https://cdn.jsdelivr.net/gh/ysr7255007-maker/dcf-chatgpt-microcore@main/engine/0.7.0/patch-parts/010-0.b64",
+    "https://cdn.jsdelivr.net/gh/ysr7255007-maker/dcf-chatgpt-microcore@main/engine/0.7.0/patch-parts/010-1.b64",
+    "https://cdn.jsdelivr.net/gh/ysr7255007-maker/dcf-chatgpt-microcore@main/engine/0.7.0/chunks/011.b64",
+    "https://cdn.jsdelivr.net/gh/ysr7255007-maker/dcf-chatgpt-microcore@main/engine/0.7.0/patch-parts/012-v2-0.b64",
+    "https://cdn.jsdelivr.net/gh/ysr7255007-maker/dcf-chatgpt-microcore@main/engine/0.7.0/patch-parts/012-v2-1.b64",
+    "https://cdn.jsdelivr.net/gh/ysr7255007-maker/dcf-chatgpt-microcore@main/engine/0.7.0/patch-parts/012-v2-2.b64",
+    "https://cdn.jsdelivr.net/gh/ysr7255007-maker/dcf-chatgpt-microcore@main/engine/0.7.0/patch-parts/012-v2-3.b64",
+    "https://cdn.jsdelivr.net/gh/ysr7255007-maker/dcf-chatgpt-microcore@main/engine/0.7.0/patch-parts/012-v2-4.b64",
+    "https://cdn.jsdelivr.net/gh/ysr7255007-maker/dcf-chatgpt-microcore@main/engine/0.7.0/patch-parts/012-v2-5.b64",
+    "https://cdn.jsdelivr.net/gh/ysr7255007-maker/dcf-chatgpt-microcore@main/engine/0.7.0/chunks/013.b64",
+    "https://cdn.jsdelivr.net/gh/ysr7255007-maker/dcf-chatgpt-microcore@main/engine/0.7.0/chunks/014.b64",
+    "https://cdn.jsdelivr.net/gh/ysr7255007-maker/dcf-chatgpt-microcore@main/engine/0.7.0/chunks/015.b64",
+    "https://cdn.jsdelivr.net/gh/ysr7255007-maker/dcf-chatgpt-microcore@main/engine/0.7.0/chunks/016.b64"
+  ]
+}
