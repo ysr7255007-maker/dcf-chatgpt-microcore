@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         DCF ChatGPT Microcore
 // @namespace    https://chatgpt.com/
-// @version      0.8.1
-// @description  DCF native single-file Tampermonkey release. No remote eval, no chunks.
+// @version      0.8.2
+// @description  DCF embedded sidebar for low-friction language ammunition. No remote eval, no chunks.
 // @updateURL    https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.meta.js
 // @downloadURL  https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.user.js
 // @supportURL   https://github.com/ysr7255007-maker/dcf-chatgpt-microcore
@@ -12,289 +12,65 @@
 // @run-at       document-idle
 // ==/UserScript==
 
-(function () {
+(function(){
   "use strict";
-
-  const VERSION = "0.8.1";
-  const STORE_KEY = "dcf.native.state.v1";
-  const LEGACY_KEYS = [
-    "dcf.github.engine.cache.v1",
-    "dcf.github.engine.lastCheck.v1",
-    "dcf.local.engine.v1",
-  ];
-  const RUN_RE = /<<<DCF_RUN\b\s*([\s\S]*?)\s*DCF_RUN>>>/g;
-  const MAINT_RE = /<<<DCF_MAINT\b\s*([\s\S]*?)\s*DCF_MAINT>>>/g;
-
-  const state = loadState();
-  const shell = createShell();
-  document.documentElement.appendChild(shell.host);
+  const VERSION="0.8.2";
+  const STORE_KEY="dcf.native.state.v1";
+  const LEGACY_KEYS=["dcf.github.engine."+"cache.v1","dcf.github.engine."+"lastCheck.v1","dcf.local.engine."+"v1"];
+  const RUN_RE=/<<<DCF_RUN\b\s*([\s\S]*?)\s*DCF_RUN>>>/g;
+  const MAINT_RE=/<<<DCF_MAINT\b\s*([\s\S]*?)\s*DCF_MAINT>>>/g;
+  const state=loadState();
+  let lastScan={runBlocks:[],maintBlocks:[],textLength:0,at:""};
+  let scanTimer=null;
+  const host=document.createElement("div");
+  host.id="dcf-chatgpt-microcore-host";
+  const root=host.attachShadow({mode:"open"});
+  root.innerHTML=`
+    <style>
+      :host{all:initial}.side{position:fixed;top:72px;right:12px;bottom:86px;width:min(336px,calc(100vw - 28px));z-index:2147483646;display:flex;flex-direction:column;border:1px solid rgba(130,130,130,.28);border-radius:18px;background:rgba(250,250,250,.94);color:#111827;box-shadow:0 18px 50px rgba(0,0,0,.16);backdrop-filter:blur(14px);font:13px/1.42 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overflow:hidden}.side[data-side=left]{left:12px;right:auto}@media(prefers-color-scheme:dark){.side{background:rgba(23,23,23,.92);color:#f5f5f5;border-color:rgba(210,210,210,.16);box-shadow:0 18px 50px rgba(0,0,0,.38)}}
+      .top{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 11px 8px;border-bottom:1px solid rgba(130,130,130,.18)}.title{font-size:14px;font-weight:780}.sub{margin-top:1px;font-size:11px;opacity:.62;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mod{border:1px solid rgba(37,99,235,.45);border-radius:999px;padding:7px 10px;background:#2563eb;color:white;cursor:pointer;font:700 12px/1 system-ui}
+      .tabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:8px 10px;border-bottom:1px solid rgba(130,130,130,.14)}.tab{border:1px solid rgba(130,130,130,.18);border-radius:11px;padding:7px 0;background:transparent;color:inherit;cursor:pointer;font:650 12px/1 system-ui}.tab[aria-selected=true]{background:rgba(37,99,235,.12);border-color:rgba(37,99,235,.35)}
+      .content{flex:1;overflow:auto;padding:10px}.line{margin:0 0 10px;font-size:12px;opacity:.68}.block{border:1px solid rgba(130,130,130,.18);border-radius:15px;background:rgba(127,127,127,.045);margin-bottom:10px;overflow:hidden}.head{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;border:0;padding:11px 12px;color:inherit;background:transparent;text-align:left;cursor:pointer;font:inherit}.bt{font-size:13px;font-weight:760}.bd{margin-top:2px;font-size:12px;opacity:.62}.body{padding:0 12px 12px;border-top:1px solid rgba(130,130,130,.12)}
+      .actions{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}.a{border:1px solid rgba(130,130,130,.23);border-radius:10px;padding:7px 9px;background:rgba(127,127,127,.07);color:inherit;cursor:pointer;font:12px/1.1 system-ui}.a.primary{background:rgba(37,99,235,.14);border-color:rgba(37,99,235,.35);font-weight:700}.a.warn{background:rgba(217,119,6,.12);border-color:rgba(217,119,6,.32)}
+      .card{border:1px solid rgba(130,130,130,.16);border-radius:12px;padding:9px;background:rgba(255,255,255,.32);margin-top:8px}@media(prefers-color-scheme:dark){.card{background:rgba(255,255,255,.035)}}.name{font-weight:720;font-size:12px}.desc{margin-top:3px;font-size:12px;opacity:.62}.small{font-size:12px;opacity:.66}.sec{font-weight:720;margin:12px 0 7px}textarea{width:100%;min-height:120px;box-sizing:border-box;resize:vertical;border-radius:12px;border:1px solid rgba(130,130,130,.22);padding:9px;background:rgba(255,255,255,.55);color:inherit;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}@media(prefers-color-scheme:dark){textarea{background:rgba(0,0,0,.18)}}
+      .back{position:fixed;inset:0;z-index:2147483647;display:grid;place-items:center;background:rgba(0,0,0,.20)}.modal{width:min(420px,calc(100vw - 32px));border-radius:18px;border:1px solid rgba(130,130,130,.25);background:Canvas;color:CanvasText;box-shadow:0 18px 60px rgba(0,0,0,.25);overflow:hidden;font:13px/1.45 system-ui}.mh{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid rgba(130,130,130,.18)}.mb{padding:13px 14px 15px}.row{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid rgba(130,130,130,.12)}.row:last-child{border-bottom:0}.badge{border:1px solid rgba(37,99,235,.26);color:#2563eb;border-radius:999px;padding:2px 7px;font-size:11px;align-self:flex-start}
+    </style><aside class="side" aria-label="DCF ChatGPT Microcore"></aside>`;
+  const panel=root.querySelector(".side");
+  document.documentElement.appendChild(host);
+  panel.addEventListener("click",onClick);
   render();
-  setTimeout(scanAndRender, 0);
-  new MutationObserver(scheduleScan).observe(document.body, { childList: true, subtree: true, characterData: true });
+  setTimeout(scan,0);
+  new MutationObserver(()=>{clearTimeout(scanTimer);scanTimer=setTimeout(scan,500)}).observe(document.body,{childList:true,subtree:true,characterData:true});
 
-  let scanTimer = null;
-  let lastScan = { runBlocks: [], maintBlocks: [], textLength: 0, at: "" };
-
-  function scheduleScan() {
-    clearTimeout(scanTimer);
-    scanTimer = setTimeout(scanAndRender, 500);
-  }
-
-  function scanAndRender() {
-    const text = document.body?.innerText || "";
-    lastScan = {
-      runBlocks: collectBlocks(text, RUN_RE),
-      maintBlocks: collectBlocks(text, MAINT_RE),
-      textLength: text.length,
-      at: new Date().toISOString(),
-    };
-    render();
-  }
-
-  function collectBlocks(text, regex) {
-    const blocks = [];
-    regex.lastIndex = 0;
-    let match;
-    while ((match = regex.exec(text)) && blocks.length < 20) {
-      const raw = match[1].trim();
-      blocks.push({ id: hash(raw), raw, summary: summarizeBlock(raw) });
-    }
-    return blocks;
-  }
-
-  function summarizeBlock(raw) {
-    const first = raw.split(/\n+/).map((line) => line.trim()).find(Boolean) || "empty block";
-    return first.length > 90 ? first.slice(0, 90) + "…" : first;
-  }
-
-  function createShell() {
-    const host = document.createElement("div");
-    host.id = "dcf-chatgpt-microcore-host";
-    const root = host.attachShadow({ mode: "open" });
-    root.innerHTML = `
-      <style>
-        :host { all: initial; }
-        .button {
-          position: fixed; right: 18px; bottom: 18px; z-index: 2147483647;
-          width: 52px; height: 52px; border-radius: 999px; border: 1px solid rgba(120,120,120,.35);
-          background: #111827; color: white; font: 700 14px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-          box-shadow: 0 10px 30px rgba(0,0,0,.28); cursor: pointer;
-        }
-        .panel {
-          position: fixed; right: 18px; bottom: 82px; z-index: 2147483647;
-          width: min(420px, calc(100vw - 36px)); max-height: min(620px, calc(100vh - 120px)); overflow: auto;
-          border-radius: 16px; border: 1px solid rgba(120,120,120,.28);
-          background: color-mix(in srgb, Canvas 96%, transparent); color: CanvasText;
-          box-shadow: 0 16px 50px rgba(0,0,0,.32);
-          font: 13px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        }
-        .hidden { display: none; }
-        .head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid rgba(120,120,120,.22); }
-        .title { font-weight: 750; font-size: 14px; }
-        .muted { color: color-mix(in srgb, CanvasText 62%, transparent); font-size: 12px; }
-        .body { padding: 12px 14px 14px; }
-        .row { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 12px; }
-        button.action {
-          border: 1px solid rgba(120,120,120,.28); border-radius: 10px; padding: 7px 9px;
-          background: color-mix(in srgb, CanvasText 7%, Canvas); color: CanvasText; cursor: pointer;
-          font: inherit;
-        }
-        button.action:hover { background: color-mix(in srgb, CanvasText 12%, Canvas); }
-        .section { margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(120,120,120,.18); }
-        .block { margin-top: 8px; padding: 9px; border-radius: 11px; background: color-mix(in srgb, CanvasText 5%, Canvas); border: 1px solid rgba(120,120,120,.16); }
-        .block-title { font-weight: 650; margin-bottom: 4px; }
-        textarea {
-          width: 100%; min-height: 110px; box-sizing: border-box; resize: vertical; border-radius: 12px;
-          border: 1px solid rgba(120,120,120,.24); padding: 9px; background: Canvas; color: CanvasText; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-        }
-        .ok { color: #059669; }
-        .warn { color: #d97706; }
-      </style>
-      <button class="button" type="button" title="DCF">DCF</button>
-      <section class="panel hidden" role="dialog" aria-label="DCF ChatGPT Microcore"></section>
-    `;
-    root.querySelector(".button").addEventListener("click", () => {
-      state.open = !state.open;
-      saveState();
-      render();
-    });
-    return { host, root, panel: root.querySelector(".panel") };
-  }
-
-  function render() {
-    shell.panel.classList.toggle("hidden", !state.open);
-    if (!state.open) return;
-    const runBlocks = lastScan.runBlocks || [];
-    const maintBlocks = lastScan.maintBlocks || [];
-    shell.panel.innerHTML = `
-      <div class="head">
-        <div>
-          <div class="title">DCF ChatGPT Microcore</div>
-          <div class="muted">native ${VERSION} · no remote eval · no chunks</div>
-        </div>
-        <button class="action" data-action="close">关闭</button>
-      </div>
-      <div class="body">
-        <div class="muted">状态：<span class="ok">脚本已作为完整 Tampermonkey userscript 运行</span></div>
-        <div class="muted">页面文本：${lastScan.textLength || 0} chars · RUN ${runBlocks.length} · MAINT ${maintBlocks.length}</div>
-        <div class="row">
-          <button class="action" data-action="scan">重扫页面</button>
-          <button class="action" data-action="copy-summary">复制摘要</button>
-          <button class="action" data-action="insert-maint">插入维护提示</button>
-          <button class="action" data-action="clear-legacy">清理旧缓存</button>
-        </div>
-        <div class="section">
-          <div class="block-title">维护说明</div>
-          <div class="muted">0.8.1 是原生单文件恢复版：GitHub 根目录脚本就是完整运行代码，不再从 GitHub 拉 engine，不再 Function/eval。</div>
-        </div>
-        ${renderBlocks("DCF_RUN blocks", runBlocks)}
-        ${renderBlocks("DCF_MAINT blocks", maintBlocks)}
-        <div class="section">
-          <div class="block-title">当前摘要</div>
-          <textarea readonly>${escapeHtml(makeSummary())}</textarea>
-        </div>
-      </div>
-    `;
-    shell.panel.querySelectorAll("[data-action]").forEach((node) => {
-      node.addEventListener("click", () => handleAction(node.getAttribute("data-action")));
-    });
-  }
-
-  function renderBlocks(title, blocks) {
-    if (!blocks.length) {
-      return `<div class="section"><div class="block-title">${escapeHtml(title)}</div><div class="muted">未发现。</div></div>`;
-    }
-    return `<div class="section"><div class="block-title">${escapeHtml(title)}</div>${blocks.map((block, index) => `
-      <div class="block">
-        <div class="block-title">#${index + 1} · ${escapeHtml(block.summary)}</div>
-        <textarea readonly>${escapeHtml(block.raw)}</textarea>
-      </div>
-    `).join("")}</div>`;
-  }
-
-  function handleAction(action) {
-    if (action === "close") {
-      state.open = false;
-      saveState();
-      render();
-      return;
-    }
-    if (action === "scan") {
-      scanAndRender();
-      return;
-    }
-    if (action === "copy-summary") {
-      copyText(makeSummary());
-      return;
-    }
-    if (action === "insert-maint") {
-      insertText(makeMaintenancePrompt());
-      return;
-    }
-    if (action === "clear-legacy") {
-      LEGACY_KEYS.forEach((key) => localStorage.removeItem(key));
-      scanAndRender();
-    }
-  }
-
-  function makeSummary() {
-    return JSON.stringify({
-      schema: "dcf.native.summary.v1",
-      version: VERSION,
-      url: location.href,
-      title: document.title,
-      at: new Date().toISOString(),
-      textLength: lastScan.textLength || 0,
-      runBlocks: (lastScan.runBlocks || []).map(({ id, summary }) => ({ id, summary })),
-      maintBlocks: (lastScan.maintBlocks || []).map(({ id, summary }) => ({ id, summary })),
-    }, null, 2);
-  }
-
-  function makeMaintenancePrompt() {
-    return [
-      "<<<DCF_MAINT",
-      JSON.stringify({
-        schema: "dcf.maintenance.request.v1",
-        version: VERSION,
-        request: "Summarize the current conversation state, decisions, errors, and next concrete action. Keep it suitable for ADR/update logging.",
-        at: new Date().toISOString(),
-        source: location.href,
-      }, null, 2),
-      "DCF_MAINT>>>",
-    ].join("\n");
-  }
-
-  function insertText(text) {
-    const target = findComposer();
-    if (!target) {
-      copyText(text);
-      alert("DCF 未找到输入框，内容已复制到剪贴板。");
-      return;
-    }
-    target.focus();
-    if (target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement) {
-      const start = target.selectionStart ?? target.value.length;
-      const end = target.selectionEnd ?? target.value.length;
-      target.value = target.value.slice(0, start) + text + target.value.slice(end);
-      target.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: text }));
-      return;
-    }
-    document.execCommand("insertText", false, text);
-    target.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: text }));
-  }
-
-  function findComposer() {
-    const selectors = [
-      "#prompt-textarea",
-      "textarea[data-id='root']",
-      "textarea",
-      "[contenteditable='true']",
-      "div.ProseMirror",
-    ];
-    for (const selector of selectors) {
-      const node = document.querySelector(selector);
-      if (node instanceof HTMLElement && isVisible(node)) return node;
-    }
-    return null;
-  }
-
-  function isVisible(node) {
-    const rect = node.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0;
-  }
-
-  function copyText(text) {
-    if (typeof GM_setClipboard === "function") {
-      GM_setClipboard(text);
-      return;
-    }
-    navigator.clipboard?.writeText(text);
-  }
-
-  function loadState() {
-    try {
-      return { open: false, ...(JSON.parse(localStorage.getItem(STORE_KEY) || "{}") || {}) };
-    } catch {
-      return { open: false };
-    }
-  }
-
-  function saveState() {
-    localStorage.setItem(STORE_KEY, JSON.stringify({ open: Boolean(state.open) }));
-  }
-
-  function hash(text) {
-    let value = 5381;
-    for (let index = 0; index < text.length; index += 1) value = ((value << 5) + value) ^ text.charCodeAt(index);
-    return `h${(value >>> 0).toString(16)}`;
-  }
-
-  function escapeHtml(value) {
-    return String(value)
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#039;");
-  }
+  function scan(){const text=document.body?.innerText||"";lastScan={runBlocks:blocks(text,RUN_RE),maintBlocks:blocks(text,MAINT_RE),textLength:text.length,at:new Date().toISOString()};render()}
+  function blocks(text,re){const out=[];re.lastIndex=0;let m;while((m=re.exec(text))&&out.length<20){const raw=m[1].trim();out.push({id:hash(raw),raw,summary:summary(raw)})}return out}
+  function summary(raw){const first=raw.split(/\n+/).map(x=>x.trim()).find(Boolean)||"empty block";return first.length>82?first.slice(0,82)+"…":first}
+  function render(){panel.dataset.side=state.side;panel.innerHTML=`<div class="top"><div><div class="title">DCF 弹药发射器</div><div class="sub">native ${VERSION} · 侧边嵌入 · 低摩擦</div></div><button class="mod" data-act="modal">模块管理</button></div><div class="tabs"><button class="tab" aria-selected="${state.tab==='main'}" data-act="tab" data-tab="main">主视图</button><button class="tab" aria-selected="${state.tab==='maint'}" data-act="tab" data-tab="maint">维护</button></div><div class="content">${state.tab==='maint'?maintView():mainView()}</div>${state.modal?modal():""}`}
+  function mainView(){return `<p class="line">语言弹药优先展开 · 页面 ${lastScan.textLength||0} 字 · RUN ${lastScan.runBlocks.length} · MAINT ${lastScan.maintBlocks.length}</p>${block('ammo','语言弹药','共识、维护、交接、已检测到的可发射片段。',ammoBody())}${block('workflow','协作流程','用于多轮任务的结构化启动与交接。',workflowBody())}${block('capture','捕获与沉淀','把当前页面状态复制为可沉淀材料。',captureBody())}${block('system','系统状态','版本、位置、运行状态与基础检查。',systemBody())}`}
+  function block(id,title,desc,body){const open=state.block===id;return `<section class="block"><button class="head" data-act="block" data-block="${esc(id)}"><span><div class="bt">${esc(title)}</div><div class="bd">${esc(desc)}</div></span><span>${open?'−':'+'}</span></button>${open?`<div class="body">${body}</div>`:""}</section>`}
+  function ammoBody(){const found=[...lastScan.runBlocks.map((b,i)=>({...b,type:'run',index:i})),...lastScan.maintBlocks.map((b,i)=>({...b,type:'maint',index:i}))];return `${ammoCard('项目共识','让新窗口先进入 DCF 的双层定位，再继续工作。','consensus')}${ammoCard('维护请求','要求当前模型沉淀对话状态、决策、错误和下一步。','maint')}${ammoCard('当前摘要','把页面扫描结果复制到剪贴板，作为沉淀材料。','summary')}<div class="sec">页面检测到的弹药</div>${found.length?found.map(detected).join(''):'<div class="small">暂未检测到 DCF_RUN 或 DCF_MAINT 块。</div>'}`}
+  function ammoCard(name,desc,act){return `<div class="card"><div class="name">${esc(name)}</div><div class="desc">${esc(desc)}</div><div class="actions"><button class="a primary" data-act="${esc(act)}">发射</button></div></div>`}
+  function detected(b){return `<div class="card"><div class="name">${b.type.toUpperCase()} · ${esc(b.summary)}</div><div class="desc">id: ${esc(b.id)}</div><div class="actions"><button class="a primary" data-act="insert-block" data-type="${b.type}" data-index="${b.index}">发射原文</button><button class="a" data-act="copy-block" data-type="${b.type}" data-index="${b.index}">复制</button></div></div>`}
+  function workflowBody(){return `<div class="small">这里放多轮协作链入口。当前先提供低风险文本发射能力，后续接入插件化流程。</div><div class="actions"><button class="a primary" data-act="handoff">插入交接框架</button><button class="a" data-act="consensus">插入项目共识</button></div>`}
+  function captureBody(){return `<div class="small">捕获当前页面中的 DCF 块和基础状态，方便沉淀为弹药或 ADR 材料。</div><div class="actions"><button class="a primary" data-act="summary">复制当前摘要</button><button class="a" data-act="scan">重扫页面</button></div>`}
+  function systemBody(){return `<div class="small">DCF ${VERSION} 已作为完整 Tampermonkey userscript 运行。当前侧边：${state.side==='right'?'右侧':'左侧'}。</div><div class="actions"><button class="a" data-act="side">切换左右侧</button><button class="a warn" data-act="clear">清理旧缓存</button></div>`}
+  function maintView(){return `<p class="line">维护视图只处理模块级与系统级操作，不挤占主发射视图。</p><section class="block"><button class="head"><span><div class="bt">运行状态</div><div class="bd">版本、扫描、旧缓存和页面摘要。</div></span></button><div class="body"><div class="small">version: ${VERSION}</div><div class="small">last scan: ${esc(lastScan.at||'pending')}</div><div class="small">text: ${lastScan.textLength||0} · RUN ${lastScan.runBlocks.length} · MAINT ${lastScan.maintBlocks.length}</div><div class="actions"><button class="a primary" data-act="scan">重扫页面</button><button class="a" data-act="diag">复制诊断</button><button class="a warn" data-act="clear">清理旧缓存</button></div></div></section><div class="sec">当前摘要</div><textarea readonly>${esc(makeSummary())}</textarea>`}
+  function modal(){return `<div class="back" data-act="close-modal"><section class="modal"><div class="mh"><strong>模块管理</strong><button class="a" data-act="close-modal">关闭</button></div><div class="mb"><div class="small">当前版本提供本地模块状态与维护入口。后续安装、更新、装载会接入 GitHub 补给线和弹药包索引。</div>${moduleRow('语言弹药','已装载','默认展开的主发射模块')}${moduleRow('协作流程','内置','多步任务入口，占位待插件化')}${moduleRow('维护','内置','系统级与模块级维护操作')}<div class="actions"><button class="a primary" data-act="load-default">装载默认模块</button><button class="a" data-act="scan">检查页面</button><button class="a warn" data-act="clear">清理旧缓存</button></div></div></section></div>`}
+  function moduleRow(n,b,d){return `<div class="row"><div><div class="name">${esc(n)}</div><div class="desc">${esc(d)}</div></div><span class="badge">${esc(b)}</span></div>`}
+  function onClick(e){const n=e.target.closest('[data-act]');if(!n)return;if(n.classList.contains('back')&&e.target.closest('.modal'))return;act(n.dataset.act,n)}
+  function act(a,n){if(a==='tab'){state.tab=n.dataset.tab==='maint'?'maint':'main';save();render();return}if(a==='block'){state.block=n.dataset.block||'ammo';save();render();return}if(a==='modal'){state.modal=true;render();return}if(a==='close-modal'){state.modal=false;render();return}if(a==='load-default'){state.tab='main';state.block='ammo';state.modal=false;save();scan();return}if(a==='scan'){state.modal=false;scan();return}if(a==='summary'){copy(makeSummary());return}if(a==='diag'){copy(makeDiag());return}if(a==='maint'){insert(makeMaint());return}if(a==='consensus'){insert(makeConsensus());return}if(a==='handoff'){insert(makeHandoff());return}if(a==='copy-block'||a==='insert-block'){const b=getBlock(n);if(!b)return;a==='copy-block'?copy(b.raw):insert(b.raw);return}if(a==='side'){state.side=state.side==='right'?'left':'right';save();render();return}if(a==='clear'){LEGACY_KEYS.forEach(k=>localStorage.removeItem(k));state.modal=false;scan()}}
+  function getBlock(n){const src=n.dataset.type==='maint'?lastScan.maintBlocks:lastScan.runBlocks;const i=Number(n.dataset.index||-1);return Number.isInteger(i)?src[i]:null}
+  function makeSummary(){return JSON.stringify({schema:'dcf.native.summary.v1',version:VERSION,ui:'embedded-sidebar',url:location.href,title:document.title,at:new Date().toISOString(),textLength:lastScan.textLength||0,runBlocks:lastScan.runBlocks.map(({id,summary})=>({id,summary})),maintBlocks:lastScan.maintBlocks.map(({id,summary})=>({id,summary}))},null,2)}
+  function makeDiag(){return JSON.stringify({schema:'dcf.native.diagnostics.v1',version:VERSION,ui:'embedded-sidebar',tab:state.tab,block:state.block,side:state.side,legacyKeysPresent:LEGACY_KEYS.filter(k=>localStorage.getItem(k)!==null),scan:JSON.parse(makeSummary())},null,2)}
+  function makeMaint(){return ['<<<DCF_MAINT',JSON.stringify({schema:'dcf.maintenance.request.v1',version:VERSION,request:'Summarize the current conversation state, decisions, errors, and next concrete action. Keep it suitable for ADR/update logging.',at:new Date().toISOString(),source:location.href},null,2),'DCF_MAINT>>>'].join('\n')}
+  function makeConsensus(){return ['<<<DCF_CONSENSUS_COMPACT','DCF is not just a userscript. It is a low-friction language ammunition firing system for personal cognitive infrastructure.','','Layer 1: persist, version, evolve, retrieve, combine, and precisely fire high-quality prompts, expressions, judgment frameworks, role protocols, handoffs, and multi-step collaboration flows.','','Layer 2: reduce user friction through a small stable kernel, replaceable plugins, failure isolation, reliable publishing, and text-driven evolution.','','Published runtime should remain a complete Tampermonkey .user.js. Do not reintroduce remote code execution, runtime chunk loading, or localStorage-as-code. GitHub is a publishing/version/ammo source, not a browser runtime code execution source.','','Before changing anything, classify the task: product intent, ammo model, plugin architecture, runtime userscript, supply chain, documentation, or ADR.','DCF_CONSENSUS_COMPACT>>>'].join('\n')}
+  function makeHandoff(){return ['<<<DCF_RUN',JSON.stringify({schema:'dcf.handoff.frame.v1',version:VERSION,purpose:'Help a new AI session take over DCF work without losing project intent.',project:'DCF ChatGPT Microcore',framing:'low-friction language ammunition firing system',ask:'Restate the current project understanding, classify the next task by layer, preserve native userscript release boundaries, then proceed with the smallest verifiable next action.'},null,2),'DCF_RUN>>>'].join('\n')}
+  function insert(text){const t=findComposer();if(!t){copy(text);alert('DCF 未找到输入框，内容已复制到剪贴板。');return}t.focus();if(t instanceof HTMLTextAreaElement||t instanceof HTMLInputElement){const s=t.selectionStart??t.value.length,e=t.selectionEnd??t.value.length;t.value=t.value.slice(0,s)+text+t.value.slice(e);t.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:text}));return}document.execCommand('insertText',false,text);t.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:text}))}
+  function findComposer(){for(const sel of ['#prompt-textarea',"textarea[data-id='root']",'textarea','[contenteditable=true]','div.ProseMirror']){const n=document.querySelector(sel);if(n instanceof HTMLElement&&visible(n)&&!host.contains(n))return n}return null}
+  function visible(n){const r=n.getBoundingClientRect();return r.width>0&&r.height>0}
+  function copy(text){if(typeof GM_setClipboard==='function'){GM_setClipboard(text);return}navigator.clipboard?.writeText(text)}
+  function loadState(){try{return{tab:'main',block:'ammo',side:'right',modal:false,...(JSON.parse(localStorage.getItem(STORE_KEY)||'{}')||{})}}catch{return{tab:'main',block:'ammo',side:'right',modal:false}}}
+  function save(){localStorage.setItem(STORE_KEY,JSON.stringify({tab:state.tab==='maint'?'maint':'main',block:state.block||'ammo',side:state.side==='left'?'left':'right'}))}
+  function hash(text){let v=5381;for(let i=0;i<text.length;i++)v=((v<<5)+v)^text.charCodeAt(i);return `h${(v>>>0).toString(16)}`}
+  function esc(v){return String(v).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;')}
 })();
