@@ -25,6 +25,8 @@
 
 更新类动作应生成“基于当前对话更新原资产”的请求，提供原内容、当前话题/新洞见的更新意图，并要求输出完整可重新摄取的内容块；若输入框非空，应复制请求而不是覆盖用户草稿。
 
+Surface 侧边标签也按同一规则处理。若现有 renderer 无法声明标签完整显示、按文字长度自适应、去掉 area 前缀、用颜色或标记区分 area，userscript 只能补通用 surface label renderer 字段；具体偏好必须由 ui_policy 设置，例如 surface_label_mode、surface_label_fit、surface_label_strip_area_prefix、surface_label_area_marker。
+
 看到 DCF_FEEDBACK 后先看 kernel_version。若用户仍在旧内核，新的解释字段可能只是被保存而不会立即生效；需要说明哪些字段会在当前内核生效，哪些要等更新后才解释。
 
 输出安装块时要注意 DCF 会扫描可见文本。只有确实要让当前页面安装时，才输出完整安装块标记。说明示例时拆开标记或改用文字描述。
