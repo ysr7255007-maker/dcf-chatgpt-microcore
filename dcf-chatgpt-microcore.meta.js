@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         DCF ChatGPT Microcore
 // @namespace    https://chatgpt.com/
-// @version      0.9.7
-// @description  DCF rollback-first runtime with registry command interpreter.
+// @version      0.9.8
+// @description  DCF rollback-first runtime with generic appearance adjustment capabilities.
 // @updateURL    https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.meta.js
 // @downloadURL  https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.user.js
 // @supportURL   https://github.com/ysr7255007-maker/dcf-chatgpt-microcore
