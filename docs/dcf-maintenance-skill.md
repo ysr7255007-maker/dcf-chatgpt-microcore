@@ -17,6 +17,10 @@
 
 默认值保持中立。用户偏好必须落在热更新包里。热更新包可以设置顶栏、固定底部、隐藏滚动条、箭头按钮、宽度、间距、Surface 排序等。
 
+写 UI 偏好包时要区分字段位置：会改变渲染结构或行为的字段放在 ui_policy，例如 chrome_mode、notice_mode、surface_rail_controls、surface_rail_scrollbar、shell_bottom_anchor；纯 CSS 尺寸或间距放在 styles，例如 shell_bottom_css、topbar_height_css、panel_width_css、surface_rail_width_css、spacing。
+
+看到 DCF_FEEDBACK 后先看 kernel_version。若用户仍在旧内核，新的解释字段可能只是被保存而不会立即生效；需要说明哪些字段会在当前内核生效，哪些要等更新后才解释。
+
 输出安装块时要注意 DCF 会扫描可见文本。只有确实要让当前页面安装时，才输出完整安装块标记。说明示例时拆开标记或改用文字描述。
 
 每次仓库改动后至少做这些检查：确认版本号、确认 meta 与 user 一致、检索是否回到旧失败路线关键词、拉取关键行引用。若创建或更新共识，应同步更新本提示词文档或技能文档。
