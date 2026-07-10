@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         DCF ChatGPT Microcore
 // @namespace    https://chatgpt.com/
-// @version      0.9.1
-// @description  DCF canvas chrome runtime: side chrome, edge-fit shell, and plugin surfaces.
+// @version      0.9.2
+// @description  DCF canvas chrome runtime with compact top chrome, fixed bottom edge, and scrollbarless surface rail.
 // @updateURL    https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.meta.js
 // @downloadURL  https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.user.js
 // @supportURL   https://github.com/ysr7255007-maker/dcf-chatgpt-microcore
