@@ -1,6 +1,16 @@
 # dcf-chatgpt-microcore
 
-Public Tampermonkey update source for DCF ChatGPT Microcore.
+Public GitHub distribution source for a personally maintained DCF Tampermonkey runtime. The repository is public for update delivery, not operated as a community plugin platform.
+
+## Runtime model
+
+DCF `0.10.0` separates immutable package sources, user-owned state, and the derived runtime registry:
+
+```text
+package sources + user state -> deterministic candidate build -> runtime registry cache
+```
+
+Packages never edit the previous registry in place. Install, update, disable, uninstall, and revision rollback all change the active input set and rebuild a candidate result before commit.
 
 ## Verification
 
@@ -9,6 +19,4 @@ npm ci
 npm test
 ```
 
-The integration test exercises the correlated command evidence chain, appearance before/after observation, CSS override provenance, privacy redaction, maintenance consent, delivery receipts, and non-interference when trace storage fails.
-
-The viewport fence unit test exercises actual shell-rectangle containment, visual viewport coordinates, preservation of desired registry geometry, and anchor-independent correction.
+The tests cover package-source migration, deterministic rebuilds, precise package removal, user-state preservation, resource conflicts, command evidence, privacy and consent boundaries, and viewport containment.
