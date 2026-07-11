@@ -11,17 +11,9 @@ function makeStyle() {
   const values = new Map();
   const priorities = new Map();
   return {
-    setProperty(name, value, priority = '') {
-      values.set(name, String(value));
-      priorities.set(name, String(priority));
-    },
+    setProperty(name, value, priority = '') { values.set(name, String(value)); priorities.set(name, String(priority)); },
     getPropertyValue(name) { return values.get(name) || ''; },
-    removeProperty(name) {
-      const old = values.get(name) || '';
-      values.delete(name);
-      priorities.delete(name);
-      return old;
-    },
+    removeProperty(name) { const old = values.get(name) || ''; values.delete(name); priorities.delete(name); return old; },
     priority(name) { return priorities.get(name) || ''; }
   };
 }
@@ -46,25 +38,11 @@ function createFenceRuntime({ viewport, baseRect, desired }) {
       const dy = match ? Number(match[2]) : 0;
       const left = baseRect.left + dx;
       const top = baseRect.top + dy;
-      return {
-        x: left, y: top, left, top,
-        width, height,
-        right: left + width,
-        bottom: top + height
-      };
+      return { x: left, y: top, left, top, width, height, right: left + width, bottom: top + height };
     }
   };
-  const window = {
-    visualViewport: { ...viewport },
-    innerWidth: viewport.width,
-    innerHeight: viewport.height
-  };
-  const document = {
-    documentElement: {
-      clientWidth: viewport.width,
-      clientHeight: viewport.height
-    }
-  };
+  const window = { visualViewport: { ...viewport }, innerWidth: viewport.width, innerHeight: viewport.height };
+  const document = { documentElement: { clientWidth: viewport.width, clientHeight: viewport.height } };
   const reg = { appearance: { side: 'right', vars: { ...desired } } };
   let fenceState = { active: false };
   let fenceFrame = 0;
@@ -73,38 +51,17 @@ function createFenceRuntime({ viewport, baseRect, desired }) {
   const factory = new Function(
     'window', 'document', 'sh', 'reg', 'requestAnimationFrame', 'clone',
     'getFenceState', 'setFenceState', 'getFenceFrame', 'setFenceFrame',
-    `
-      let fenceState = getFenceState();
-      let fenceFrame = getFenceFrame();
-      ${fenceSource}
-      return {
-        viewportFenceBounds,
-        enforceViewportFence,
-        scheduleViewportFence,
-        sync() {
-          setFenceState(fenceState);
-          setFenceFrame(fenceFrame);
-        }
-      };
-    `
+    `let fenceState=getFenceState();let fenceFrame=getFenceFrame();${fenceSource};return{viewportFenceBounds,enforceViewportFence,scheduleViewportFence,sync(){setFenceState(fenceState);setFenceFrame(fenceFrame)}};`
   );
-  const api = factory(
-    window, document, sh, reg, requestAnimationFrame, clone,
-    () => fenceState,
-    (value) => { fenceState = value; },
-    () => fenceFrame,
-    (value) => { fenceFrame = value; }
-  );
+  const api = factory(window, document, sh, reg, requestAnimationFrame, clone, () => fenceState, (value) => { fenceState = value; }, () => fenceFrame, (value) => { fenceFrame = value; });
   return { api, sh, reg, getState: () => fenceState };
 }
 
-function assert(condition, message) {
-  if (!condition) throw new Error(message);
-}
+function assert(condition, message) { if (!condition) throw new Error(message); }
 
 assert(source.includes("window.visualViewport?.addEventListener('resize',scheduleViewportFence"), 'visual viewport resize listener missing');
 assert(source.includes("window.visualViewport?.addEventListener('scroll',scheduleViewportFence"), 'visual viewport scroll listener missing');
-assert(source.includes("maxs={w:Math.min(680,b.safe_width),h:Math.min(1200,b.safe_height)"), 'step target cap is not tied to the current safe viewport');
+assert(/maxs\s*=\s*\{w:Math\.min\(680,bounds\.safe_width\),h:Math\.min\(1200,bounds\.safe_height\)/.test(source), 'step target cap is not tied to the current safe viewport');
 
 const runtime = createFenceRuntime({
   viewport: { width: 800, height: 600, offsetLeft: 0, offsetTop: 0 },
@@ -113,7 +70,6 @@ const runtime = createFenceRuntime({
 });
 const result = runtime.api.enforceViewportFence();
 runtime.api.sync();
-
 assert(result.contained === true, 'oversized shell was not contained');
 assert(result.rect.x >= 12 && result.rect.y >= 12, 'shell crossed viewport start edge');
 assert(result.rect.right <= 788 && result.rect.bottom <= 588, 'shell crossed viewport end edge');
@@ -133,11 +89,4 @@ offsetRuntime.api.sync();
 assert(offsetResult.rect.x === 62 && offsetResult.rect.y === 42, 'visual viewport offset was ignored');
 assert(offsetResult.contained === true, 'offset visual viewport containment failed');
 
-console.log(JSON.stringify({
-  ok: true,
-  version: '0.9.13',
-  actual_rect_guard: true,
-  visual_viewport_coordinates: true,
-  desired_registry_preserved: true,
-  anchor_independent: true
-}, null, 2));
+console.log(JSON.stringify({ ok: true, version: '0.10.0', actual_rect_guard: true, visual_viewport_coordinates: true, desired_registry_preserved: true, anchor_independent: true }, null, 2));
