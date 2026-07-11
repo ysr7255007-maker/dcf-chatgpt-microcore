@@ -1,0 +1,11 @@
+{
+  "name": "dcf-chatgpt-microcore",
+  "version": "0.9.12",
+  "private": true,
+  "scripts": {
+    "test": "node tests/dcf-evidence-chain.integration.test.js"
+  },
+  "devDependencies": {
+    "jsdom": "26.1.0"
+  }
+}
