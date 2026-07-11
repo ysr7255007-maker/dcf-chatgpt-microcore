@@ -4,16 +4,12 @@ const { JSDOM } = require('jsdom');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'dcf-chatgpt-microcore.user.js'), 'utf8');
 
-function registry({ css = '.sh{width:500px!important;bottom:44px!important;}' } = {}) {
+function shellPack() {
   return {
-    appearance: {
-      side: 'right',
-      css,
-      vars: { w: '340px', h: '800px', top: '12px', bottom: '112px', anchor: 'bottom' }
-    },
-    contentTypes: { ammo: { id: 'ammo', marker: 'DCF_AMMO', title: '语言弹药', body_field: 'body', actions: ['fire', 'copy'] } },
-    content: { ammo: {} }, surfaces: {}, settings: {}, seenBlocks: {}, badBlocks: {}, installedPacks: {},
-    moduleDisplay: { 'dcf.shell_adjuster': { area: 'maintenance', order: 10 } },
+    schema: 'dcf.module_pack.v1',
+    pack_id: 'dcf.shell_adjuster',
+    revision: 'test-v1',
+    contributes: { module_display: { 'dcf.shell_adjuster': { area: 'maintenance', order: 10 } } },
     modules: [{
       id: 'dcf.shell_adjuster', title: '壳体调节', version: 'test-v1', area: 'maintenance', commands: [],
       blocks: [{
@@ -26,7 +22,28 @@ function registry({ css = '.sh{width:500px!important;bottom:44px!important;}' } 
   };
 }
 
-function createRuntime({ brokenSessionWrites = false, renderFollowsVars = false, appearanceCss } = {}) {
+function packageSources() {
+  const pack = shellPack();
+  return {
+    schema: 'dcf.package.sources.v1', revision: 1,
+    packages: {
+      'dcf.shell_adjuster': {
+        package_id: 'dcf.shell_adjuster', enabled: true, active_revision: 'test-v1', source: { kind: 'test' },
+        revisions: { 'test-v1': { revision: 'test-v1', hash: 'test-hash', installed_at: '2026-07-12T00:00:00.000Z', pack } }
+      }
+    }
+  };
+}
+
+function userState(css) {
+  return {
+    schema: 'dcf.user.state.v1', revision: 0,
+    appearance: { side: 'right', css, safe_mode: false, vars: { w: '340px', h: '800px', top: '12px', bottom: '112px', anchor: 'bottom' } },
+    settings: {}, content: { ammo: {} }, moduleDisplay: {}
+  };
+}
+
+function createRuntime({ brokenSessionWrites = false, renderFollowsVars = false, appearanceCss = '.sh{width:500px!important;bottom:44px!important;}' } = {}) {
   const dom = new JSDOM('<!doctype html><html><body><textarea id="prompt-textarea"></textarea><button data-testid="send-button">send</button></body></html>', {
     url: 'https://chatgpt.com/c/dcf-evidence-test', runScripts: 'outside-only', pretendToBeVisual: true
   });
@@ -42,7 +59,9 @@ function createRuntime({ brokenSessionWrites = false, renderFollowsVars = false,
   window.confirm = () => true;
   Object.defineProperty(window.document.body, 'innerText', { get() { return this.textContent; } });
   window.document.querySelector('[data-testid="send-button"]').addEventListener('click', () => { sendClicks += 1; });
-  window.localStorage.setItem('dcf.kernel.registry.v1', JSON.stringify(registry({ css: appearanceCss })));
+  window.localStorage.setItem('dcf.package.sources.v1', JSON.stringify(packageSources()));
+  window.localStorage.setItem('dcf.user.state.v1', JSON.stringify(userState(appearanceCss)));
+  window.localStorage.setItem('dcf.kernel.ops.v2', JSON.stringify({ schema: 'dcf.kernel.ops.v2', seenBlocks: {}, badBlocks: {}, migration: null, legacyInstalledPacks: {} }));
   window.localStorage.setItem('dcf.kernel.state.v1', JSON.stringify({ tab: 'maint', pick: 'module:dcf.shell_adjuster', notice: '', pack: '', mt: {} }));
   window.localStorage.setItem('dcf.kernel.log.v1', JSON.stringify([{ type: 'stale', text: 'MUST-NOT-LEAK' }]));
   window.eval(source);
@@ -54,12 +73,7 @@ function createRuntime({ brokenSessionWrites = false, renderFollowsVars = false,
       return originalSetItem.call(this, key, value);
     };
   }
-  return {
-    dom, window,
-    host: () => window.document.getElementById('dcf-chatgpt-microcore-host'),
-    clipboard: () => clipboard,
-    sendClicks: () => sendClicks
-  };
+  return { dom, window, host: () => window.document.getElementById('dcf-chatgpt-microcore-host'), clipboard: () => clipboard, sendClicks: () => sendClicks };
 }
 
 function wait(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
@@ -148,22 +162,12 @@ async function main() {
   normal.dom.window.close();
 
   console.log(JSON.stringify({
-    ok: true,
-    version: '0.9.12',
-    trace_correlation: true,
-    before_after_and_persistence: true,
-    override_classification: step.effect.interpretation,
-    visible_change_classification: normalTrace.steps[0].effect.interpretation,
-    css_override_provenance: true,
-    privacy_redaction: true,
-    consent_gate: true,
-    maintenance_action_allowlist: true,
-    delivery_receipt: true,
-    storage_failure_non_interference: true
+    ok: true, version: '0.10.0', trace_correlation: true, before_after_and_persistence: true,
+    override_classification: step.effect.interpretation, visible_change_classification: normalTrace.steps[0].effect.interpretation,
+    css_override_provenance: true, privacy_redaction: true, consent_gate: true,
+    maintenance_action_allowlist: true, delivery_receipt: true, storage_failure_non_interference: true,
+    authoritative_user_state: true, derived_registry_cache: true
   }, null, 2));
 }
 
-main().catch((error) => {
-  console.error(error.stack || error);
-  process.exitCode = 1;
-});
+main().catch((error) => { console.error(error.stack || error); process.exitCode = 1; });
