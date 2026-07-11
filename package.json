@@ -1,9 +1,10 @@
 {
   "name": "dcf-chatgpt-microcore",
-  "version": "0.9.12",
+  "version": "0.10.0",
   "private": true,
   "scripts": {
-    "test": "node tests/dcf-evidence-chain.integration.test.js && node tests/dcf-viewport-fence.unit.test.js",
+    "test": "node tests/dcf-package-engine.unit.test.js && node tests/dcf-evidence-chain.integration.test.js && node tests/dcf-viewport-fence.unit.test.js",
+    "test:package-engine": "node tests/dcf-package-engine.unit.test.js",
     "test:viewport-fence": "node tests/dcf-viewport-fence.unit.test.js"
   },
   "devDependencies": {
