@@ -18,104 +18,92 @@ Updated: 2026-07-12
 
 ## 当前仓库版本
 
-当前仓库发布版本为 `0.9.12`。`0.9.11` 的平面日志方案经完整证据链审计后已被取代，不应再作为现场诊断版本安装。
+当前仓库发布版本为 `0.9.13`。
 
-当前 userscript 已恢复正常运行时，并包含：
+`0.9.12` 已建立相关联命令证据链，包括一次点击的命令解析、能力调用、registry 前后状态、持久化、壳体计算样式、真实矩形、CSS 来源、隐私过滤、维护授权和交付状态。
 
-- 工作区与维护区；
-- Surface 侧边栏；
-- 内容库与语言弹药；
-- registry 模块渲染与命令解释器；
-- `appearance.get`、`appearance.set`、`appearance.setVars`、`appearance.adjust`、`appearance.anchor`；
-- 更新前恢复点与 registry 回滚；
-- 坏包隔离与 badBlocks；
-- 同一坏块不再被自动反复扫描；
-- 模块内部命令只有显式设置 `feedback: true` 才发送 `DCF_FEEDBACK`；
-- `package.apply` 从模块内部调用时默认静默；
-- 当前标签页、当前内核启动隔离的 `dcf.command_trace.v2` 命令证据；
-- 每次点击独立的 `trace_id`、模块指纹、命令解析和逐步能力调用；
-- appearance 调用前后内存状态、持久化状态、壳体计算样式、几何变化和匹配 CSS 规则；
-- 隐私过滤、存储失败内存降级和反馈交付状态；
-- 本地一次性授权后的 `DCF_MAINT_REQUEST` 维护回传；
-- 维护状态中的“复制证据”“发送证据”和“开启一次维护回传”。
+`0.9.13` 在此基础上新增统一的可视区围栏：
 
-证据链回归测试已进入仓库：`tests/dcf-evidence-chain.integration.test.js`，通过 `npm ci && npm test` 重复运行。
+- 使用 `window.visualViewport`，并以文档视口为回退；
+- 每次渲染后读取壳体真实 `getBoundingClientRect()`；
+- 把实际宽高限制在带 12px 安全边距的可视区内；
+- 通过统一 x/y correction 把越界壳体移回安全区；
+- 不区分贴顶、贴底、左右侧或触发命令；
+- 监听 window resize、visualViewport resize 和 scroll；
+- registry 保留用户期望尺寸，围栏只约束实际可见结果；
+- 新的宽高步进目标同时以当前安全可视区为动态上限；
+- runtime appearance 和 diagnostics 输出围栏状态。
 
-旧的 `.github/workflows/build-native-userscript.yml` 已于 2026-07-11 移除。该 workflow 的 YAML 无效，并且仍会从 `engine/0.7.1` 生成 `0.8.0`；它不是当前发布线的可用构建或发布路径。当前根目录 `.user.js` 与 `.meta.js` 仍是权威发布文件。
+根目录 `.user.js` 与 `.meta.js` 仍是权威发布文件。
 
-## 最近事故与已完成修复
+## 最近完成事项
 
-一次包含非法控制字符的安装块进入对话后，`0.9.7` 的 MutationObserver 不断重新扫描同一坏块。解析失败会自动发送反馈，而发送反馈又改变页面并触发下一次扫描，形成 feedback 风暴。
+### 壳体调节 CSS 覆盖已修复
 
-`0.9.9` 首次加入坏包隔离，但错误地把正常运行时替换成了只剩维护入口的安全模式。该方案已被否定。
+浏览器现场曾确认：
 
-`0.9.10` 已恢复正常功能，并保留坏包隔离：解析失败的包写入 `badBlocks` 和 `seenBlocks`，不再自动发送失败反馈。维护区和 Tampermonkey 菜单均可清理坏块记录。
+- 页面内核为 `0.9.12`；
+- `dcf.shell_adjuster` version `2.1` 的命令解析、能力调用、registry 更新、持久化和恢复点都正常；
+- 旧 appearance CSS 使用 `!important` 把 `.sh` 固定为 `340px × 540px`，并错误使用 `--b` 作为底部变量；
+- 命令证据因此分类为 `state_changed_but_render_overridden`。
 
-后续复测发现 `0.9.10` 重建时丢失了 `0.8.7` 已接受的命令点击与能力调用日志，导致按钮无效时只能根据现象推断。`0.9.11` 首次恢复日志，但完整审计发现平面日志仍缺少关联、隔离、变更前后对照、CSS 来源、隐私边界、维护授权和交付证明。`0.9.12` 已按新 ADR 重建为相关联的命令证据链，并保留 `0.9.10` 的坏包隔离与防反馈风暴机制。
+修复包 `dcf.shell_geometry.vars_source_repair@2026-07-12.1` 已在浏览器安装成功，用户现场确认宽高、贴顶贴底和距离调节均正常。成功测试不要求发送维护证据；只有失败或异常时才发送。
+
+对应 ADR：
+
+- `docs/adr/2026-07-12-dcf-shell-geometry-single-source.md`
+
+### 可视区围栏已进入 `0.9.13`
+
+用户否定了“为每个锚点、距离和按钮分别计算上限”的方案。当前方案只比较实际可视区矩形与实际壳体矩形，用一个统一运行时围栏处理所有越界来源。
+
+对应 ADR：
+
+- `docs/adr/2026-07-12-dcf-viewport-containment-fence.md`
+
+新增测试：
+
+- `tests/dcf-viewport-fence.unit.test.js`
+
+本地已完成：
+
+- `node --check dcf-chatgpt-microcore.user.js`；
+- 独立围栏单元测试通过，覆盖超大壳体、双轴越界、visualViewport 偏移、期望 registry 保留和锚点无关性；
+- 仓库 userscript 上传后按 Git blob SHA 逐字节回读一致；
+- user/meta 版本均为 `0.9.13`。
+
+完整 `npm test` 在当前执行容器中未运行，因为容器没有 `jsdom` 且无法解析外部 npm/GitHub 网络；这不是测试失败。仓库测试命令已包含原证据链集成测试和新围栏单元测试。
 
 ## 当前未完成事项
 
-### 壳体调节问题已完成证据定位，待应用 registry 修复并复测
+### 浏览器更新与现场验证
 
-浏览器现场已确认：
+浏览器当前最后确认版本仍是 `0.9.12`。下一步：
 
-- 页面内核为 `0.9.12`；
-- 实际安装模块为 `dcf.shell_adjuster` version `2.1`；
-- 调节按钮直接调用 `appearance.adjust` 或 `appearance.anchor`，且 `feedback: false`；
-- `bad_blocks` 为 `0`；
-- 命令解析、能力调用、registry 内存更新、localStorage 持久化和恢复点均正常。
+1. 在 Tampermonkey 中更新到 `0.9.13`；
+2. 刷新 ChatGPT 页面；
+3. 把壳体宽高或贴边距离持续增大，确认壳体不会有任何边冲出当前可视区；
+4. 缩小和放大浏览器窗口，确认壳体自动保持完整可点击；
+5. 成功则无需发送证据；仅失败或异常时使用“发送证据”。
 
-完整证据显示问题来自旧 appearance CSS，而不是命令或内核能力。该 CSS 在 `.sh` 上使用 `!important` 固定：
+registry 中已安装的外观修复和 `dcf.shell_adjuster 2.1` 不应因 userscript 更新被替换。
 
-- 宽度 `340px`，同时固定 min/max width；
-- 高度 `540px`，同时固定 min/max height；
-- 底部 `var(--b,112px)`，使用了与内核不同的变量名。
+## 壳体目标行为
 
-因此 registry 中 `w`、`h` 和 `bottom` 虽然持续变化，计算样式与壳体几何仍不变，证据分类为 `state_changed_but_render_overridden`。
-
-已新增：
-
-- ADR：`docs/adr/2026-07-12-dcf-shell-geometry-single-source.md`；
-- 修复包：`packs/dcf-shell-geometry-vars-repair-2026-07-12.1.json`。
-
-修复包只替换 registry 中的 appearance CSS，删除冲突的 `.sh` 几何规则，保留内部布局样式。它不更新 userscript，也不替换 `dcf.shell_adjuster`。
-
-下一步：
-
-1. 在当前浏览器页面安装修复包；
-2. 注意此前测试点击已经把 registry 调到约 `w:300px`、`h:1000px`、`bottom:88px`，解除覆盖后壳体会立即按这些真实值渲染；
-3. 使用步进按钮重新调到用户满意尺寸；
-4. 点击宽高、贴顶贴底和距离按钮后发送一次证据；
-5. 验证 effect 变为 `state_and_render_changed`，并确认无新的 CSS geometry override。
-
-### 壳体和侧边栏的目标行为
-
-- 壳体宽高由 registry 中的 appearance vars 控制；
-- 正常长条形侧边壳体的高度基准约为 `800px`，但最终值由用户步进调整；
+- registry appearance vars 表示用户期望几何；
+- 内核围栏表示不可突破的实际可见安全包络；
 - 壳体本身不因内容自动改变尺寸；
 - Surface 标签高度按文字长度自适应；
 - 侧边栏在固定壳体内部独立滚动，不得撑大壳体；
-- 贴顶和贴底是锚点切换，不是用几个固定 bottom 值冒充位置调节。
-
-## 接手时的第一步
-
-先核对：
-
-1. 页面实际显示的 kernel version；
-2. 修复包 `dcf.shell_geometry.vars_source_repair@2026-07-12.1` 是否已安装；
-3. 当前 appearance CSS 是否已经不再包含固定 `.sh` 宽高和位置；
-4. 调节按钮点击后的 effect 是否为 `state_and_render_changed`；
-5. 当前 appearance vars 与用户最终选择的尺寸。
-
-不要仅根据仓库版本推断浏览器 registry 已同步。需要现场信息时，优先让用户复制诊断或导出 registry，再做最小范围修正。
+- 贴顶和贴底是锚点切换；
+- 所有位置和尺寸来源最终都必须经过同一个实际矩形围栏。
 
 ## 继续维护时不可违背的边界
 
 - 默认冷热更新，只有当前内核能力不可达时才更新 userscript；
-- 外观和具体偏好属于 registry，不属于 userscript 默认设计；
-- 版本更新只补通用承载、解释、宿主桥、恢复或本地能力；
-- 风险靠快照、事务、诊断和回滚处理，不靠“热更新危险、版本更新安全”的分类；
-- 可调壳体几何只能由 appearance vars 和内核锚点解释路径拥有，appearance CSS 不得再建立第二套静态几何来源；
+- 外观偏好属于 registry，不属于 userscript 默认设计；
+- 可调壳体几何只能由 appearance vars 和内核锚点解释路径拥有，appearance CSS 不得建立第二套静态几何来源；
+- 可视区限制不能散落在各按钮或锚点公式中，必须由统一实际矩形围栏承担；
 - 不用枚举预设冒充连续调节；
-- 不用长篇说明替代实际修复；
-- 输出完整安装块前确认当前页面确实需要安装，避免再次让扫描器摄取无意中的示例。
+- 成功测试不要求上传证据，证据用于失败和异常诊断；
+- 输出完整安装块前确认当前页面确实需要安装。
