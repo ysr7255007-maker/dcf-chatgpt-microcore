@@ -33,6 +33,8 @@ Updated: 2026-07-11
 - 模块内部命令只有显式设置 `feedback: true` 才发送 `DCF_FEEDBACK`；
 - `package.apply` 从模块内部调用时默认静默。
 
+旧的 `.github/workflows/build-native-userscript.yml` 已于 2026-07-11 移除。该 workflow 的 YAML 无效，并且仍会从 `engine/0.7.1` 生成 `0.8.0`；它不是当前 `0.9.10` 的可用构建或发布路径。当前根目录 `.user.js` 与 `.meta.js` 仍是权威发布文件。
+
 ## 最近事故与已完成修复
 
 一次包含非法控制字符的安装块进入对话后，`0.9.7` 的 MutationObserver 不断重新扫描同一坏块。解析失败会自动发送反馈，而发送反馈又改变页面并触发下一次扫描，形成 feedback 风暴。
