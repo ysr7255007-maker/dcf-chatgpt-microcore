@@ -3,7 +3,8 @@
   "version": "0.9.12",
   "private": true,
   "scripts": {
-    "test": "node tests/dcf-evidence-chain.integration.test.js"
+    "test": "node tests/dcf-evidence-chain.integration.test.js && node tests/dcf-viewport-fence.unit.test.js",
+    "test:viewport-fence": "node tests/dcf-viewport-fence.unit.test.js"
   },
   "devDependencies": {
     "jsdom": "26.1.0"
