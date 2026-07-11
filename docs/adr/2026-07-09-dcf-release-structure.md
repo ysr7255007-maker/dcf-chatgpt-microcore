@@ -124,6 +124,14 @@ The product target is a low-friction language ammunition firing system:
 
 The final choice should favor fewer moving parts and easier recovery over architectural cleverness.
 
+## Implementation correction: 2026-07-11
+
+The obsolete `.github/workflows/build-native-userscript.yml` workflow has been removed.
+
+That workflow was not a valid current release path. Its YAML block was malformed, so GitHub repeatedly reported `No jobs were run`. More importantly, its build logic still reconstructed the retired `0.8.0` artifact from `engine/0.7.1`. Repairing only the YAML would therefore have made the workflow capable of overwriting the current `0.9.10` native userscript with an obsolete release.
+
+This removal implements the existing decision rather than introducing a new release architecture. Until DCF has a real modular source tree and a build that produces the current artifact, the root `.user.js` and `.meta.js` remain the authoritative release files. A future build workflow must generate the current release from current source, verify version and integrity, and must never rebuild from the retired engine chunks.
+
 ## Reconsideration condition
 
 Chunked releases may be reconsidered only if a future release artifact exceeds practical single-file limits and the chunking is generated, uploaded, hashed, and verified automatically by a build pipeline rather than hand-managed files. Runtime eval remains rejected on ChatGPT pages unless a future execution mechanism avoids page CSP and is explicitly validated.
