@@ -43,3 +43,17 @@ After installing `0.8.7`:
 3. command lookup failures should produce a sidebar notice and log entry;
 4. a `DCF_MAINT_REQUEST` block should return diagnostics without relying on a module button;
 5. logs remain small and local.
+
+## Regression and restoration: 2026-07-11
+
+The accepted command evidence chain was lost when the runtime was later rebuilt into the simplified `0.9.10` kernel. That version could report aggregate diagnostics, but it did not retain `command_click`, `command_run`, or `capability_call` events and no longer handled `DCF_MAINT_REQUEST`. As a result, an ineffective shell-adjustment button could only be diagnosed by inference.
+
+Release `0.9.11` restores this accepted capability in the current runtime:
+
+- a bounded local ring buffer records command lookup, command execution, capability input, result, and failure;
+- appearance calls also record registry appearance and the shell's computed geometry;
+- the maintenance UI can copy or send the recent trace;
+- `DCF_MAINT_REQUEST` again returns the recent trace, current shell-adjuster definition, diagnostics, registry appearance, and computed shell geometry;
+- maintenance requests are recorded in `seenBlocks` before feedback is emitted, preserving the bad-block and feedback-loop protections added later.
+
+This restoration establishes an evidence-first maintenance rule: when a visible control has no effect, retrieve its command and capability trace before changing the module or kernel again.
