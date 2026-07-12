@@ -7,6 +7,7 @@ function createChatGPTHost(windowObject = window, options = {}) {
   const quietMs = Number(options.quietMs || 900);
   const recoveryCount = Number(options.recoveryCount || 3);
   let rootObserver = null;
+  let observedRoot = null;
   let activeObserver = null;
   let activeNode = null;
   let quietTimer = null;
@@ -119,6 +120,7 @@ function createChatGPTHost(windowObject = window, options = {}) {
 
   function attachReplyRoot(root) {
     if (!root || rootObserver) return false;
+    observedRoot = root;
     rootObserver = new windowObject.MutationObserver((mutations) => {
       for (const mutation of mutations) {
         for (const node of mutation.addedNodes || []) inspectAddedNode(node);
@@ -170,6 +172,7 @@ function createChatGPTHost(windowObject = window, options = {}) {
   function stopReplyObserver() {
     if (rootObserver) rootObserver.disconnect();
     rootObserver = null;
+    observedRoot = null;
     disconnectActive();
     if (urlTimer) windowObject.clearInterval(urlTimer);
     urlTimer = null;
@@ -226,6 +229,39 @@ function createChatGPTHost(windowObject = window, options = {}) {
     return { notified: false };
   }
 
+  function routeKind() {
+    const pathname = String(windowObject.location && windowObject.location.pathname || '/');
+    if (/^\/c\/[^/]+/.test(pathname)) return '/c/:conversation';
+    if (/^\/g\/[^/]+\/c\/[^/]+/.test(pathname)) return '/g/:gpt/c/:conversation';
+    return pathname.replace(/[0-9a-f]{8,}/gi, ':id');
+  }
+
+  function diagnostics() {
+    const root = findConversationRoot();
+    const input = composer();
+    const sendButton = doc.querySelector('[data-testid="send-button"],button[aria-label*="Send" i],button[aria-label*="发送"]');
+    return {
+      schema: 'dcf.host.diagnostics.v1',
+      origin: String(windowObject.location && windowObject.location.origin || ''),
+      route_kind: routeKind(),
+      conversation_root_found: !!root,
+      reply_root_observer_attached: !!rootObserver,
+      observed_root_connected: !!(observedRoot && observedRoot.isConnected),
+      active_reply_tracked: !!activeNode,
+      active_reply_connected: !!(activeNode && activeNode.isConnected),
+      streaming: isStreaming(),
+      composer_found: !!input,
+      composer_has_draft: !!(input && String(input.value || input.textContent || '').trim()),
+      send_button_found: !!sendButton,
+      send_button_enabled: !!(sendButton && !sendButton.disabled),
+      observer_scope: 'conversation-root-added-nodes + current-reply',
+      recovery_count: recoveryCount,
+      quiet_ms: quietMs,
+      root_locator_pending: !!rootLocatorTimer,
+      url_watch_active: !!urlTimer
+    };
+  }
+
   return {
     startReplyObserver,
     stopReplyObserver,
@@ -235,7 +271,8 @@ function createChatGPTHost(windowObject = window, options = {}) {
     insertComposer,
     copy,
     notify,
-    isStreaming
+    isStreaming,
+    diagnostics
   };
 }
 
