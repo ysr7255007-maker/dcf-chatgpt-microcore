@@ -1,13 +1,11 @@
 {
   "name": "dcf-chatgpt-microcore",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "private": true,
   "scripts": {
-    "test": "node tests/dcf-package-engine.unit.test.js && node tests/dcf-evidence-chain.integration.test.js && node tests/dcf-viewport-fence.unit.test.js",
-    "test:package-engine": "node tests/dcf-package-engine.unit.test.js",
-    "test:viewport-fence": "node tests/dcf-viewport-fence.unit.test.js"
+    "build": "node scripts/build-userscript.js",
+    "test": "node tests/dcf-core-architecture.unit.test.js && node tests/dcf-artifact-transaction.unit.test.js && node tests/dcf-command-runtime.unit.test.js && node tests/dcf-migration.unit.test.js && node tests/dcf-host-bounded-intake.unit.test.js && node tests/dcf-catalog.unit.test.js && node tests/dcf-viewport-fence.unit.test.js && node tests/dcf-release.integration.test.js && node tests/dcf-build-determinism.unit.test.js",
+    "verify": "npm run build && npm test"
   },
-  "devDependencies": {
-    "jsdom": "26.1.0"
-  }
+  "devDependencies": {}
 }

@@ -1,22 +1,38 @@
 # dcf-chatgpt-microcore
 
-Public GitHub distribution source for a personally maintained DCF Tampermonkey runtime. The repository is public for update delivery, not operated as a community plugin platform.
+DCF is a personally maintained ChatGPT Tampermonkey system whose value goal is a low-friction language-ammunition loop. The repository is public for update delivery, not operated as a community plugin platform.
 
-## Runtime model
+## Current architecture
 
-DCF `0.10.0` separates immutable package sources, user-owned state, and the derived runtime registry:
+DCF `0.11.0` separates the product goal from the engineering dependency:
 
 ```text
-package sources + user state -> deterministic candidate build -> runtime registry cache
+language-ammunition loop
+        ↓ product constraints
+first-party ammo module
+        ↓ uses
+generic DCF kernel
 ```
 
-Packages never edit the previous registry in place. Install, update, disable, uninstall, and revision rollback all change the active input set and rebuild a candidate result before commit.
+The kernel is developed as modular source and released as one complete userscript. One authoritative state root is changed only through a unified transaction path:
 
-## Verification
+```text
+intent or artifact
+→ candidate state
+→ invariant validation
+→ atomic root commit
+→ derived runtime projection
+→ receipt / host effect
+```
+
+ChatGPT replies and the private GitHub catalog are transports. They decode typed artifacts and enter the same transaction engine. DCF observes only newly added/current assistant replies; it does not rescan the whole conversation history.
+
+See `docs/architecture-current.md` for the current structure and `docs/adr/status-index.md` for the canonical ADR status.
+
+## Build and verification
 
 ```bash
-npm ci
-npm test
+npm run verify
 ```
 
-The tests cover package-source migration, deterministic rebuilds, precise package removal, user-state preservation, resource conflicts, command evidence, privacy and consent boundaries, and viewport containment.
+This builds the complete `.user.js`, generates the catalog, and verifies state transactions, resource conflicts, migration, legacy commands, bounded reply intake, automatic artifact application, catalog updates, viewport containment, release integrity, and deterministic output.

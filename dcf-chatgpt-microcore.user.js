@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         DCF ChatGPT Microcore
 // @namespace    https://chatgpt.com/
-// @version      0.10.0
-// @description  DCF runtime with deterministic package builds, precise package lifecycle, correlated evidence, and viewport containment.
+// @version      0.11.0
+// @description  DCF phase-one architecture: single authoritative state, unified transactions, bounded reply intake, deterministic packages, receipts and viewport containment.
 // @updateURL    https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.meta.js
 // @downloadURL  https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.user.js
 // @supportURL   https://github.com/ysr7255007-maker/dcf-chatgpt-microcore
@@ -17,12 +17,1895 @@
 // @grant        GM_registerMenuCommand
 // @grant        GM_notification
 // @grant        GM_xmlhttpRequest
-// @connect      *
+// @connect      raw.githubusercontent.com
 // @run-at       document-idle
 // ==/UserScript==
-(function(){'use strict';const V='0.10.0';const R='dcf.kernel.registry.v1';const P='dcf.package.sources.v1';const U='dcf.user.state.v1';const O='dcf.kernel.ops.v2';const S='dcf.kernel.state.v1';const B='dcf.kernel.rollback.v1';const T='dcf.command.traces.v2';const M='dcf.maintenance.session.v2';const LT=String.fromCharCode(60);const GT=String.fromCharCode(62);const NL='\n';const CORE_APPEARANCE={side:'right',vars:{w:'340px',h:'800px',top:'12px',bottom:'112px',anchor:'bottom'}};const CORE_AMMO_TYPE={id:'ammo',marker:'DCF_AMMO',title:'语言弹药',body_field:'body',actions:['fire','copy']};const EMPTY_PACKAGES={schema:'dcf.package.sources.v1',revision:0,packages:{}};const EMPTY_USER={schema:'dcf.user.state.v1',revision:0,appearance:{side:null,vars:{},css:'',safe_mode:false},settings:{},content:{ammo:{}},moduleDisplay:{}};const EMPTY_OPS={schema:'dcf.kernel.ops.v2',seenBlocks:{},badBlocks:{},migration:null,legacyInstalledPacks:{}};let packageState;let userState;let ops;let reg;let st=load(S,{tab:'work',pick:'ammo',notice:'',pack:'',mt:{}});let backs=load(B,[]);let timer=0;let busy=false;let fenceFrame=0;let fenceState={active:false};let traceMemory=[];let traceSeq=0;let transportMemory=[];let traceHealth={storage:'session',write_errors:0,last_error:''};const bootId='boot_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8);initializeAuthoritativeState();initTraceStore();const host=document.createElement('div');const root=host.attachShadow({mode:'open'});host.id='dcf-chatgpt-microcore-host';root.innerHTML=`<style id="core-style">
-.sh{position:fixed;right:12px;bottom:var(--bottom,112px);top:auto;width:var(--w,340px);height:min(var(--h,800px),calc(100vh - 24px));z-index:2147483646;background:#fffffff2;color:#111;border:1px solid #9996;border-radius:14px;box-shadow:0 18px 44px #0002;font:13px system-ui;overflow:hidden;box-sizing:border-box;display:flex;flex-direction:column}
-.sh[data-side=left]{left:12px;right:auto}.sh[data-anchor=top]{top:var(--top,12px);bottom:auto}.sh[data-anchor=bottom]{bottom:var(--bottom,112px);top:auto}
-@media(prefers-color-scheme:dark){.sh{background:#171717ee;color:#eee}}
-button{border:1px solid #9995;border-radius:10px;background:transparent;color:inherit;padding:6px;cursor:pointer}.top{flex:0 0 40px;height:40px;display:flex;align-items:center;gap:6px;padding:6px;border-bottom:1px solid #9993;background:#8881;box-sizing:border-box;overflow:hidden}.top b{font-size:12px;line-height:20px;white-space:nowrap}.top button{height:26px;padding:3px 8px;font-size:12px;line-height:18px;white-space:nowrap;box-sizing:border-box}.main{flex:1 1 auto;min-height:0;display:flex;overflow:hidden}.rail{width:42px;min-width:42px;max-width:42px;overflow:auto;border-right:1px solid #9993;background:#8881;box-sizing:border-box;scrollbar-width:none}.rail::-webkit-scrollbar{display:none}.surf{writing-mode:vertical-rl;height:auto;min-height:44px;max-height:none;width:30px;min-width:30px;max-width:30px;margin:5px 6px;padding:7px 2px;line-height:1.05;overflow:visible;box-sizing:border-box;white-space:normal}.body{flex:1 1 auto;min-width:0;min-height:0;overflow:auto;padding:9px;box-sizing:border-box}.card{position:relative;border:1px solid #9994;border-radius:12px;background:#8881;padding:9px;margin-bottom:9px;box-sizing:border-box}.name{font-weight:700}.mini,.desc{font-size:12px;opacity:.7}.actions,.seg{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}.del{position:absolute;top:5px;right:5px;border-radius:999px}.on{background:#2563eb22;border-color:#2563eb66;font-weight:700}.warn{background:#d9770622}textarea,input,select{width:100%;box-sizing:border-box;border:1px solid #9995;border-radius:10px;background:#fff8;color:inherit;padding:7px}textarea{min-height:88px}.kv{font:11px/1.35 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;word-break:break-all;opacity:.78}.pkg{border-top:1px solid #9993;padding-top:8px;margin-top:8px}
-</style><style id="ap"></style><aside class="sh"></aside>`;document.documentElement.appendChild(host);const sh=root.querySelector('.sh');sh.onclick=click;sh.oninput=(e)=>{if(e.target.dataset.role==='pack'){st.pack=e.target.value;save(S,st);}};window.addEventListener('resize',scheduleViewportFence,{passive:true});window.visualViewport?.addEventListener('resize',scheduleViewportFence,{passive:true});window.visualViewport?.addEventListener('scroll',scheduleViewportFence,{passive:true});menu();render();scanSoon(300);new MutationObserver(()=>scanSoon(1500)).observe(document.body,{childList:true,subtree:true,characterData:true});function initializeAuthoritativeState(){const savedPackages=load(P,null);const savedUser=load(U,null);const savedOps=load(O,null);if(savedPackages?.schema===EMPTY_PACKAGES.schema&&savedUser?.schema===EMPTY_USER.schema){packageState=normalizePackageState(savedPackages);userState=normalizeUserState(savedUser);ops=normalizeOps(savedOps);}else{const legacy=load(R,{});const migrated=migrateLegacyRegistry(legacy);packageState=migrated.packages;userState=migrated.user;ops=migrated.ops;save(P,packageState);save(U,userState);save(O,ops);}const built=buildRuntime(packageState,userState,ops);if(!built.ok)throw new Error('DCF package build failed at boot: '+built.errors.join('; '));reg=built.registry;save(R,reg);}function normalizePackageState(value){const out=clone(EMPTY_PACKAGES);if(!obj(value))return out;out.revision=Number(value.revision||0);out.packages=obj(value.packages)?value.packages:{};return out;}function normalizeUserState(value){const out=deepMerge(clone(EMPTY_USER),obj(value)?value:{});out.appearance=deepMerge(clone(EMPTY_USER.appearance),out.appearance||{});out.appearance.vars=obj(out.appearance.vars)?out.appearance.vars:{};out.settings=obj(out.settings)?out.settings:{};out.content=obj(out.content)?out.content:{ammo:{}};out.content.ammo=obj(out.content.ammo)?out.content.ammo:{};out.moduleDisplay=obj(out.moduleDisplay)?out.moduleDisplay:{};return out;}function normalizeOps(value){const out=deepMerge(clone(EMPTY_OPS),obj(value)?value:{});out.seenBlocks=obj(out.seenBlocks)?out.seenBlocks:{};out.badBlocks=obj(out.badBlocks)?out.badBlocks:{};return out;}function migrateLegacyRegistry(legacy){const packages=clone(EMPTY_PACKAGES);const user=clone(EMPTY_USER);const nextOps=clone(EMPTY_OPS);const source=obj(legacy)?legacy:{};const appearance=obj(source.appearance)?source.appearance:{};user.appearance.side=appearance.side||null;user.appearance.vars=clone(obj(appearance.vars)?appearance.vars:{});user.settings=clone(obj(source.settings)?source.settings:{});user.content=clone(obj(source.content)?source.content:{ammo:{}});user.content.ammo=obj(user.content.ammo)?user.content.ammo:{};nextOps.seenBlocks=clone(obj(source.seenBlocks)?source.seenBlocks:{});nextOps.badBlocks=clone(obj(source.badBlocks)?source.badBlocks:{});nextOps.legacyInstalledPacks=clone(obj(source.installedPacks)?source.installedPacks:{});if(String(appearance.css||'')){const legacyCss=String(appearance.css);const violations=shellGeometryViolations(legacyCss);if(violations.length){nextOps.badBlocks['legacy-appearance-css']={at:new Date().toISOString(),error:'legacy shell geometry ownership violation: '+violations.join(', '),preview:legacyCss.slice(0,180)};}else{migrateInstall(packages,{schema:'dcf.module_pack.v1',pack_id:'dcf.appearance.migrated',revision:'legacy-1',contributes:{appearance:{css:legacyCss}}},'legacy-registry');}}const moduleDisplay=obj(source.moduleDisplay)?source.moduleDisplay:{};for(const module of Array.isArray(source.modules)?source.modules:[]){if(!module?.id)continue;const display=moduleDisplay[module.id];const contributes=display?{module_display:{[module.id]:display}}:{};migrateInstall(packages,{schema:'dcf.module_pack.v1',pack_id:String(module.id),revision:String(module.version||'legacy-1'),contributes,modules:[module]},'legacy-registry');}const moduleIds=new Set((source.modules||[]).map((m)=>String(m?.id||'')));for(const[id,display]of Object.entries(moduleDisplay)){if(moduleIds.has(id))continue;migrateInstall(packages,{schema:'dcf.module_pack.v1',pack_id:'dcf.module_display.'+safeId(id),revision:'legacy-1',contributes:{module_display:{[id]:display}}},'legacy-registry');}for(const surface of Object.values(obj(source.surfaces)?source.surfaces:{})){if(!surface?.id)continue;migrateInstall(packages,{schema:'dcf.module_pack.v1',pack_id:'dcf.surface.'+safeId(surface.id),revision:'legacy-1',contributes:{surfaces:[surface]}},'legacy-registry');}for(const type of Object.values(obj(source.contentTypes)?source.contentTypes:{})){if(!type?.id)continue;if(type.id==='ammo'&&JSON.stringify(type)===JSON.stringify(CORE_AMMO_TYPE))continue;migrateInstall(packages,{schema:'dcf.module_pack.v1',pack_id:'dcf.content_type.'+safeId(type.id),revision:'legacy-1',replaces:type.id==='ammo'?['content-type:ammo']:[],contributes:{content_types:[type]}},'legacy-registry');}nextOps.migration={from:'dcf.kernel.registry.v1',to:'source-build-model',at:new Date().toISOString(),package_count:Object.keys(packages.packages).length};return{packages,user,ops:nextOps};}function migrateInstall(state,pack,kind){const rawHash=hash(JSON.stringify(pack));const id=String(pack.pack_id);const revision=String(pack.revision);state.packages[id]={package_id:id,enabled:true,active_revision:revision,source:{kind},revisions:{[revision]:{revision,hash:rawHash,installed_at:new Date().toISOString(),pack}}};state.revision+=1;}function buildRuntime(packagesInput,userInput,opsInput){const ps=normalizePackageState(packagesInput);const us=normalizeUserState(userInput);const os=normalizeOps(opsInput);const claims=new Map();const styles=[];const errors=[];const ownership={};addClaim(claims,errors,ownership,coreClaim('appearance-side','right'));for(const[key,value]of Object.entries(CORE_APPEARANCE.vars))addClaim(claims,errors,ownership,coreClaim('appearance-var:'+key,value));addClaim(claims,errors,ownership,coreClaim('content-type:ammo',CORE_AMMO_TYPE));const enabled=Object.values(ps.packages||{}).filter((entry)=>entry?.enabled!==false).sort((a,b)=>String(a.package_id).localeCompare(String(b.package_id)));for(const entry of enabled){const revision=String(entry.active_revision||'');const stored=entry.revisions?.[revision];if(!stored?.pack){errors.push(`package ${entry.package_id} active revision ${revision} missing`);continue;}const normalized=normalizePack(stored.pack,entry.package_id,revision);if(!normalized.ok){errors.push(...normalized.errors);continue;}for(const style of normalized.styles){if(!us.appearance.safe_mode){const violations=shellGeometryViolations(style.css);if(violations.length)errors.push(`package ${entry.package_id} style violates shell geometry ownership: ${violations.join(', ')}`);styles.push({source_id:entry.package_id+'@'+revision,css:style.css});}}for(const claim of normalized.claims){if(us.appearance.safe_mode&&(claim.address==='appearance-side'||claim.address.startsWith('appearance-var:')))continue;addClaim(claims,errors,ownership,claim);}}if(errors.length)return{ok:false,errors,registry:null};const appearanceVars={};for(const[address,claim]of claims.entries()){if(address.startsWith('appearance-var:'))appearanceVars[address.slice('appearance-var:'.length)]=clone(claim.value);}Object.assign(appearanceVars,clone(us.appearance.vars||{}));const appearanceSide=us.appearance.side||claims.get('appearance-side')?.value||'right';const userCss=us.appearance.safe_mode?'':String(us.appearance.css||'');if(userCss)styles.push({source_id:'user',css:userCss});const contentTypes={};const packageContent={};const surfaces={};const modules=[];const moduleDisplayDefaults={};const settingDefaults={};for(const[address,claim]of claims.entries()){if(address.startsWith('content-type:'))contentTypes[address.slice(13)]=clone(claim.value);else if(address.startsWith('surface:'))surfaces[address.slice(8)]=clone(claim.value);else if(address.startsWith('module:'))modules.push(clone(claim.value));else if(address.startsWith('module-display:'))moduleDisplayDefaults[address.slice(15)]=clone(claim.value);else if(address.startsWith('setting-default:'))settingDefaults[address.slice(16)]=clone(claim.value);else if(address.startsWith('content:')){const rest=address.slice(8);const split=rest.indexOf(':');const type=rest.slice(0,split);const id=rest.slice(split+1);packageContent[type]=packageContent[type]||{};packageContent[type][id]=clone(claim.value);}}const content=clone(packageContent);for(const[type,items]of Object.entries(us.content||{})){content[type]=content[type]||{};for(const[id,item]of Object.entries(items||{}))content[type][id]=clone(item);}for(const type of Object.keys(contentTypes))content[type]=content[type]||{};const settings=merge(settingDefaults,us.settings||{});const moduleDisplay=deepMerge(moduleDisplayDefaults,us.moduleDisplay||{});modules.sort((a,b)=>String(a.id).localeCompare(String(b.id)));const activePackages={};for(const entry of enabled){const rev=String(entry.active_revision||'');const stored=entry.revisions?.[rev];activePackages[`${entry.package_id}@${rev}`]={package_id:entry.package_id,revision:rev,hash:stored?.hash||'',source:entry.source||{}};}const css=styles.map((s)=>`/* DCF source: ${s.source_id} */\n${s.css}`).join('\n');const buildId=hash(JSON.stringify({p:ps.revision,u:us.revision,active:activePackages,ownership}));const registry={schema:'dcf.runtime.registry.v2',kernel_version:V,appearance:{side:appearanceSide,vars:appearanceVars,css,styles},contentTypes,content,surfaces,modules,moduleDisplay,settings,installedPacks:activePackages,seenBlocks:clone(os.seenBlocks),badBlocks:clone(os.badBlocks),build:{schema:'dcf.build.result.v1',build_id:buildId,built_at:new Date().toISOString(),package_revision:ps.revision,user_revision:us.revision,active_packages:Object.keys(activePackages),resource_ownership:ownership,conflicts:[]}};return{ok:true,errors:[],registry};}function coreClaim(address,value){return{address,value:clone(value),provider:'core',replaces:[]};}function addClaim(map,errors,ownership,claim){const current=map.get(claim.address);if(!current){map.set(claim.address,claim);ownership[claim.address]=claim.provider;return;}const coreDefault=current.provider==='core'&&(claim.address==='appearance-side'||claim.address.startsWith('appearance-var:'));const explicitCoreReplacement=current.provider==='core'&&(claim.replaces||[]).includes(claim.address);if(coreDefault||explicitCoreReplacement){map.set(claim.address,claim);ownership[claim.address]=claim.provider;return;}errors.push(`resource conflict ${claim.address}: ${current.provider} vs ${claim.provider}`);}function normalizePack(pack,packageId,revision){const errors=[];if(!pack||pack.schema!=='dcf.module_pack.v1')errors.push(`package ${packageId} has bad schema`);if(String(pack?.pack_id||'')!==String(packageId))errors.push(`package id mismatch ${packageId}`);if(String(pack?.revision||'')!==String(revision))errors.push(`package revision mismatch ${packageId}@${revision}`);if(errors.length)return{ok:false,errors,claims:[],styles:[]};const x=obj(pack.contributes)?pack.contributes:{};const claims=[];const styles=[];const replacements=Array.isArray(pack.replaces)?pack.replaces.map(String):Array.isArray(x.replaces)?x.replaces.map(String):[];const provider=String(packageId)+'@'+String(revision);const push=(address,value)=>claims.push({address,value:clone(value),provider,replaces:replacements});let appearance=deepMerge({},x.appearance||pack.appearance||{});if(x.styles||pack.styles)appearance.vars=merge(appearance.vars||{},styleVars(x.styles||pack.styles));if(x.ui_policy||pack.ui_policy)appearance=deepMerge(appearance,legacy(x.ui_policy||pack.ui_policy));if(appearance.css)styles.push({css:String(appearance.css)});if(appearance.side!=null)push('appearance-side',appearance.side);for(const[key,value]of Object.entries(appearance.vars||{}))push('appearance-var:'+key,value);for(const[key,value]of Object.entries(x.settings||{}))push('setting-default:'+key,value);for(const type of x.content_types||pack.content_types||[])if(type?.id)push('content-type:'+type.id,type);for(const[type,items]of Object.entries(x.content||pack.content||{})){for(const item of items||[])if(item?.id)push(`content:${type}:${item.id}`,item);}for(const surface of x.surfaces||pack.surfaces||[])if(surface?.id)push('surface:'+surface.id,surface);for(const module of pack.modules||[])if(module?.id)push('module:'+module.id,module);eachDisplay(x.module_display||pack.module_display,(id,display)=>push('module-display:'+id,display));return{ok:true,errors:[],claims,styles};}function shellGeometryViolations(css){const violations=[];const text=String(css||'');const ruleRe=/([^{}]+)\{([^{}]*)\}/g;let match;while((match=ruleRe.exec(text))){const selector=match[1].trim();const targetsShell=selector.split(',').some((part)=>{const compounds=part.trim().split(/\s+|>|\+|~/).filter(Boolean);const target=compounds.at(-1)||'';return/\.sh(?=$|[\[:.#])/.test(target);});if(!targetsShell)continue;const body=match[2];for(const property of['position','top','right','bottom','left','width','min-width','max-width','height','min-height','max-height','transform']){if(new RegExp(`(^|;)\\s*${property}\\s*:`,'i').test(body))violations.push(property);}}return[...new Set(violations)];}function installPackage(pack,source={kind:'manual'},options={}){validatePackIdentity(pack);const id=String(pack.pack_id);const revision=String(pack.revision);const rawHash=hash(JSON.stringify(pack));const next=clone(packageState);const existing=next.packages[id];const stored=existing?.revisions?.[revision];if(stored&&stored.hash!==rawHash)throw new Error(`immutable_revision_mismatch:${id}@${revision}`);if(stored&&existing.active_revision===revision&&existing.enabled!==false){return{status:'already_installed',package_id:id,revision,hash:rawHash,snapshot_id:''};}const entry=existing||{package_id:id,enabled:true,active_revision:revision,source,revisions:{}};entry.revisions=obj(entry.revisions)?entry.revisions:{};entry.revisions[revision]=stored||{revision,hash:rawHash,installed_at:new Date().toISOString(),pack:clone(pack)};entry.active_revision=revision;entry.enabled=true;entry.source=source;next.packages[id]=entry;next.revision=Number(next.revision||0)+1;const candidate=preparePackageBuild(next);const snapshotId=snapshot('before_package_install',{package_id:id,revision,hash:rawHash,source});commitPackageState(next,candidate);saveB();if(!options.silent){feedback({event:'module_install',status:'ok',pack_id:id,revision,installed_modules:(pack.modules||[]).map((module)=>module.id),warnings:[],contributions:{count:1,modules:(pack.modules||[]).length,module_display:countDisplay(pack.contributes?.module_display||pack.module_display)},source_hash:rawHash,snapshot_id:snapshotId});}return{status:'installed',package_id:id,revision,hash:rawHash,snapshot_id:snapshotId};}function validatePackIdentity(pack){if(!pack||pack.schema!=='dcf.module_pack.v1')throw new Error('bad_schema');if(!String(pack.pack_id||'').trim())throw new Error('missing_pack_id');if(!String(pack.revision||'').trim())throw new Error('missing_revision');}function preparePackageBuild(next){const candidate=buildRuntime(next,userState,ops);if(!candidate.ok)throw new Error('build_rejected:'+candidate.errors.join('|'));return candidate;}function prepareUserBuild(next){const normalized=normalizeUserState(next);const candidate=buildRuntime(packageState,normalized,ops);if(!candidate.ok)throw new Error('build_rejected:'+candidate.errors.join('|'));return{normalized,candidate};}function commitPackageState(next,candidate=preparePackageBuild(next)){save(P,next);packageState=normalizePackageState(next);reg=candidate.registry;save(R,reg);render();}function commitUserState(next,prepared=prepareUserBuild(next)){save(U,prepared.normalized);userState=prepared.normalized;reg=prepared.candidate.registry;save(R,reg);render();}function mutateUser(reason,mutator){const next=clone(userState);mutator(next);next.revision=Number(next.revision||0)+1;const prepared=prepareUserBuild(next);snapshot(reason);commitUserState(next,prepared);saveB();return next;}function setPackageEnabled(id,enabled){const next=clone(packageState);const entry=next.packages[id];if(!entry)throw new Error('package_not_found');entry.enabled=!!enabled;next.revision=Number(next.revision||0)+1;const candidate=preparePackageBuild(next);snapshot(enabled?'before_package_enable':'before_package_disable',{package_id:id});commitPackageState(next,candidate);saveB();}function uninstallPackage(id){const next=clone(packageState);if(!next.packages[id])throw new Error('package_not_found');delete next.packages[id];next.revision=Number(next.revision||0)+1;const candidate=preparePackageBuild(next);snapshot('before_package_uninstall',{package_id:id});commitPackageState(next,candidate);saveB();}function switchPackageRevision(id,revision){const next=clone(packageState);const entry=next.packages[id];if(!entry?.revisions?.[revision])throw new Error('revision_not_found');entry.active_revision=revision;entry.enabled=true;next.revision=Number(next.revision||0)+1;const candidate=preparePackageBuild(next);snapshot('before_package_revision_switch',{package_id:id,revision});commitPackageState(next,candidate);saveB();}function render(){const appearance=reg.appearance||{};const vars=appearance.vars||{};sh.dataset.side=appearance.side||'right';sh.dataset.anchor=vars.anchor||'bottom';for(const[key,value]of Object.entries(vars))sh.style.setProperty('--'+key,String(value));if(!vars.w)sh.style.setProperty('--w','340px');if(!vars.h)sh.style.setProperty('--h','800px');if(!vars.bottom)sh.style.setProperty('--bottom','112px');if(!vars.top)sh.style.setProperty('--top','12px');root.getElementById('ap').textContent=String(appearance.css||'').slice(0,40000);const ss=surfs();if(!ss.find((x)=>x.id===st.pick))st.pick=ss[0]?.id||'ammo';sh.innerHTML=`<div class="top"><b>DCF ${V}</b><button data-act="tab" data-tab="work" class="${st.tab === 'work' ? 'on' : ''}">工作</button><button data-act="tab" data-tab="maint" class="${st.tab === 'maint' ? 'on' : ''}">维护</button>${st.notice ? `<button data-act="clear"title="${h(st.notice)}">✓</button>` : ''}<span style="flex:1"></span><button data-act="side">侧</button></div><div class="main"><div class="rail">${ss.map((x) => `<button class="surf ${x.id === st.pick ? 'on' : ''}"data-act="pick"data-id="${h(x.id)}"title="${h(x.title)}">${h(x.title)}</button>`).join('')}</div><div class="body">${body()}</div></div>`;enforceViewportFence();}function viewportFenceBounds(){let vv=window.visualViewport,w=Number(vv?.width||document.documentElement.clientWidth||window.innerWidth||1),h=Number(vv?.height||document.documentElement.clientHeight||window.innerHeight||1),x=Number(vv?.offsetLeft||0),y=Number(vv?.offsetTop||0),m=12;return{x,y,width:w,height:h,margin:m,left:x+m,top:y+m,right:x+w-m,bottom:y+h-m,safe_width:Math.max(1,w-m*2),safe_height:Math.max(1,h-m*2)}}function scheduleViewportFence(){if(fenceFrame)return;fenceFrame=requestAnimationFrame(()=>{fenceFrame=0;enforceViewportFence()})}function enforceViewportFence(){let b=viewportFenceBounds(),v=reg.appearance?.vars||{};sh.style.setProperty('width',`min(var(--w,340px),${b.safe_width}px)`,'important');sh.style.setProperty('height',`min(var(--h,800px),${b.safe_height}px)`,'important');sh.style.setProperty('min-width','0px','important');sh.style.setProperty('min-height','0px','important');sh.style.setProperty('max-width',b.safe_width+'px','important');sh.style.setProperty('max-height',b.safe_height+'px','important');sh.style.setProperty('transform','none','important');let r=sh.getBoundingClientRect(),dx=r.left<b.left?b.left-r.left:r.right>b.right?b.right-r.right:0,dy=r.top<b.top?b.top-r.top:r.bottom>b.bottom?b.bottom-r.bottom:0;dx=Math.round(dx);dy=Math.round(dy);sh.style.setProperty('transform',`translate3d(${dx}px,${dy}px,0)`,'important');let a=sh.getBoundingClientRect();fenceState={active:true,viewport:{x:Math.round(b.x),y:Math.round(b.y),width:Math.round(b.width),height:Math.round(b.height),margin:b.margin},safe_rect:{left:Math.round(b.left),top:Math.round(b.top),right:Math.round(b.right),bottom:Math.round(b.bottom),width:Math.round(b.safe_width),height:Math.round(b.safe_height)},desired:{w:String(v.w||''),h:String(v.h||''),top:String(v.top||''),bottom:String(v.bottom||''),anchor:String(v.anchor||'bottom'),side:String(reg.appearance?.side||'right')},correction:{x:dx,y:dy},rect:{x:Math.round(a.x),y:Math.round(a.y),width:Math.round(a.width),height:Math.round(a.height),right:Math.round(a.right),bottom:Math.round(a.bottom)},contained:a.left>=b.left-1&&a.top>=b.top-1&&a.right<=b.right+1&&a.bottom<=b.bottom+1};return fenceState}function surfs(){let out=st.tab==='maint'?[{id:'status',title:'状态',order:1},{id:'recovery',title:'恢复',order:2},{id:'install',title:'包管理',order:3},{id:'ammo',title:'弹药',order:4}]:[{id:'ammo',title:'弹药',order:1}].concat(Object.values(reg.surfaces||{}).map((s)=>({id:s.id,title:s.title||s.id,kind:'surface',order:Number(s.order||50)})));for(const module of reg.modules||[]){const d=display(module.id);const area=String(d.area||module.area||'work').toLowerCase();const maint=area==='maint'||area==='maintenance'||/^维护/.test(module.title||'');if((st.tab==='maint')===maint&&!d.hidden)out.push({id:'module:'+module.id,title:d.title||module.title||module.id,kind:'module',order:Number(d.order||60)});}return dedupe(out).sort((a,b)=>(a.order||50)-(b.order||50)||String(a.title).localeCompare(String(b.title)));}function body(){const id=st.pick||'ammo';if(id==='status'){return card('状态',`<div class="mini">packages ${Object.keys(packageState.packages).length} · modules ${reg.modules.length} · backups ${backs.length} · bad ${Object.keys(ops.badBlocks).length} · traces ${getTraces().length} · maintenance ${maintenanceArmed() ? 'armed' : 'closed'}</div><div class="kv">build ${h(reg.build?.build_id || '')}</div><div class="kv">shell ${h(JSON.stringify(reg.appearance?.vars || {}))}</div><div class="actions"><button data-act="diag">复制诊断</button><button data-act="copytrace">复制证据</button><button data-act="sendtrace" class="on">发送证据</button><button data-act="armmaint">开启一次维护回传</button>${maintenanceArmed() ? `<button data-act="disarmmaint"class="warn">关闭维护回传</button>` : ''}<button data-act="scan">安全扫描</button><button data-act="snap">建恢复点</button><button data-act="clearbad" class="warn">清坏块</button></div>`);}if(id==='recovery'){return card('恢复',`<div class="mini">包和用户状态是事实源；registry 是可重建运行缓存。</div><div class="actions"><button data-act="rollback-last" class="on">回滚上一个</button><button data-act="export">导出系统状态</button><button data-act="safe">${userState.appearance.safe_mode ? '恢复包外观' : '最小外观'}</button></div>${backs.slice(-8).reverse().map((b) => card(b.id, `<div class="mini">${h(b.at)}·${h(b.reason)}</div><button data-act="rollback"data-id="${h(b.id)}">回滚</button>`)).join('')}`);}if(id==='install')return packageManagerPanel();if(id==='ammo')return library('ammo');if(id.startsWith('module:'))return modulePanel(reg.modules.find((m)=>m.id===id.slice(7)));const surface=reg.surfaces[id];return surface?card(surface.title||id,node(surface.body||surface.tree||'')):'<div class="card">没有内容</div>';}function packageManagerPanel(){const entries=Object.values(packageState.packages||{}).sort((a,b)=>String(a.package_id).localeCompare(String(b.package_id)));const list=entries.length?entries.map((entry)=>{const active=String(entry.active_revision||'');const revisions=Object.keys(entry.revisions||{}).sort();const current=entry.revisions?.[active];return`<div class="pkg"><div class="name">${h(entry.package_id)}</div><div class="mini">${entry.enabled === false ? '已停用' : '已启用'} · ${h(active)} · ${h(entry.source?.kind || 'unknown')} · ${h(current?.hash || '')}</div><div class="actions"><button data-act="pkg-toggle" data-id="${h(entry.package_id)}" data-enable="${entry.enabled === false ? '1' : '0'}">${entry.enabled === false ? '启用' : '停用'}</button><button data-act="pkg-uninstall" data-id="${h(entry.package_id)}" class="warn">卸载</button></div>${revisions.length > 1 ? `<div class="seg">${revisions.map((revision)=>`<button data-act="pkg-revision" data-id="${h(entry.package_id)}" data-revision="${h(revision)}" class="${revision === active ? 'on' : ''}">${h(revision)}</button>`).join('')}</div>` : ''}</div>`;}).join(''):'<div class="mini">没有已安装包。</div>';return card('包管理',`<div class="mini">包是不可变输入；安装、更新、停用、卸载和回退都通过重新构建运行 registry 完成。</div><textarea data-role="pack">${h(st.pack)}</textarea><div class="actions"><button data-act="apply" class="on">应用包</button><button data-act="sample">样例</button></div>${list}`);}function modulePanel(module){if(!module)return card('模块','模块不存在。');const bs=blocks(module);const tab=st.mt?.[module.id]||'0';const index=Math.max(0,Math.min(Number(tab)||0,Math.max(0,bs.length-1)));const block=bs[index];return card(module.title||module.id,`${module.description ? `<div class="desc">${h(module.description)}</div>` : ''}<div class="kv">id: ${h(module.id)} · commands ${bs.reduce((n, x) => n + (x.commands || []).length, 0)}</div>${bs.length > 1 ? `<div class="seg">${bs.map((x,i)=>`<button data-act="block-tab" data-module="${h(module.id)}" data-i="${i}" class="${i === index ? 'on' : ''}">${h(x.title || x.id || ('组' + (i + 1)))}</button>`).join('')}</div>` : ''}${block ? cmds(module, block, index) : '<div class="mini">没有命令。</div>'}`);}function blocks(module){let bs=Array.isArray(module?.blocks)?module.blocks.filter(Boolean):[];if(!bs.length&&Array.isArray(module?.commands)&&module.commands.length)bs=[{id:'commands',title:'命令',commands:module.commands}];return bs;}function cmds(module,block,blockIndex){const commands=Array.isArray(block.commands)?block.commands:[];return commands.length?`<div class="actions">${commands.map((command, commandIndex) => `<button data-act="run-cmd"data-module="${h(module.id)}"data-bi="${blockIndex}"data-ci="${commandIndex}"class="${command.primary ? 'on' : ''}"title="${h(command.description || '')}">${h(command.label||command.title||command.id||'运行')}</button>`).join('')}</div>`:'<div class="mini">这个命令组没有命令。</div>';}function library(type){const definition=reg.contentTypes[type]||{};const actions=definition.actions||['fire','copy'];const items=Object.values(reg.content[type]||{});return items.length?items.map((item)=>`<div class="card">${actions.includes('remove') ? `<button class="del warn"data-act="remove"data-type="${type}"data-id="${h(item.id)}">×</button>` : ''}<div class="name">${h(item.title || item.id)}</div><div class="desc">${h(item.purpose || item.kind || '')}</div><div class="actions">${actions.filter((action) => action !== 'remove').map((action) => `<button data-act="${h(action)}"data-type="${type}"data-id="${h(item.id)}"class="${action === 'fire' ? 'on' : ''}">${action==='fire'?'发射':action==='copy'?'复制':action==='update'?'更新':h(action)}</button>`).join('')}</div></div>`).join(''):'<div class="card">没有内容资产</div>';}function card(title,bodyHtml){return`<div class="card"><div class="name">${h(title)}</div>${bodyHtml}</div>`;}function node(value){if(!value)return'';if(typeof value==='string')return h(value);if(Array.isArray(value))return value.map(node).join('');if(value.type==='contentLibrary'||value.type==='content_library')return library(value.content_type||'ammo');if(value.type==='commandGroup'||value.type==='command_group')return modulePanel(reg.modules.find((x)=>x.id===(value.module_id||value.moduleId)));return card(value.title||'',node(value.children||value.body||value.text||''));}function click(event){const element=event.target.closest('[data-act]');if(!element)return;const action=element.dataset.act;try{if(action==='tab'){st.tab=element.dataset.tab;st.pick=surfs()[0]?.id;save(S,st);render();}else if(action==='pick'){st.pick=element.dataset.id;save(S,st);render();}else if(action==='clear'){st.notice='';save(S,st);render();}else if(action==='side')mutateUser('appearance.side',(next)=>{next.appearance.side=(reg.appearance.side==='left'?'right':'left');});else if(action==='diag'){clip(JSON.stringify(diag(),null,2));notice('诊断已复制');}else if(action==='copytrace'){clip(JSON.stringify(maintenanceResponse('manual-copy'),null,2));notice('证据已复制');}else if(action==='sendtrace')void feedback({event:'maintenance_request',status:'ok',response:maintenanceResponse('manual-send')});else if(action==='armmaint'){armMaintenance();notice('已开启一次维护回传，5 分钟内有效');scanPendingMaintenance();}else if(action==='disarmmaint'){disarmMaintenance();notice('维护回传已关闭');}else if(action==='scan')scan(true);else if(action==='snap'){const id=snapshot('manual');saveB();notice('恢复点 '+id);}else if(action==='clearbad'){ops.badBlocks={};saveOps();notice('坏块记录已清理');}else if(action==='rollback-last')rollback();else if(action==='rollback')rollback(element.dataset.id);else if(action==='export'){clip(JSON.stringify({packages:packageState,user:userState,ops},null,2));notice('系统状态已复制');}else if(action==='safe')mutateUser('appearance.safe_mode',(next)=>{next.appearance.safe_mode=!userState.appearance.safe_mode;});else if(action==='apply')applyBox();else if(action==='sample'){clip(JSON.stringify(sample(),null,2));notice('样例已复制');}else if(action==='pkg-toggle'){setPackageEnabled(element.dataset.id,element.dataset.enable==='1');notice('包状态已更新');}else if(action==='pkg-uninstall'&&confirm('卸载包 '+element.dataset.id+'？用户状态不会删除。')){uninstallPackage(element.dataset.id);notice('包已卸载');}else if(action==='pkg-revision'){switchPackageRevision(element.dataset.id,element.dataset.revision);notice('包版本已切换');}else if(action==='fire')fire(element.dataset.type,element.dataset.id);else if(action==='copy')copyItem(element.dataset.type,element.dataset.id);else if(action==='update')updateItem(element.dataset.type,element.dataset.id);else if(action==='remove')removeItem(element.dataset.type,element.dataset.id);else if(action==='block-tab'){st.mt=st.mt||{};st.mt[element.dataset.module]=element.dataset.i;save(S,st);render();}else if(action==='run-cmd')runCmd(element.dataset.module,Number(element.dataset.bi),Number(element.dataset.ci));}catch(error){notice('操作失败：'+String(error?.message||error));}}function scanSoon(ms){clearTimeout(timer);timer=setTimeout(()=>scan(false),ms);}function scan(manual){if(busy)return;busy=true;try{const text=document.body.innerText||'';find(text,'DCF_MODULE_PACK').forEach((raw)=>handlePack(raw,manual));find(text,'DCF_MAINT_REQUEST').forEach((raw)=>handleMaint(raw));Object.values(reg.contentTypes||{}).forEach((type)=>type.marker&&find(text,type.marker).forEach((raw)=>handleContent(type,raw,manual)));saveOps();render();}finally{busy=false;}}function handlePack(raw,manual){const blockHash=hash(raw);if(!manual&&(ops.seenBlocks[blockHash]||ops.badBlocks[blockHash]))return;try{const pack=JSON.parse(raw);const result=installPackage(pack,{kind:manual?'manual-scan':'conversation',block_hash:blockHash},{silent:false});ops.seenBlocks[blockHash]={status:result.status,package_id:result.package_id,revision:result.revision,at:new Date().toISOString()};saveOps();}catch(error){quarantine(blockHash,raw,error);if(manual)notice('坏包已隔离：'+error.message);}}function handleContent(type,raw,manual){const blockHash='content:'+type.id+':'+hash(raw);if(!manual&&(ops.seenBlocks[blockHash]||ops.badBlocks[blockHash]))return;try{const item=JSON.parse(raw);ingest(type.id,item);ops.seenBlocks[blockHash]={status:'ingested',at:new Date().toISOString()};saveOps();}catch(error){quarantine(blockHash,raw,error);if(manual)notice('坏内容已隔离：'+error.message);}}function handleMaint(raw){const blockHash='maint2:'+hash(raw);const state=maintenanceState();const old=state.requests[blockHash];if(old&&['responding','delivered','copied','failed','rejected'].includes(old.status))return;let request;try{request=JSON.parse(raw);if(request?.schema!=='dcf.maintenance.request.v1')throw new Error('bad_maintenance_schema');}catch(error){state.requests[blockHash]={status:'rejected',at:new Date().toISOString(),error:String(error?.message||error)};saveMaintenanceState(state);return;}const requestId=String(request.request_id||('maint-'+Date.now())).slice(0,160);if(!maintenanceArmed()){if(!old||old.status!=='pending'){state.requests[blockHash]={status:'pending',at:new Date().toISOString(),request_id:requestId};saveMaintenanceState(state);notice('收到维护请求；需本地开启一次维护回传');}return;}state.armed_until=0;state.requests[blockHash]={status:'responding',at:new Date().toISOString(),request_id:requestId};saveMaintenanceState(state);const response=maintenanceResponse(requestId,request.actions);void feedback({event:'maintenance_request',status:'ok',response}).then((delivery)=>{const next=maintenanceState();next.requests[blockHash]={...next.requests[blockHash],status:delivery.status,completed_at:new Date().toISOString(),delivery};saveMaintenanceState(next);render();}).catch((error)=>{const next=maintenanceState();next.requests[blockHash]={...next.requests[blockHash],status:'failed',completed_at:new Date().toISOString(),error:String(error?.message||error)};saveMaintenanceState(next);render();});}function scanPendingMaintenance(){const text=document.body.innerText||'';find(text,'DCF_MAINT_REQUEST').forEach((raw)=>handleMaint(raw));}function quarantine(blockHash,raw,error){ops.badBlocks[blockHash]={at:new Date().toISOString(),error:error.message,preview:String(raw).slice(0,180)};ops.seenBlocks[blockHash]={status:'bad',at:new Date().toISOString(),error:error.message};saveOps();}function find(text,tag){const open=LT+LT+LT+tag;const close=tag+GT+GT+GT;const results=[];let position=0;for(;;){const start=text.indexOf(open,position);if(start<0)break;const end=text.indexOf(close,start+open.length);if(end<0)break;results.push(text.slice(start+open.length,end).trim());position=end+close.length;}return results;}function applyBox(){try{const pack=JSON.parse(st.pack||'{}');const result=installPackage(pack,{kind:'manual'},{silent:false});notice(result.status==='already_installed'?'该版本已经安装':'包已安装，可停用、卸载或切换版本');}catch(error){const blockHash=hash(st.pack);quarantine(blockHash,st.pack,error);notice('解析或构建失败，旧运行状态未改变：'+error.message);}}function eachDisplay(value,fn){if(!value)return;if(Array.isArray(value))value.forEach((item)=>item?.id&&fn(item.id,item));else Object.entries(value).forEach(([id,display])=>fn(id,display||{}));}function countDisplay(value){return Array.isArray(value)?value.length:value?Object.keys(value).length:0;}async function runCmd(moduleId,blockIndex,commandIndex){const trace=newTrace(moduleId,blockIndex,commandIndex);const module=reg.modules.find((x)=>x.id===moduleId);const block=blocks(module)[blockIndex];const command=block?.commands?.[commandIndex];if(!module||!block||!command){trace.resolution={status:'failed',reason:!module?'module_not_found':!block?'block_not_found':'command_not_found'};trace.outcome={status:'failed',error:trace.resolution.reason};finishTrace(trace);return notice('命令定位失败');}trace.resolution={status:'ok',module_id:module.id,module_version:String(module.version||''),module_fingerprint:hash(JSON.stringify({id:module.id,blocks:blocks(module)})),block_id:String(block.id||blockIndex),command_id:String(command.id||commandIndex),command_label:String(command.label||command.title||command.id||'')};trace.command={capabilities:(command.steps||[]).map((step)=>String(step.call||''))};saveTrace(trace);const vars={now:new Date().toISOString(),module_id:module.id,module_title:module.title,settings:reg.settings,appearance:reg.appearance};let last=null;try{for(let i=0;i<(command.steps||[]).length;i++){const commandStep=command.steps[i];const payload=interpObj(commandStep.with||{},vars,module);const isAppearance=String(commandStep.call||'').startsWith('appearance.');const step={index:i,capability:String(commandStep.call||''),status:'start',started_at:new Date().toISOString(),input:tracePayload(commandStep.call,payload)};if(isAppearance)step.before=safeRuntimeAppearance(false);trace.steps.push(step);saveTrace(trace);try{last=await call(commandStep.call,payload);step.status='ok';step.result=traceResult(commandStep.call,last);if(isAppearance){step.after=safeRuntimeAppearance(false);step.effect=appearanceEffect(step.before,step.after);}}catch(error){step.status='failed';step.error=safeErrorEvidence(error);if(isAppearance){step.after=safeRuntimeAppearance(false);step.effect=appearanceEffect(step.before,step.after);}step.ended_at=new Date().toISOString();saveTrace(trace);throw error;}step.ended_at=new Date().toISOString();saveTrace(trace);if(commandStep.as){vars[commandStep.as]=last;if(commandStep.as==='appearance')vars.appearance=reg.appearance;}}trace.outcome={status:'ok',result:traceResult('command.result',last)};finishTrace(trace);if(command.feedback===true)await feedback({event:'command_run',status:'ok',trace_id:trace.trace_id,module_id:module.id,command_id:command.id,result:traceResult('command.feedback',last)});notice(command.notice||'命令完成');}catch(error){trace.outcome={status:'failed',error:safeErrorEvidence(error)};finishTrace(trace);notice('命令失败：'+error.message);if(command.feedback===true)await feedback({event:'command_run',status:'failed',trace_id:trace.trace_id,module_id:module.id,command_id:command.id,error:safeErrorEvidence(error)});}}async function call(name,payload){const api={'ui.notice':()=>{notice(payload.text||payload.message||'');return{ok:true};},'clipboard.write':()=>{clip(payload.text||'');return{ok:true};},'composer.read':()=>({text:readComposer()}),'composer.insert':()=>insert(payload.text||'','insert'),'composer.replace':()=>insert(payload.text||'','replace'),'composer.append':()=>insert(payload.text||'','append'),'composer.clear':()=>insert('','replace'),'composer.send':()=>send(),'content.ammo.list':()=>({ammo:Object.values(reg.content.ammo||{})}),'content.ammo.fire':()=>fire('ammo',payload.id,payload.mode),'content.ammo.updatePrompt':()=>updateItem('ammo',payload.id),'content.ammo.remove':()=>removeItem('ammo',payload.id),'content.item.list':()=>({items:Object.values(reg.content[payload.type_id]||{})}),'content.item.fire':()=>fire(payload.type_id,payload.id,payload.mode),'content.item.updatePrompt':()=>updateItem(payload.type_id,payload.id),'content.item.remove':()=>removeItem(payload.type_id,payload.id),'settings.get':()=>({value:Object.prototype.hasOwnProperty.call(reg.settings,payload.key)?reg.settings[payload.key]:payload.defaultValue}),'settings.set':()=>{mutateUser('settings.set',(next)=>{next.settings[payload.key]=payload.value;});return{ok:true};},'appearance.get':()=>clone(reg.appearance),'appearance.set':()=>{setUserAppearance(payload.appearance||payload);return clone(reg.appearance);},'appearance.setVars':()=>{setUserAppearance({vars:payload.vars||payload});return clone(reg.appearance.vars);},'appearance.adjust':()=>adjustAppearance(payload),'appearance.adjustVars':()=>adjustAppearance(payload),'appearance.anchor':()=>{mutateUser('appearance.anchor',(next)=>{next.appearance.vars.anchor=payload.anchor||payload.value||'bottom';if(payload.top!=null)next.appearance.vars.top=px(payload.top);if(payload.bottom!=null)next.appearance.vars.bottom=px(payload.bottom);});return clone(reg.appearance.vars);},'module.list':()=>({modules:reg.modules.map((module)=>({id:module.id,title:module.title,display:display(module.id)}))}),'ui.sugar.module.setDisplay':()=>{const id=payload.module_id||payload.id;mutateUser('module.display',(next)=>{next.moduleDisplay[id]=merge(next.moduleDisplay[id]||{},payload.display||payload);});return{ok:true};},'ui.sugar.surface.install':()=>{throw new Error('surface definitions must be installed as an immutable package');},'package.apply':()=>installPackage(payload.pack||JSON.parse(payload.text||'{}'),{kind:'command'},{silent:payload.silent!==false}),'package.enable':()=>{setPackageEnabled(payload.package_id||payload.id,true);return{ok:true};},'package.disable':()=>{setPackageEnabled(payload.package_id||payload.id,false);return{ok:true};},'package.uninstall':()=>{uninstallPackage(payload.package_id||payload.id);return{ok:true};},'package.switchRevision':()=>{switchPackageRevision(payload.package_id||payload.id,String(payload.revision));return{ok:true};},'maintenance.diagnose':()=>({diagnostics:diag()}),'maintenance.snapshot':()=>({snapshot_id:snapshot(payload.reason||'command')}),'maintenance.clearBadBlocks':()=>{ops.badBlocks={};saveOps();render();return{ok:true};}};if(!api[name])throw new Error('Capability not available: '+name);return await Promise.resolve(api[name]());}function setUserAppearance(input){mutateUser('appearance.set',(next)=>{if(input.side!=null)next.appearance.side=input.side;if(input.vars)next.appearance.vars=merge(next.appearance.vars||{},input.vars);if(input.css!=null)next.appearance.css=String(input.css);for(const key of['w','h','top','bottom','anchor'])if(input[key]!=null)next.appearance.vars[key]=input[key];});}function adjustAppearance(payload){const bounds=viewportFenceBounds();const mins={w:Math.min(260,bounds.safe_width),h:Math.min(360,bounds.safe_height),top:0,bottom:0};const maxs={w:Math.min(680,bounds.safe_width),h:Math.min(1200,bounds.safe_height),top:360,bottom:420};const deltas=payload.delta||payload.deltas||payload;mutateUser('appearance.adjust',(next)=>{next.appearance.vars=merge(next.appearance.vars||{},payload.set||{});for(const key of['w','h','top','bottom']){if(deltas[key]!=null){const current=next.appearance.vars[key]||reg.appearance.vars[key]||CORE_APPEARANCE.vars[key];next.appearance.vars[key]=addPx(current,Number(deltas[key]),Number(payload.min?.[key]??mins[key]),Number(payload.max?.[key]??maxs[key]));}}if(payload.anchor)next.appearance.vars.anchor=payload.anchor;if(payload.side)next.appearance.side=payload.side;});return clone(reg.appearance.vars);}function interpObj(value,vars,module){if(typeof value==='string')return interp(value,vars,module);if(Array.isArray(value))return value.map((item)=>interpObj(item,vars,module));if(obj(value)){const out={};Object.entries(value).forEach(([key,item])=>{out[key]=interpObj(item,vars,module);});return out;}return value;}function interp(value,vars,module){return String(value||'').replace(/\{\{([^}]+)\}\}/g,(_,key)=>{key=key.trim();const result=key.startsWith('template.')?module?.templates?.[key.slice(9)]:path(vars,key);return result==null?'':typeof result==='object'?JSON.stringify(result,null,2):String(result);});}function path(value,key){for(const part of String(key).split('.')){if(value==null)return undefined;value=value[part];}return value;}function ingest(type,item){if(!item?.id)throw new Error('content_missing_id');mutateUser('content.ingest',(next)=>{next.content[type]=next.content[type]||{};next.content[type][item.id]={...item,id:String(item.id),title:String(item.title||item.id)};});}function field(type){return(reg.contentTypes[type]||{}).body_field||'body';}function fire(type,id,mode){const item=reg.content[type]?.[id];if(item)return insert(String(item[field(type)]||item.body||item.text||''),mode==='insert'?'insert':'replace');}function copyItem(type,id){const item=reg.content[type]?.[id];if(item){clip(String(item[field(type)]||item.body||item.text||''));notice('已复制');}}function updateItem(type,id){const item=reg.content[type]?.[id];if(!item)return;const request='请基于当前对话的新洞见更新下面原内容。输出完整可重新摄取内容块；不需要更新则说明理由。\n\n原内容 JSON：\n'+JSON.stringify(item,null,2);readComposer().trim()?(clip(request),notice('更新请求已复制')):(insert(request,'replace'),send());}function removeItem(type,id){if(!confirm('删除内容资产？'))return;mutateUser('content.remove',(next)=>{if(next.content[type])delete next.content[type][id];});}function snapshot(reason,meta={}){const id='rb_'+Date.now().toString(36);backs.push({id,at:new Date().toISOString(),reason,meta,package_state_json:JSON.stringify(packageState),user_state_json:JSON.stringify(userState),ops_json:JSON.stringify(ops),registry_json:JSON.stringify(reg)});backs=backs.slice(-30);return id;}function rollback(id){id=id||backs.at(-1)?.id;if(!id||!confirm('回滚到 '+id+'？'))return;const backup=backs.find((item)=>item.id===id);if(!backup)return;try{if(backup.package_state_json&&backup.user_state_json){const nextPackages=normalizePackageState(JSON.parse(backup.package_state_json));const nextUser=normalizeUserState(JSON.parse(backup.user_state_json));const nextOps=normalizeOps(JSON.parse(backup.ops_json||'{}'));const candidate=buildRuntime(nextPackages,nextUser,nextOps);if(!candidate.ok)throw new Error(candidate.errors.join('|'));save(P,nextPackages);save(U,nextUser);save(O,nextOps);packageState=nextPackages;userState=nextUser;ops=nextOps;reg=candidate.registry;save(R,reg);}else if(backup.registry_json){const migrated=migrateLegacyRegistry(JSON.parse(backup.registry_json));const candidate=buildRuntime(migrated.packages,migrated.user,migrated.ops);if(!candidate.ok)throw new Error(candidate.errors.join('|'));packageState=migrated.packages;userState=migrated.user;ops=migrated.ops;reg=candidate.registry;save(P,packageState);save(U,userState);save(O,ops);save(R,reg);}saveB();render();notice('已回滚');}catch(error){notice('回滚失败：'+error.message);}}function sample(){return{schema:'dcf.module_pack.v1',pack_id:'dcf.sample.appearance_adjust',revision:new Date().toISOString(),modules:[{id:'dcf.sample.adjust',title:'调节样例',commands:[{id:'hplus',label:'高+40',primary:true,steps:[{call:'appearance.adjust',with:{h:40}}]}]}]};}function legacy(policy){const out={};if(policy.chrome_mode)out.chrome=policy.chrome_mode;if(policy.shell_bottom_css)out.vars={bottom:policy.shell_bottom_css};if(policy.panel_width_css)out.vars=merge(out.vars||{},{w:policy.panel_width_css});return out;}function styleVars(styles){const vars={};if(styles.shell_bottom_css)vars.bottom=styles.shell_bottom_css;if(styles.panel_width_css)vars.w=styles.panel_width_css;if(styles.height_css)vars.h=styles.height_css;return vars;}function saveOps(){save(O,ops);reg.seenBlocks=clone(ops.seenBlocks);reg.badBlocks=clone(ops.badBlocks);save(R,reg);}function initTraceStore(){traceMemory=[];try{sessionStorage.setItem(T,JSON.stringify({schema:'dcf.command_trace_store.v2',boot_id:bootId,traces:[]}));traceHealth.storage='session';}catch(error){traceHealth.storage='memory';traceHealth.write_errors++;traceHealth.last_error=String(error?.message||error);}}function getTraces(){if(traceHealth.storage==='memory'&&traceHealth.write_errors>0)return traceMemory;try{const value=JSON.parse(sessionStorage.getItem(T)||'{}');if(value?.schema==='dcf.command_trace_store.v2'&&value.boot_id===bootId&&Array.isArray(value.traces)){traceMemory=value.traces;return traceMemory;}}catch(error){traceHealth.storage='memory';traceHealth.last_error=String(error?.message||error);}return traceMemory;}function saveTrace(trace){try{const traces=getTraces().filter((item)=>item.trace_id!==trace.trace_id);traces.push(trace);traceMemory=traces.slice(-24);sessionStorage.setItem(T,JSON.stringify({schema:'dcf.command_trace_store.v2',boot_id:bootId,traces:traceMemory}));traceHealth.storage='session';}catch(error){const traces=traceMemory.filter((item)=>item.trace_id!==trace.trace_id);traces.push(trace);traceMemory=traces.slice(-24);traceHealth.storage='memory';traceHealth.write_errors++;traceHealth.last_error=String(error?.message||error);}}function newTrace(moduleId,blockIndex,commandIndex){const trace={schema:'dcf.command_trace.v2',trace_id:'tr_'+bootId+'_'+(++traceSeq),boot_id:bootId,kernel_version:V,page:{path:location.pathname},click:{module_id:String(moduleId||''),block_index:blockIndex,command_index:commandIndex},started_at:new Date().toISOString(),started_ms:Date.now(),resolution:{status:'pending'},steps:[],outcome:{status:'running'}};saveTrace(trace);return trace;}function finishTrace(trace){trace.ended_at=new Date().toISOString();trace.duration_ms=Math.max(0,Date.now()-Number(trace.started_ms||Date.now()));delete trace.started_ms;saveTrace(trace);}function tracePayload(capability,value){try{return safeTraceValue(value,'',0,String(capability||'').startsWith('appearance.'));}catch(error){return{trace_error:String(error?.message||error)};}}function traceResult(capability,value){try{return safeTraceValue(value,'',0,String(capability||'').startsWith('appearance.'));}catch(error){return{trace_error:String(error?.message||error)};}}function safeErrorEvidence(error){const raw=String(error?.message||error||'error');const safe=raw.replace(/((?:token|secret|password|authorization|cookie|api.?key)\s*[:=]\s*)\S+/ig,'$1[redacted]').replace(/https?:\/\/[^\s]+/g,(url)=>url.split('?')[0]+'?[redacted]').replace(/[A-Za-z0-9+/_=-]{40,}/g,'[opaque]').slice(0,500);return{type:String(error?.name||'Error').slice(0,80),code:String(error?.code||'').slice(0,80),message:safe,message_length:raw.length,message_hash:hash(raw)};}function safeTraceValue(value,key='',depth=0,appearance=false){if(depth>5)return{truncated:true,type:typeof value};if(value==null||typeof value==='number'||typeof value==='boolean')return value;if(typeof value==='string'){if(appearance||/^(id|mode|anchor|side|status|type|key|capability|reason)$/i.test(key))return value.slice(0,300);return{redacted:true,type:'string',length:value.length};}if(Array.isArray(value))return value.slice(0,30).map((item)=>safeTraceValue(item,key,depth+1,appearance));if(obj(value)){const out={};for(const[itemKey,item]of Object.entries(value).slice(0,50)){if(/text|body|content|prompt|token|secret|authorization|cookie|password|api.?key|template|registry_json|package_state_json|user_state_json/i.test(itemKey))out[itemKey]={redacted:true,type:typeof item,length:typeof item==='string'?item.length:undefined};else out[itemKey]=safeTraceValue(item,itemKey,depth+1,appearance);}return out;}return{redacted:true,type:Object.prototype.toString.call(value)};}function safeRuntimeAppearance(includeCss=true){try{return runtimeAppearance(includeCss);}catch(error){return{observation_error:String(error?.message||error)};}}function runtimeAppearance(includeCss=true){const appearance=reg.appearance||{};const persisted=normalizeUserState(load(U,{})).appearance||{};const computed=getComputedStyle(sh);const rect=sh.getBoundingClientRect();const inlineVars={};const css=String(appearance.css||'');for(const key of['w','h','top','bottom'])inlineVars[key]=sh.style.getPropertyValue('--'+key);return{registry:{side:appearance.side||'right',vars:clone(appearance.vars||{}),persisted_vars:clone(persisted.vars||{}),persisted_matches_memory:JSON.stringify(userState.appearance.vars||{})===JSON.stringify(persisted.vars||{}),css_hash:hash(css),css_length:css.length,style_sources:(appearance.styles||[]).map((style)=>style.source_id),...(includeCss?{css:css.slice(0,8000)}:{})},package_build:{build_id:reg.build?.build_id||'',active_packages:reg.build?.active_packages||[]},viewport_fence:clone(fenceState),recovery:{last_snapshot_id:String(backs.at(-1)?.id||''),snapshot_count:backs.length},shell:{side:sh.dataset.side,anchor:sh.dataset.anchor,inline_vars:inlineVars,computed:{width:computed.width,height:computed.height,top:computed.top,bottom:computed.bottom,left:computed.left,right:computed.right,position:computed.position,overflow:computed.overflow},rect:{x:Math.round(rect.x),y:Math.round(rect.y),width:Math.round(rect.width),height:Math.round(rect.height)},matched_rules:matchedShellRules()}};}function matchedShellRules(){const out=[];for(const[source,style]of[['kernel',root.getElementById('core-style')],['appearance',root.getElementById('ap')]]){try{walkRules(style?.sheet?.cssRules||[],source,out);}catch(error){out.push({source,error:String(error?.message||error)});}}return out.slice(0,30);}function walkRules(rules,source,out){for(const rule of Array.from(rules||[])){if(rule.selectorText){let match=false;for(const selector of String(rule.selectorText).split(',')){try{if(sh.matches(selector.trim())){match=true;break;}}catch{}}if(match)out.push({source,selector:String(rule.selectorText),style:String(rule.style?.cssText||'').slice(0,600)});}if(rule.cssRules)walkRules(rule.cssRules,source,out);}}function diffObject(before,after){const out={};for(const key of new Set([...Object.keys(before||{}),...Object.keys(after||{})]))if(JSON.stringify(before?.[key])!==JSON.stringify(after?.[key]))out[key]={before:before?.[key],after:after?.[key]};return out;}function appearanceEffect(before,after){try{const registryChanges=diffObject(before?.registry?.vars,after?.registry?.vars);const persistedChanges=diffObject(before?.registry?.persisted_vars,after?.registry?.persisted_vars);const computedChanges=diffObject(before?.shell?.computed,after?.shell?.computed);const rectChanges=diffObject(before?.shell?.rect,after?.shell?.rect);const side=before?.registry?.side===after?.registry?.side?{}:{side:{before:before?.registry?.side,after:after?.registry?.side}};const registryChanged=Object.keys(registryChanges).length>0||Object.keys(side).length>0;const computedChanged=Object.keys(computedChanges).length>0;const rectChanged=Object.keys(rectChanges).length>0;const interpretation=registryChanged?(computedChanged||rectChanged?'state_and_render_changed':'state_changed_but_render_overridden'):(computedChanged||rectChanged?'render_changed_without_registry_change':'no_observed_change');return{registry_changed:registryChanged,persisted_changed:Object.keys(persistedChanges).length>0,persisted_matches_memory:after?.registry?.persisted_matches_memory===true,computed_changed:computedChanged,rect_changed:rectChanged,interpretation,changes:{registry:{...registryChanges,...side},persisted:persistedChanges,computed:computedChanges,rect:rectChanges}};}catch(error){return{interpretation:'observation_failed',error:String(error?.message||error)};}}function maintenanceState(){try{const value=JSON.parse(sessionStorage.getItem(M)||'{}');if(value.boot_id!==bootId)return{boot_id:bootId,armed_until:0,requests:{}};return{boot_id:bootId,armed_until:Number(value.armed_until||0),requests:obj(value.requests)?value.requests:{}};}catch{return{boot_id:bootId,armed_until:0,requests:{}};}}function saveMaintenanceState(value){try{value.boot_id=bootId;value.requests=Object.fromEntries(Object.entries(value.requests||{}).slice(-30));sessionStorage.setItem(M,JSON.stringify(value));return true;}catch{return false;}}function maintenanceArmed(){return maintenanceState().armed_until>Date.now();}function armMaintenance(){const value=maintenanceState();value.armed_until=Date.now()+300000;saveMaintenanceState(value);}function disarmMaintenance(){const value=maintenanceState();value.armed_until=0;saveMaintenanceState(value);}function shellAdjusterSummary(){const module=reg.modules.find((item)=>item.id==='dcf.shell_adjuster');if(!module)return null;return{id:String(module.id),title:String(module.title||''),version:String(module.version||''),blocks:blocks(module).map((block)=>({id:String(block.id||''),title:String(block.title||''),commands:(block.commands||[]).map((command)=>({id:String(command.id||''),label:String(command.label||command.title||''),feedback:command.feedback===true,steps:(command.steps||[]).map((step)=>({call:String(step.call||''),with:tracePayload(step.call,step.with||{})}))}))}))};}function packageSummary(){return Object.values(packageState.packages||{}).map((entry)=>({package_id:entry.package_id,enabled:entry.enabled!==false,active_revision:entry.active_revision,revisions:Object.keys(entry.revisions||{}),source:entry.source||{}}));}function maintenanceResponse(id,actions){const allow=new Set(['recent_command_traces','runtime_appearance','shell_adjuster_summary','diagnostics','transport_history','package_summary']);const requested=Array.isArray(actions)?actions.map(String).filter((item)=>allow.has(item)):Array.from(allow);const out={schema:'dcf.maintenance.response.v2',request_id:String(id||('maint-'+Date.now())),actions:requested};if(requested.includes('recent_command_traces'))out.recent_command_traces=getTraces().slice(-12);if(requested.includes('runtime_appearance'))out.runtime_appearance=runtimeAppearance();if(requested.includes('shell_adjuster_summary'))out.shell_adjuster=shellAdjusterSummary();if(requested.includes('diagnostics'))out.diagnostics=diag();if(requested.includes('transport_history'))out.transport_history=transportMemory.slice(-12);if(requested.includes('package_summary'))out.package_summary=packageSummary();return out;}function recordTransport(event){transportMemory.push({at:new Date().toISOString(),...event});transportMemory=transportMemory.slice(-20);}function menu(){if(typeof GM_registerMenuCommand!=='function')return;GM_registerMenuCommand('DCF rollback last',()=>rollback());GM_registerMenuCommand('DCF clear bad blocks',()=>{ops.badBlocks={};saveOps();notice('坏块已清理');});GM_registerMenuCommand('DCF diagnostics',()=>clip(JSON.stringify(diag(),null,2)));GM_registerMenuCommand('DCF copy command evidence',()=>clip(JSON.stringify(maintenanceResponse('menu-copy'),null,2)));GM_registerMenuCommand('DCF arm one maintenance response',()=>{armMaintenance();scanPendingMaintenance();});}function diag(){return{schema:'dcf.diagnostics.v1',kernel_version:V,boot_id:bootId,backups:backs.length,packages:Object.keys(packageState.packages).length,active_packages:reg.build?.active_packages||[],package_source_revision:packageState.revision,user_state_revision:userState.revision,registry_is_derived_cache:true,build_id:reg.build?.build_id||'',build_conflicts:reg.build?.conflicts||[],modules:reg.modules.length,content_types:Object.keys(reg.contentTypes||{}).length,bad_blocks:Object.keys(ops.badBlocks).length,appearance_owned_by_registry:false,appearance_user_state:true,appearance_adjust:true,command_interpreter:true,command_trace_schema:'dcf.command_trace.v2',command_traces:getTraces().length,trace_storage:{...traceHealth},maintenance_armed:maintenanceArmed(),appearance_vars:reg.appearance?.vars,viewport_fence:clone(fenceState)};}async function feedback(data){const feedbackId='fb_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,6);const text=['<<<DCF_FEEDBACK',JSON.stringify({schema:'dcf.feedback.v1',kernel_version:V,feedback_id:feedbackId,at:new Date().toISOString(),...data},null,2),'DCF_FEEDBACK>>>'].join(NL);if(readComposer().trim()){clip(text);notice('输入框非空，反馈已复制');const result={status:'copied',reason:'draft_present',feedback_id:feedbackId};recordTransport(result);return result;}const inserted=insert(text,'replace');if(!inserted?.ok){clip(text);notice('未找到输入框，反馈已复制');const result={status:'copied',reason:'composer_missing',feedback_id:feedbackId};recordTransport(result);return result;}let sent;try{sent=await send();}catch(error){sent={ok:false,error:String(error?.message||error)};}if(sent?.ok){const result={status:'delivered',feedback_id:feedbackId};recordTransport(result);return result;}clip(text);notice('反馈发送失败，已复制');const result={status:'copied',reason:'send_failed',feedback_id:feedbackId};recordTransport(result);return result;}function composer(){for(const selector of['#prompt-textarea','textarea','[contenteditable="true"]','div.ProseMirror']){const element=document.querySelector(selector);if(element instanceof HTMLElement&&vis(element)&&!host.contains(element))return element;}return null;}function readComposer(){const element=composer();return element?(element instanceof HTMLTextAreaElement||element instanceof HTMLInputElement?element.value:element.innerText||element.textContent||''):'';}function insert(text,mode){const element=composer();const value=String(text||'');if(!element){clip(value);return{ok:false};}element.focus();if(element instanceof HTMLTextAreaElement||element instanceof HTMLInputElement){if(mode==='replace')element.value=value;else element.value+=value;element.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:value}));}else{if(mode==='replace')element.textContent='';document.execCommand('insertText',false,value);element.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:value}));}return{ok:true};}async function send(){for(let i=0;i<40;i++){for(const selector of['button[data-testid="send-button"]','button[data-testid="composer-send-button"]','button[aria-label*="Send"]','button[aria-label*="发送"]','form button[type="submit"]']){for(const button of document.querySelectorAll(selector)){if(button instanceof HTMLElement&&vis(button)&&!host.contains(button)&&!button.disabled){button.click();return{ok:true};}}}await new Promise((resolve)=>setTimeout(resolve,150));}return{ok:false};}function display(id){return reg.moduleDisplay[String(id)]||{};}function notice(text){st.notice=String(text||'');save(S,st);render();}function h(value){return String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll("'",'&#39;').replaceAll('"','&quot;');}function vis(element){const rect=element.getBoundingClientRect();return rect.width>0&&rect.height>0;}function obj(value){return value&&typeof value==='object'&&!Array.isArray(value);}function clone(value){return JSON.parse(JSON.stringify(value));}function merge(a,b){return{...(obj(a)?a:{}),...(obj(b)?b:{})};}function deepMerge(a,b){const out=clone(a||{});for(const[key,value]of Object.entries(b||{}))out[key]=obj(value)&&obj(out[key])?deepMerge(out[key],value):clone(value);return out;}function dedupe(items){const seen=new Set();const out=[];items.forEach((item)=>{if(item?.id&&!seen.has(item.id)){seen.add(item.id);out.push(item);}});return out;}function hash(value){let result=5381;const text=String(value||'');for(let i=0;i<text.length;i++)result=((result<<5)+result)^text.charCodeAt(i);return'h'+(result>>>0).toString(16);}function clip(text){if(typeof GM_setClipboard==='function')GM_setClipboard(String(text||''));else navigator.clipboard?.writeText(String(text||''));}function addPx(current,delta,min,max){let value=parseFloat(String(current||'0'))||0;value=Math.max(min,Math.min(max,value+delta));return Math.round(value)+'px';}function px(value){return typeof value==='number'?value+'px':String(value);}function safeId(value){return String(value||'').replace(/[^a-zA-Z0-9_.-]+/g,'_');}function load(key,fallback){try{const raw=localStorage.getItem(key);return raw==null?fallback:JSON.parse(raw);}catch{return fallback;}}function save(key,value){localStorage.setItem(key,JSON.stringify(value));}function saveB(){save(B,backs);}})();
+(function(){'use strict';
+const modules={
+"src/core/utils.js":function(module,exports,require){
+'use strict';
+
+function isObject(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function clone(value) {
+  return value == null ? value : JSON.parse(JSON.stringify(value));
+}
+
+function mergeShallow(base, extra) {
+  return Object.assign({}, isObject(base) ? base : {}, isObject(extra) ? extra : {});
+}
+
+function deepMerge(base, extra) {
+  if (!isObject(base)) return clone(extra);
+  const out = clone(base);
+  if (!isObject(extra)) return out;
+  for (const [key, value] of Object.entries(extra)) {
+    if (isObject(value) && isObject(out[key])) out[key] = deepMerge(out[key], value);
+    else out[key] = clone(value);
+  }
+  return out;
+}
+
+function stableStringify(value) {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  if (isObject(value)) {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function hash(value) {
+  const text = typeof value === 'string' ? value : stableStringify(value);
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return `fnv1a-${(h >>> 0).toString(16).padStart(8, '0')}`;
+}
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function safeId(value) {
+  return String(value || '').trim().replace(/[^a-zA-Z0-9._:-]+/g, '-').replace(/^-+|-+$/g, '') || 'unnamed';
+}
+
+function boundedPush(list, value, limit) {
+  const out = Array.isArray(list) ? list.slice() : [];
+  out.push(value);
+  return out.slice(-Math.max(1, Number(limit) || 1));
+}
+
+function compareRevision(a, b) {
+  const tokenize = (value) => String(value || '').split(/[._-]/).map((part) => (/^\d+$/.test(part) ? Number(part) : part));
+  const aa = tokenize(a);
+  const bb = tokenize(b);
+  const length = Math.max(aa.length, bb.length);
+  for (let i = 0; i < length; i += 1) {
+    const av = aa[i] == null ? 0 : aa[i];
+    const bv = bb[i] == null ? 0 : bb[i];
+    if (av === bv) continue;
+    if (typeof av === 'number' && typeof bv === 'number') return av > bv ? 1 : -1;
+    return String(av).localeCompare(String(bv));
+  }
+  return 0;
+}
+
+module.exports = {
+  isObject,
+  clone,
+  mergeShallow,
+  deepMerge,
+  stableStringify,
+  hash,
+  nowIso,
+  safeId,
+  boundedPush,
+  compareRevision
+};
+
+},
+"src/core/constants.js":function(module,exports,require){
+'use strict';
+
+const VERSION = '0.11.0';
+const ROOT_KEY = 'dcf.state.root.v1';
+const SNAPSHOT_KEY = 'dcf.state.snapshots.v1';
+const RUNTIME_KEY = 'dcf.runtime.registry.v3';
+const RECEIPT_KEY = 'dcf.receipts.v1';
+const UI_KEY = 'dcf.ui.session.v1';
+const CATALOG_STATE_KEY = 'dcf.catalog.state.v1';
+const LEGACY_KEYS = {
+  root: ROOT_KEY,
+  packages: 'dcf.package.sources.v1',
+  user: 'dcf.user.state.v1',
+  ops: 'dcf.kernel.ops.v2',
+  registry: 'dcf.kernel.registry.v1',
+  state: 'dcf.kernel.state.v1',
+  rollback: 'dcf.kernel.rollback.v1'
+};
+const CATALOG_URL = 'https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/catalog/index.json';
+
+module.exports = {
+  VERSION,
+  ROOT_KEY,
+  SNAPSHOT_KEY,
+  RUNTIME_KEY,
+  RECEIPT_KEY,
+  UI_KEY,
+  CATALOG_STATE_KEY,
+  LEGACY_KEYS,
+  CATALOG_URL
+};
+
+},
+"src/core/resources.js":function(module,exports,require){
+'use strict';
+
+const { clone, isObject, safeId } = require("src/core/utils.js");
+
+function normalizeClaim(address, value, provider, mode = 'exclusive', replaces = []) {
+  return {
+    address: String(address),
+    value: clone(value),
+    provider: String(provider),
+    mode: mode === 'extend' ? 'extend' : 'exclusive',
+    replaces: Array.isArray(replaces) ? replaces.map(String) : []
+  };
+}
+
+function styleViolations(css) {
+  const text = String(css || '');
+  const violations = [];
+  const rulePattern = /([^{}]+)\{([^{}]*)\}/g;
+  let match;
+  while ((match = rulePattern.exec(text))) {
+    const selectors = match[1].split(',').map((s) => s.trim());
+    const ownsShell = selectors.some((selector) => selector === '.sh' || selector.endsWith(' .sh') || selector.endsWith('>.sh'));
+    if (!ownsShell) continue;
+    const declarations = match[2].toLowerCase();
+    for (const property of ['position', 'top', 'right', 'bottom', 'left', 'width', 'min-width', 'max-width', 'height', 'min-height', 'max-height', 'transform']) {
+      if (new RegExp(`(^|;)\\s*${property}\\s*:`).test(declarations)) violations.push(property);
+    }
+  }
+  return Array.from(new Set(violations));
+}
+
+function normalizePack(pack, fallbackId, fallbackRevision) {
+  const source = isObject(pack) ? clone(pack) : {};
+  const packageId = String(source.pack_id || source.package_id || fallbackId || '').trim();
+  const revision = String(source.revision || fallbackRevision || '').trim();
+  const errors = [];
+  if (!packageId) errors.push('package id missing');
+  if (!revision) errors.push(`package ${packageId || '<unknown>'} revision missing`);
+  if (source.schema && source.schema !== 'dcf.module_pack.v1' && source.schema !== 'dcf.package.v2') {
+    errors.push(`package ${packageId || '<unknown>'} unsupported schema ${source.schema}`);
+  }
+  const provider = `${packageId}@${revision}`;
+  const claims = [];
+  const styles = [];
+  const replaces = Array.isArray(source.replaces) ? source.replaces.map(String) : [];
+  const contributions = isObject(source.contributes) ? source.contributes : {};
+
+  if (Array.isArray(source.resources)) {
+    for (const resource of source.resources) {
+      if (!resource || !resource.address) continue;
+      claims.push(normalizeClaim(resource.address, resource.value, provider, resource.mode, resource.replaces || replaces));
+    }
+  }
+
+  const appearance = isObject(contributions.appearance) ? contributions.appearance : {};
+  if (appearance.side != null) claims.push(normalizeClaim('appearance-side', appearance.side, provider, 'exclusive', replaces));
+  for (const [key, value] of Object.entries(isObject(appearance.vars) ? appearance.vars : {})) {
+    claims.push(normalizeClaim(`appearance-var:${key}`, value, provider, 'exclusive', replaces));
+  }
+  if (appearance.css) styles.push({ source_id: provider, css: String(appearance.css) });
+  for (const style of Array.isArray(contributions.styles) ? contributions.styles : []) {
+    if (style && style.css) styles.push({ source_id: `${provider}:${safeId(style.id || styles.length)}`, css: String(style.css) });
+  }
+  for (const type of Array.isArray(contributions.content_types) ? contributions.content_types : []) {
+    if (type && type.id) claims.push(normalizeClaim(`content-type:${type.id}`, type, provider, 'exclusive', replaces));
+  }
+  for (const surface of Array.isArray(contributions.surfaces) ? contributions.surfaces : []) {
+    if (surface && surface.id) claims.push(normalizeClaim(`surface:${surface.id}`, surface, provider, 'exclusive', replaces));
+  }
+  for (const module of Array.isArray(source.modules) ? source.modules : []) {
+    if (module && module.id) claims.push(normalizeClaim(`module:${module.id}`, module, provider, 'exclusive', replaces));
+  }
+  for (const [id, display] of Object.entries(isObject(contributions.module_display) ? contributions.module_display : {})) {
+    claims.push(normalizeClaim(`module-display:${id}`, display, provider, 'exclusive', replaces));
+  }
+  for (const [key, value] of Object.entries(isObject(contributions.settings) ? contributions.settings : {})) {
+    claims.push(normalizeClaim(`setting-default:${key}`, value, provider, 'exclusive', replaces));
+  }
+  for (const [type, items] of Object.entries(isObject(contributions.content) ? contributions.content : {})) {
+    const list = Array.isArray(items) ? items : Object.values(isObject(items) ? items : {});
+    for (const item of list) {
+      if (item && item.id) claims.push(normalizeClaim(`content:${type}:${item.id}`, item, provider, 'exclusive', replaces));
+    }
+  }
+
+  for (const style of styles) {
+    const violations = styleViolations(style.css);
+    if (violations.length) errors.push(`package ${packageId} style violates shell geometry ownership: ${violations.join(', ')}`);
+  }
+
+  return { ok: errors.length === 0, errors, package_id: packageId, revision, claims, styles, pack: source };
+}
+
+function resolveAddressClaims(address, addressClaims, ownership, errors) {
+  if (addressClaims.length === 1) {
+    const claim = addressClaims[0];
+    ownership[address] = claim.provider;
+    return claim;
+  }
+
+  if (addressClaims.every((claim) => claim.mode === 'extend')) {
+    const first = addressClaims[0];
+    const mergedValue = addressClaims.slice(1).reduce((value, claim) => {
+      if (Array.isArray(value) && Array.isArray(claim.value)) return value.concat(claim.value);
+      return Object.assign({}, isObject(value) ? value : {}, isObject(claim.value) ? claim.value : {});
+    }, clone(first.value));
+    const provider = addressClaims.map((claim) => claim.provider).sort().join('+');
+    ownership[address] = provider;
+    return Object.assign({}, first, { value: mergedValue, provider });
+  }
+
+  const replacers = addressClaims.filter((claim) => claim.replaces.includes(address));
+  if (replacers.length === 1) {
+    const replacement = replacers[0];
+    ownership[address] = replacement.provider;
+    return replacement;
+  }
+
+  const providers = addressClaims.map((claim) => claim.provider).sort();
+  errors.push(`resource conflict ${address}: ${providers.join(' vs ')}`);
+  return null;
+}
+
+function resolveClaims(allClaims, ownership, errors) {
+  const grouped = new Map();
+  for (const claim of allClaims) {
+    if (!grouped.has(claim.address)) grouped.set(claim.address, []);
+    grouped.get(claim.address).push(claim);
+  }
+  const resolved = new Map();
+  for (const address of Array.from(grouped.keys()).sort()) {
+    const claims = grouped.get(address).slice().sort((a, b) => a.provider.localeCompare(b.provider));
+    const claim = resolveAddressClaims(address, claims, ownership, errors);
+    if (claim) resolved.set(address, claim);
+  }
+  return resolved;
+}
+
+function compilePackageSet(packageState) {
+  const allClaims = [];
+  const ownership = {};
+  const styles = [];
+  const errors = [];
+  const activePackages = {};
+  const packages = isObject(packageState && packageState.packages) ? packageState.packages : {};
+  const enabled = Object.values(packages).filter((entry) => entry && entry.enabled !== false).sort((a, b) => String(a.package_id).localeCompare(String(b.package_id)));
+  for (const entry of enabled) {
+    const revision = String(entry.active_revision || '');
+    const stored = entry.revisions && entry.revisions[revision];
+    if (!stored || !stored.pack) {
+      errors.push(`package ${entry.package_id} active revision ${revision} missing`);
+      continue;
+    }
+    const normalized = normalizePack(stored.pack, entry.package_id, revision);
+    if (!normalized.ok) {
+      errors.push(...normalized.errors);
+      continue;
+    }
+    allClaims.push(...normalized.claims);
+    styles.push(...normalized.styles);
+    activePackages[`${entry.package_id}@${revision}`] = {
+      package_id: entry.package_id,
+      revision,
+      hash: stored.hash || '',
+      source: clone(entry.source || {})
+    };
+  }
+  const claims = resolveClaims(allClaims, ownership, errors);
+  return { ok: errors.length === 0, errors, claims, ownership, styles, activePackages };
+}
+
+module.exports = { normalizePack, compilePackageSet, styleViolations, resolveClaims };
+
+},
+"src/core/projection.js":function(module,exports,require){
+'use strict';
+
+const { clone, deepMerge, hash, isObject } = require("src/core/utils.js");
+const { compilePackageSet } = require("src/core/resources.js");
+
+function buildProjection(root) {
+  const compiled = compilePackageSet(root.packages || {});
+  if (!compiled.ok) return { ok: false, errors: compiled.errors, registry: null };
+  const claims = compiled.claims;
+  const user = root.user || {};
+  const appearanceVars = {};
+  const contentTypes = {};
+  const packageContent = {};
+  const surfaces = {};
+  const modules = [];
+  const moduleDisplayDefaults = {};
+  const settingDefaults = {};
+
+  for (const [address, claim] of claims.entries()) {
+    if (address === 'appearance-side') continue;
+    if (address.startsWith('appearance-var:')) appearanceVars[address.slice(15)] = clone(claim.value);
+    else if (address.startsWith('content-type:')) contentTypes[address.slice(13)] = clone(claim.value);
+    else if (address.startsWith('surface:')) surfaces[address.slice(8)] = clone(claim.value);
+    else if (address.startsWith('module:')) modules.push(clone(claim.value));
+    else if (address.startsWith('module-display:')) moduleDisplayDefaults[address.slice(15)] = clone(claim.value);
+    else if (address.startsWith('setting-default:')) settingDefaults[address.slice(16)] = clone(claim.value);
+    else if (address.startsWith('content:')) {
+      const rest = address.slice(8);
+      const split = rest.indexOf(':');
+      if (split > 0) {
+        const type = rest.slice(0, split);
+        const id = rest.slice(split + 1);
+        packageContent[type] = packageContent[type] || {};
+        packageContent[type][id] = clone(claim.value);
+      }
+    }
+  }
+
+  Object.assign(appearanceVars, clone(user.appearance && user.appearance.vars || {}));
+  const side = user.appearance && user.appearance.side || claims.get('appearance-side') && claims.get('appearance-side').value || 'right';
+  const styleFragments = compiled.styles.slice();
+  if (!(user.appearance && user.appearance.safe_mode) && user.appearance && user.appearance.css) {
+    styleFragments.push({ source_id: 'user', css: String(user.appearance.css) });
+  }
+  const content = clone(packageContent);
+  for (const [type, items] of Object.entries(isObject(user.content) ? user.content : {})) {
+    content[type] = content[type] || {};
+    for (const [id, item] of Object.entries(isObject(items) ? items : {})) content[type][id] = clone(item);
+  }
+  for (const type of Object.keys(contentTypes)) content[type] = content[type] || {};
+  modules.sort((a, b) => String(a.id).localeCompare(String(b.id)));
+
+  const registry = {
+    schema: 'dcf.runtime.registry.v3',
+    kernel_version: root.kernel_version,
+    state_revision: root.revision,
+    state_hash: root.state_hash,
+    appearance: {
+      side,
+      vars: appearanceVars,
+      styles: styleFragments,
+      css: styleFragments.map((style) => `/* DCF source: ${style.source_id} */\n${style.css}`).join('\n')
+    },
+    contentTypes,
+    content,
+    surfaces,
+    modules,
+    moduleDisplay: deepMerge(moduleDisplayDefaults, user.moduleDisplay || {}),
+    settings: Object.assign({}, settingDefaults, clone(user.settings || {})),
+    installedPacks: compiled.activePackages,
+    build: {
+      schema: 'dcf.build.result.v2',
+      build_id: hash({ state_hash: root.state_hash, active: compiled.activePackages, ownership: compiled.ownership }),
+      resource_ownership: compiled.ownership,
+      conflicts: []
+    }
+  };
+  return { ok: true, errors: [], registry };
+}
+
+module.exports = { buildProjection };
+
+},
+"src/core/state.js":function(module,exports,require){
+'use strict';
+
+const { VERSION, LEGACY_KEYS } = require("src/core/constants.js");
+const { clone, deepMerge, hash, isObject, nowIso } = require("src/core/utils.js");
+const { buildProjection } = require("src/core/projection.js");
+const { styleViolations } = require("src/core/resources.js");
+
+const EMPTY_ROOT = {
+  schema: 'dcf.state.root.v1',
+  kernel_version: VERSION,
+  revision: 0,
+  parent_revision: null,
+  state_hash: '',
+  created_at: '',
+  updated_at: '',
+  packages: { schema: 'dcf.package.sources.v2', revision: 0, packages: {} },
+  user: {
+    schema: 'dcf.user.state.v2',
+    revision: 0,
+    appearance: { side: null, vars: {}, css: '', safe_mode: false },
+    settings: {},
+    content: { ammo: {} },
+    moduleDisplay: {},
+    preferences: { ammo_fire_mode: 'insert' }
+  },
+  system: {
+    schema: 'dcf.system.state.v1',
+    migration: null,
+    artifact_index: {},
+  }
+};
+
+function normalizeRoot(value) {
+  const root = deepMerge(EMPTY_ROOT, isObject(value) ? value : {});
+  root.schema = EMPTY_ROOT.schema;
+  root.kernel_version = VERSION;
+  root.revision = Number(root.revision || 0);
+  root.packages = deepMerge(EMPTY_ROOT.packages, root.packages || {});
+  root.packages.packages = isObject(root.packages.packages) ? root.packages.packages : {};
+  root.user = deepMerge(EMPTY_ROOT.user, root.user || {});
+  root.user.content = isObject(root.user.content) ? root.user.content : { ammo: {} };
+  root.user.content.ammo = isObject(root.user.content.ammo) ? root.user.content.ammo : {};
+  root.user.settings = isObject(root.user.settings) ? root.user.settings : {};
+  root.user.moduleDisplay = isObject(root.user.moduleDisplay) ? root.user.moduleDisplay : {};
+  root.system = deepMerge(EMPTY_ROOT.system, root.system || {});
+  root.system.artifact_index = isObject(root.system.artifact_index) ? root.system.artifact_index : {};
+  root.state_hash = computeStateHash(root);
+  return root;
+}
+
+function computeStateHash(root) {
+  const copy = clone(root);
+  delete copy.state_hash;
+  delete copy.updated_at;
+  return hash(copy);
+}
+
+function finalizeCandidate(previous, candidate) {
+  const next = normalizeRoot(candidate);
+  next.parent_revision = previous ? previous.revision : null;
+  next.revision = previous ? previous.revision + 1 : Math.max(1, Number(next.revision || 0));
+  next.created_at = previous && previous.created_at || next.created_at || nowIso();
+  next.updated_at = nowIso();
+  next.kernel_version = VERSION;
+  next.packages.revision = Number(next.packages.revision || 0);
+  next.user.revision = Number(next.user.revision || 0);
+  next.state_hash = computeStateHash(next);
+  return next;
+}
+
+function validateRoot(root) {
+  const errors = [];
+  if (!root || root.schema !== EMPTY_ROOT.schema) errors.push('invalid root schema');
+  if (!root.packages || !isObject(root.packages.packages)) errors.push('invalid package state');
+  if (!root.user || !isObject(root.user.content)) errors.push('invalid user state');
+  if (!root.system || !isObject(root.system.artifact_index)) errors.push('invalid system state');
+  if (!errors.length) {
+    const build = buildProjection(root);
+    if (!build.ok) errors.push(...build.errors);
+  }
+  return { ok: errors.length === 0, errors };
+}
+
+function synthesizeLegacyPack(id, revision, contributes, modules) {
+  return {
+    schema: 'dcf.module_pack.v1',
+    pack_id: id,
+    revision,
+    contributes: contributes || {},
+    modules: modules || []
+  };
+}
+
+function addPackRevision(root, pack, source) {
+  const id = String(pack.pack_id);
+  const revision = String(pack.revision);
+  const packHash = hash(pack);
+  const current = root.packages.packages[id];
+  if (current && current.revisions && current.revisions[revision]) {
+    if (current.revisions[revision].hash !== packHash) throw new Error(`immutable revision conflict ${id}@${revision}`);
+    return;
+  }
+  const entry = current || { package_id: id, enabled: true, active_revision: revision, source: clone(source || {}), revisions: {} };
+  entry.revisions[revision] = { revision, hash: packHash, installed_at: nowIso(), pack: clone(pack) };
+  entry.active_revision = revision;
+  entry.enabled = true;
+  entry.source = clone(source || entry.source || {});
+  root.packages.packages[id] = entry;
+  root.packages.revision += 1;
+}
+
+function migrateLegacyRegistry(registry) {
+  const root = normalizeRoot(EMPTY_ROOT);
+  const source = isObject(registry) ? registry : {};
+  const appearance = isObject(source.appearance) ? source.appearance : {};
+  root.user.appearance.side = appearance.side || null;
+  root.user.appearance.vars = clone(isObject(appearance.vars) ? appearance.vars : {});
+  root.user.appearance.css = String(appearance.css || '');
+  root.user.settings = clone(isObject(source.settings) ? source.settings : {});
+  root.user.content = clone(isObject(source.content) ? source.content : { ammo: {} });
+  root.user.content.ammo = isObject(root.user.content.ammo) ? root.user.content.ammo : {};
+  root.user.moduleDisplay = clone(isObject(source.moduleDisplay) ? source.moduleDisplay : {});
+
+  for (const module of Array.isArray(source.modules) ? source.modules : []) {
+    if (!module || !module.id) continue;
+    addPackRevision(root, synthesizeLegacyPack(String(module.id), String(module.version || 'legacy-1'), {
+      module_display: source.moduleDisplay && source.moduleDisplay[module.id] ? { [module.id]: source.moduleDisplay[module.id] } : {}
+    }, [module]), { kind: 'legacy-registry' });
+  }
+  for (const surface of Object.values(isObject(source.surfaces) ? source.surfaces : {})) {
+    if (!surface || !surface.id) continue;
+    addPackRevision(root, synthesizeLegacyPack(`dcf.surface.${surface.id}`, 'legacy-1', { surfaces: [surface] }), { kind: 'legacy-registry' });
+  }
+  for (const type of Object.values(isObject(source.contentTypes) ? source.contentTypes : {})) {
+    if (!type || !type.id) continue;
+    addPackRevision(root, synthesizeLegacyPack(`dcf.content-type.${type.id}`, 'legacy-1', { content_types: [type] }), { kind: 'legacy-registry' });
+  }
+  root.system.migration = { from: LEGACY_KEYS.registry, at: nowIso() };
+  return finalizeCandidate(null, root);
+}
+
+function migrateFromV10(packages, user, ops) {
+  const root = normalizeRoot(EMPTY_ROOT);
+  root.packages = deepMerge(root.packages, packages || {});
+  root.packages.schema = 'dcf.package.sources.v2';
+  root.user = deepMerge(root.user, user || {});
+  root.user.schema = 'dcf.user.state.v2';
+  const legacyOps = isObject(ops) ? ops : {};
+  root.system.migration = {
+    from: 'dcf 0.10 source-build stores',
+    at: nowIso(),
+    legacy_ops_summary: {
+      seen_blocks: Object.keys(isObject(legacyOps.seenBlocks) ? legacyOps.seenBlocks : {}).length,
+      bad_blocks: Object.keys(isObject(legacyOps.badBlocks) ? legacyOps.badBlocks : {}).length,
+      had_previous_migration: !!legacyOps.migration
+    }
+  };
+  return finalizeCandidate(null, root);
+}
+
+function loadOrMigrate(storage, standardPacks) {
+  const existing = storage.get(LEGACY_KEYS.root || 'dcf.state.root.v1', null);
+  let root;
+  if (existing && existing.schema === EMPTY_ROOT.schema) {
+    root = normalizeRoot(existing);
+  } else {
+    const p = storage.get(LEGACY_KEYS.packages, null);
+    const u = storage.get(LEGACY_KEYS.user, null);
+    const o = storage.get(LEGACY_KEYS.ops, null);
+    if (p && u) root = migrateFromV10(p, u, o);
+    else root = migrateLegacyRegistry(storage.get(LEGACY_KEYS.registry, {}));
+  }
+  if (!Object.keys(root.packages.packages).length && Array.isArray(standardPacks)) {
+    const candidate = clone(root);
+    for (const pack of standardPacks) addPackRevision(candidate, pack, { kind: 'embedded-standard' });
+    root = finalizeCandidate(root, candidate);
+  }
+  const userCss = String(root.user.appearance.css || '');
+  const violations = styleViolations(userCss);
+  if (violations.length) {
+    const candidate = clone(root);
+    candidate.user.appearance.css = '';
+    candidate.user.revision += 1;
+    candidate.system.migration = Object.assign({}, candidate.system.migration || {}, { quarantined_user_css: { at: nowIso(), violations, preview: userCss.slice(0, 180) } });
+    root = finalizeCandidate(root, candidate);
+  }
+  root.state_hash = computeStateHash(root);
+  return root;
+}
+
+module.exports = {
+  EMPTY_ROOT,
+  normalizeRoot,
+  computeStateHash,
+  finalizeCandidate,
+  validateRoot,
+  addPackRevision,
+  migrateLegacyRegistry,
+  migrateFromV10,
+  loadOrMigrate
+};
+
+},
+"src/core/artifacts.js":function(module,exports,require){
+'use strict';
+
+const { clone, hash, isObject } = require("src/core/utils.js");
+
+const BLOCKS = [
+  { marker: 'DCF_AMMO', type: 'ammo' },
+  { marker: 'DCF_MODULE_PACK', type: 'package' }
+];
+
+function extractBlocks(text, marker) {
+  const source = String(text || '');
+  const startToken = `<<<${marker}`;
+  const endToken = `${marker}>>>`;
+  const blocks = [];
+  let cursor = 0;
+  while (cursor < source.length) {
+    const start = source.indexOf(startToken, cursor);
+    if (start < 0) break;
+    const end = source.indexOf(endToken, start + startToken.length);
+    if (end < 0) break;
+    const bodyStart = source.indexOf('{', start + startToken.length);
+    if (bodyStart < 0 || bodyStart >= end) { cursor = end + endToken.length; continue; }
+    blocks.push(source.slice(bodyStart, end).trim());
+    cursor = end + endToken.length;
+  }
+  return blocks;
+}
+
+function normalizeAmmo(payload) {
+  if (!isObject(payload) || !payload.id) throw new Error('DCF_AMMO requires id');
+  const item = clone(payload);
+  item.id = String(item.id);
+  item.title = String(item.title || item.id);
+  item.body = String(item.body || '');
+  return {
+    schema: 'dcf.artifact.v1',
+    type: 'ammo',
+    identity: `ammo:${item.id}:${hash(item)}`,
+    logical_id: `ammo:${item.id}`,
+    payload: item
+  };
+}
+
+function normalizePackage(payload) {
+  if (!isObject(payload) || !(payload.pack_id || payload.package_id) || !payload.revision) throw new Error('DCF_MODULE_PACK requires pack_id and revision');
+  const pack = clone(payload);
+  pack.pack_id = String(pack.pack_id || pack.package_id);
+  pack.revision = String(pack.revision);
+  pack.schema = pack.schema || 'dcf.module_pack.v1';
+  const contentHash = hash(pack);
+  return {
+    schema: 'dcf.artifact.v1',
+    type: 'package',
+    identity: `package:${pack.pack_id}:${pack.revision}:${contentHash}`,
+    logical_id: `package:${pack.pack_id}:${pack.revision}`,
+    payload: pack
+  };
+}
+
+function decodeArtifacts(text) {
+  const artifacts = [];
+  const errors = [];
+  for (const block of BLOCKS) {
+    for (const raw of extractBlocks(text, block.marker)) {
+      const trimmed = raw.trim();
+      if (!trimmed || /^(?:\.\.\.|…+|placeholder|example)$/i.test(trimmed)) continue;
+      if (!trimmed.startsWith('{') || !/["'](?:schema|id|pack_id|package_id)["']\s*:/.test(trimmed)) continue;
+      try {
+        const payload = JSON.parse(trimmed);
+        artifacts.push(block.type === 'ammo' ? normalizeAmmo(payload) : normalizePackage(payload));
+      } catch (error) {
+        errors.push({ marker: block.marker, error: String(error && error.message || error), preview: { redacted: true, length: raw.length, hash: hash(raw) } });
+      }
+    }
+  }
+  return { artifacts, errors };
+}
+
+module.exports = { decodeArtifacts, normalizeAmmo, normalizePackage, extractBlocks };
+
+},
+"src/core/receipts.js":function(module,exports,require){
+'use strict';
+
+const { RECEIPT_KEY } = require("src/core/constants.js");
+const { boundedPush, clone, nowIso } = require("src/core/utils.js");
+
+function createReceiptStore(storage, limit = 80) {
+  function list() {
+    const value = storage.get(RECEIPT_KEY, []);
+    return Array.isArray(value) ? value : [];
+  }
+  function append(receipt) {
+    const safe = clone(receipt);
+    safe.at = safe.at || nowIso();
+    storage.set(RECEIPT_KEY, boundedPush(list(), safe, limit));
+    return safe;
+  }
+  function clear() {
+    storage.set(RECEIPT_KEY, []);
+  }
+  return { list, append, clear };
+}
+
+module.exports = { createReceiptStore };
+
+},
+"src/core/transactions.js":function(module,exports,require){
+'use strict';
+
+const { ROOT_KEY, SNAPSHOT_KEY, RUNTIME_KEY } = require("src/core/constants.js");
+const { clone, nowIso, boundedPush } = require("src/core/utils.js");
+const { finalizeCandidate, validateRoot, addPackRevision } = require("src/core/state.js");
+const { buildProjection } = require("src/core/projection.js");
+
+function createTransactionEngine(storage, receiptStore, options = {}) {
+  const snapshotLimit = Number(options.snapshotLimit || 20);
+  let root = options.initialRoot;
+  let registry = null;
+
+  function persistProjection(nextRegistry) {
+    registry = nextRegistry;
+    storage.set(RUNTIME_KEY, nextRegistry);
+  }
+
+  function recordArtifact(candidate, identity, logicalId) {
+    const index = candidate.system.artifact_index || (candidate.system.artifact_index = {});
+    index[identity] = { at: nowIso(), logical_id: logicalId || identity };
+    const entries = Object.entries(index);
+    if (entries.length > 512) {
+      entries.sort((a, b) => String(a[1].at || '').localeCompare(String(b[1].at || '')));
+      for (const [key] of entries.slice(0, entries.length - 512)) delete index[key];
+    }
+  }
+
+  function initialize() {
+    const built = buildProjection(root);
+    if (!built.ok) throw new Error(`DCF build failed at boot: ${built.errors.join('; ')}`);
+    storage.set(ROOT_KEY, root);
+    persistProjection(built.registry);
+    return { root, registry };
+  }
+
+  function snapshots() {
+    const value = storage.get(SNAPSHOT_KEY, []);
+    return Array.isArray(value) ? value : [];
+  }
+
+  function saveSnapshot(value, reason) {
+    const record = { at: nowIso(), reason, revision: value.revision, state_hash: value.state_hash, root: clone(value) };
+    storage.set(SNAPSHOT_KEY, boundedPush(snapshots(), record, snapshotLimit));
+    return record;
+  }
+
+  function transact(intent, reducer) {
+    const started = Date.now();
+    const previous = root;
+    const candidate = clone(previous);
+    let reduction;
+    try {
+      reduction = reducer(candidate) || {};
+    } catch (error) {
+      return receiptStore.append({
+        schema: 'dcf.receipt.v1', receipt_id: `r-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+        intent: clone(intent), status: 'rejected', stage: 'transition', error: String(error && error.message || error), duration_ms: Date.now() - started
+      });
+    }
+    const finalized = finalizeCandidate(previous, candidate);
+    const validation = validateRoot(finalized);
+    if (!validation.ok) {
+      return receiptStore.append({
+        schema: 'dcf.receipt.v1', receipt_id: `r-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+        intent: clone(intent), status: 'rejected', stage: 'validation', errors: validation.errors, previous_state_hash: previous.state_hash,
+        candidate_state_hash: finalized.state_hash, duration_ms: Date.now() - started
+      });
+    }
+    const built = buildProjection(finalized);
+    if (!built.ok) {
+      return receiptStore.append({
+        schema: 'dcf.receipt.v1', receipt_id: `r-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+        intent: clone(intent), status: 'rejected', stage: 'projection', errors: built.errors, previous_state_hash: previous.state_hash,
+        candidate_state_hash: finalized.state_hash, duration_ms: Date.now() - started
+      });
+    }
+    saveSnapshot(previous, intent.type || 'transaction');
+    storage.set(ROOT_KEY, finalized);
+    root = finalized;
+    persistProjection(built.registry);
+    const receipt = receiptStore.append({
+      schema: 'dcf.receipt.v1', receipt_id: `r-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+      intent: clone(intent), status: 'committed', previous_revision: previous.revision, revision: finalized.revision,
+      previous_state_hash: previous.state_hash, state_hash: finalized.state_hash, build_id: built.registry.build.build_id,
+      effects: clone(reduction.effects || []), observations: clone(reduction.observations || []), duration_ms: Date.now() - started
+    });
+    return receipt;
+  }
+
+  function installPackage(pack, source) {
+    return transact({ type: 'package.install', package_id: pack.pack_id, revision: pack.revision, source }, (candidate) => {
+      addPackRevision(candidate, pack, source);
+      return {};
+    });
+  }
+
+  function setPackageEnabled(packageId, enabled) {
+    return transact({ type: enabled ? 'package.enable' : 'package.disable', package_id: packageId }, (candidate) => {
+      const entry = candidate.packages.packages[packageId];
+      if (!entry) throw new Error(`package ${packageId} not installed`);
+      entry.enabled = !!enabled;
+      candidate.packages.revision += 1;
+    });
+  }
+
+  function uninstallPackage(packageId) {
+    return transact({ type: 'package.uninstall', package_id: packageId }, (candidate) => {
+      if (!candidate.packages.packages[packageId]) throw new Error(`package ${packageId} not installed`);
+      delete candidate.packages.packages[packageId];
+      candidate.packages.revision += 1;
+    });
+  }
+
+  function switchPackageRevision(packageId, revision) {
+    return transact({ type: 'package.switch-revision', package_id: packageId, revision }, (candidate) => {
+      const entry = candidate.packages.packages[packageId];
+      if (!entry || !entry.revisions || !entry.revisions[revision]) throw new Error(`package revision ${packageId}@${revision} missing`);
+      entry.active_revision = revision;
+      entry.enabled = true;
+      candidate.packages.revision += 1;
+    });
+  }
+
+  function upsertContent(type, item, artifactIdentity) {
+    return transact({ type: 'content.upsert', content_type: type, content_id: item.id, artifact_identity: artifactIdentity }, (candidate) => {
+      candidate.user.content[type] = candidate.user.content[type] || {};
+      candidate.user.content[type][item.id] = clone(item);
+      candidate.user.revision += 1;
+      if (artifactIdentity) recordArtifact(candidate, artifactIdentity, `${type}:${item.id}`);
+    });
+  }
+
+  function removeContent(type, id) {
+    return transact({ type: 'content.remove', content_type: type, content_id: id }, (candidate) => {
+      if (candidate.user.content[type]) delete candidate.user.content[type][id];
+      candidate.user.revision += 1;
+    });
+  }
+
+  function setUserPath(path, value) {
+    return transact({ type: 'user.set', path: path.join('.') }, (candidate) => {
+      let cursor = candidate.user;
+      for (let i = 0; i < path.length - 1; i += 1) {
+        cursor[path[i]] = cursor[path[i]] && typeof cursor[path[i]] === 'object' ? cursor[path[i]] : {};
+        cursor = cursor[path[i]];
+      }
+      cursor[path[path.length - 1]] = clone(value);
+      candidate.user.revision += 1;
+    });
+  }
+
+  function applyArtifact(artifact, source) {
+    if (root.system.artifact_index[artifact.identity]) {
+      return receiptStore.append({
+        schema: 'dcf.receipt.v1', receipt_id: `r-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+        intent: { type: 'artifact.apply', artifact_identity: artifact.identity, source }, status: 'ignored', reason: 'already-applied'
+      });
+    }
+    if (artifact.type === 'ammo') return upsertContent('ammo', artifact.payload, artifact.identity);
+    if (artifact.type === 'package') {
+      return transact({ type: 'artifact.apply', artifact_type: 'package', artifact_identity: artifact.identity, source }, (candidate) => {
+        addPackRevision(candidate, artifact.payload, source);
+        recordArtifact(candidate, artifact.identity, artifact.logical_id);
+      });
+    }
+    return receiptStore.append({ schema: 'dcf.receipt.v1', intent: { type: 'artifact.apply' }, status: 'rejected', error: `unsupported artifact type ${artifact.type}` });
+  }
+
+  function rollbackTo(snapshotRevision) {
+    const record = snapshots().slice().reverse().find((item) => Number(item.revision) === Number(snapshotRevision));
+    if (!record) return receiptStore.append({ schema: 'dcf.receipt.v1', intent: { type: 'state.rollback', revision: snapshotRevision }, status: 'rejected', error: 'snapshot not found' });
+    return transact({ type: 'state.rollback', revision: snapshotRevision }, (candidate) => {
+      const restored = clone(record.root);
+      for (const key of Object.keys(candidate)) delete candidate[key];
+      Object.assign(candidate, restored);
+    });
+  }
+
+  function getRoot() { return root; }
+  function getRegistry() { return registry; }
+
+  return {
+    initialize,
+    transact,
+    installPackage,
+    setPackageEnabled,
+    uninstallPackage,
+    switchPackageRevision,
+    upsertContent,
+    removeContent,
+    setUserPath,
+    applyArtifact,
+    rollbackTo,
+    snapshots,
+    getRoot,
+    getRegistry
+  };
+}
+
+module.exports = { createTransactionEngine };
+
+},
+"src/runtime/storage.js":function(module,exports,require){
+'use strict';
+
+function createStorage(api = globalThis) {
+  const memory = new Map();
+  function get(key, fallback) {
+    try {
+      if (typeof api.GM_getValue === 'function') return api.GM_getValue(key, fallback);
+      if (api.localStorage) {
+        const raw = api.localStorage.getItem(key);
+        return raw == null ? fallback : JSON.parse(raw);
+      }
+    } catch (_) {}
+    return memory.has(key) ? memory.get(key) : fallback;
+  }
+  function set(key, value) {
+    if (typeof api.GM_setValue === 'function') return api.GM_setValue(key, value);
+    if (api.localStorage) return api.localStorage.setItem(key, JSON.stringify(value));
+    memory.set(key, value);
+    return undefined;
+  }
+  function remove(key) {
+    if (typeof api.GM_deleteValue === 'function') return api.GM_deleteValue(key);
+    if (api.localStorage) return api.localStorage.removeItem(key);
+    memory.delete(key);
+    return undefined;
+  }
+  return { get, set, remove };
+}
+
+module.exports = { createStorage };
+
+},
+"src/runtime/effects.js":function(module,exports,require){
+'use strict';
+
+const { hash } = require("src/core/utils.js");
+
+function safeEffect(effect) {
+  const copy = Object.assign({}, effect);
+  if ('text' in copy) {
+    const text = String(copy.text || '');
+    copy.text = { redacted: true, length: text.length, hash: hash(text) };
+  }
+  return copy;
+}
+
+function createEffectRunner(host, receiptStore) {
+  async function run(effect, context = {}) {
+    const started = Date.now();
+    try {
+      let result;
+      if (effect.type === 'composer.insert') result = await host.insertComposer(String(effect.text || ''), { send: false });
+      else if (effect.type === 'composer.send') result = await host.insertComposer(String(effect.text || ''), { send: true });
+      else if (effect.type === 'clipboard.write') result = await host.copy(String(effect.text || ''));
+      else if (effect.type === 'notification') result = await host.notify(String(effect.text || 'DCF'));
+      else throw new Error(`unsupported effect ${effect.type}`);
+      receiptStore.append({ schema: 'dcf.effect.receipt.v1', effect: safeEffect(effect), context, status: 'ok', result, duration_ms: Date.now() - started });
+      return { ok: true, result };
+    } catch (error) {
+      receiptStore.append({ schema: 'dcf.effect.receipt.v1', effect: safeEffect(effect), context, status: 'error', error: String(error && error.message || error), duration_ms: Date.now() - started });
+      return { ok: false, error };
+    }
+  }
+  return { run };
+}
+
+module.exports = { createEffectRunner };
+
+},
+"src/runtime/commands.js":function(module,exports,require){
+'use strict';
+
+const { clone, hash } = require("src/core/utils.js");
+
+function sanitizeValue(value, key = '') {
+  const lower = String(key).toLowerCase();
+  if (/text|body|prompt|content|token|secret|password|authorization|cookie/.test(lower)) {
+    const text = String(value == null ? '' : value);
+    return { redacted: true, length: text.length, hash: hash(text) };
+  }
+  if (Array.isArray(value)) return value.map((item) => sanitizeValue(item, key));
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const [childKey, childValue] of Object.entries(value)) out[childKey] = sanitizeValue(childValue, childKey);
+    return out;
+  }
+  return value;
+}
+
+function commandList(module) {
+  const out = [];
+  for (const command of Array.isArray(module.commands) ? module.commands : []) out.push({ block: null, command });
+  for (const block of Array.isArray(module.blocks) ? module.blocks : []) {
+    for (const command of Array.isArray(block.commands) ? block.commands : []) out.push({ block, command });
+  }
+  return out;
+}
+
+function createCommandRunner(engine, effectRunner, receiptStore, shellObserver) {
+  async function runStep(step, context) {
+    const call = String(step.call || '');
+    const args = clone(step.with || step.args || {});
+    const before = {
+      state_hash: engine.getRoot().state_hash,
+      revision: engine.getRoot().revision,
+      appearance: clone(engine.getRegistry().appearance.vars)
+    };
+    let result;
+    if (call === 'appearance.adjust') {
+      result = engine.transact({ type: 'capability.appearance.adjust', module_id: context.module_id, command_id: context.command_id }, (candidate) => {
+        const vars = candidate.user.appearance.vars || (candidate.user.appearance.vars = {});
+        for (const key of ['w', 'h', 'top', 'bottom']) {
+          if (args[key] == null) continue;
+          const current = Number.parseInt(String(vars[key] || engine.getRegistry().appearance.vars[key] || '0'), 10) || 0;
+          const minimum = key === 'w' ? 240 : key === 'h' ? 300 : 0;
+          vars[key] = `${Math.max(minimum, current + Number(args[key]))}px`;
+        }
+        if (args.offset != null) {
+          const anchor = vars.anchor || engine.getRegistry().appearance.vars.anchor || 'bottom';
+          const key = anchor === 'top' ? 'top' : 'bottom';
+          const current = Number.parseInt(String(vars[key] || engine.getRegistry().appearance.vars[key] || (key === 'top' ? '12px' : '112px')), 10) || 0;
+          vars[key] = `${Math.max(0, current + Number(args.offset))}px`;
+        }
+        if (args.anchor) vars.anchor = args.anchor === 'top' ? 'top' : 'bottom';
+        if (args.side === 'toggle') candidate.user.appearance.side = engine.getRegistry().appearance.side === 'left' ? 'right' : 'left';
+        else if (args.side) candidate.user.appearance.side = args.side === 'left' ? 'left' : 'right';
+        candidate.user.revision += 1;
+      });
+    } else if (call === 'appearance.set') {
+      result = engine.transact({ type: 'capability.appearance.set', module_id: context.module_id, command_id: context.command_id }, (candidate) => {
+        if (args.side) candidate.user.appearance.side = args.side === 'left' ? 'left' : 'right';
+        for (const [key, value] of Object.entries(args.vars || {})) candidate.user.appearance.vars[key] = value;
+        candidate.user.revision += 1;
+      });
+    } else if (call === 'settings.set') {
+      if (!args.key) throw new Error('settings.set requires key');
+      result = engine.setUserPath(['settings', String(args.key)], args.value);
+    } else if (call === 'content.upsert') {
+      result = engine.upsertContent(String(args.type || 'ammo'), args.item || {}, null);
+    } else if (call === 'content.remove') {
+      result = engine.removeContent(String(args.type || 'ammo'), String(args.id || ''));
+    } else if (call === 'composer.replace' || call === 'composer.insert') {
+      result = await effectRunner.run({ type: 'composer.insert', text: String(args.text || '') }, context);
+    } else if (call === 'composer.send') {
+      result = await effectRunner.run({ type: 'composer.send', text: String(args.text || '') }, context);
+    } else if (call === 'clipboard.write') {
+      result = await effectRunner.run({ type: 'clipboard.write', text: String(args.text || '') }, context);
+    } else if (call === 'notification.show') {
+      result = await effectRunner.run({ type: 'notification', text: String(args.text || '') }, context);
+    } else {
+      throw new Error(`unknown capability ${call}`);
+    }
+    const after = {
+      state_hash: engine.getRoot().state_hash,
+      revision: engine.getRoot().revision,
+      appearance: clone(engine.getRegistry().appearance.vars),
+      shell: typeof shellObserver === 'function' ? shellObserver() : null
+    };
+    return { call, input: sanitizeValue(args), before, after, result: sanitizeValue(result, 'result') };
+  }
+
+  async function execute(module, command, block) {
+    const context = { module_id: module.id, module_version: module.version || null, block_id: block && block.id || null, command_id: command.id };
+    const trace = {
+      schema: 'dcf.command.receipt.v3',
+      trace_id: `cmd-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      context,
+      status: 'running',
+      steps: []
+    };
+    try {
+      for (const step of Array.isArray(command.steps) ? command.steps : []) trace.steps.push(await runStep(step, context));
+      trace.status = 'ok';
+    } catch (error) {
+      trace.status = 'error';
+      trace.error = String(error && error.message || error);
+    }
+    receiptStore.append(trace);
+    return trace;
+  }
+
+  return { execute, commandList, sanitizeValue };
+}
+
+module.exports = { createCommandRunner, commandList, sanitizeValue };
+
+},
+"src/host/chatgpt.js":function(module,exports,require){
+'use strict';
+
+const { nowIso } = require("src/core/utils.js");
+
+function createChatGPTHost(windowObject = window, options = {}) {
+  const doc = windowObject.document;
+  const quietMs = Number(options.quietMs || 900);
+  const recoveryCount = Number(options.recoveryCount || 3);
+  let rootObserver = null;
+  let activeObserver = null;
+  let activeNode = null;
+  let quietTimer = null;
+  let onReplyComplete = null;
+  let lastUrl = String(windowObject.location && windowObject.location.href || '');
+  let urlTimer = null;
+  let rootLocatorTimer = null;
+  const processedNodes = new WeakSet();
+
+  function normalizeAssistantNode(node) {
+    if (!(node instanceof windowObject.Element)) return null;
+    if (node.matches('[data-message-author-role="assistant"]')) return node.closest('article') || node;
+    if (node.tagName === 'ARTICLE') {
+      if (node.querySelector(':scope > [data-message-author-role="user"]')) return null;
+      if (node.querySelector(':scope [data-message-author-role="assistant"]')) return node;
+      const testId = node.getAttribute('data-testid') || '';
+      if (/conversation-turn/i.test(testId) && !node.querySelector(':scope [data-message-author-role="user"]')) return node;
+    }
+    return null;
+  }
+
+  function findConversationRoot() {
+    return doc.querySelector('main') || doc.querySelector('[role="main"]') || null;
+  }
+
+  function findRecentAssistantNodes(root, limit = recoveryCount) {
+    const found = [];
+    const hardVisitLimit = 5000;
+    let visits = 0;
+    let node = root && root.lastElementChild;
+
+    function deepestLast(element) {
+      let cursor = element;
+      while (cursor && cursor.lastElementChild) cursor = cursor.lastElementChild;
+      return cursor;
+    }
+
+    node = deepestLast(node);
+    while (node && node !== root && found.length < limit && visits < hardVisitLimit) {
+      visits += 1;
+      const normalized = normalizeAssistantNode(node);
+      if (normalized && !found.includes(normalized)) found.push(normalized);
+      if (node.previousElementSibling) node = deepestLast(node.previousElementSibling);
+      else node = node.parentElement;
+    }
+    return found;
+  }
+
+  function isStreaming() {
+    return !!doc.querySelector('[data-testid="stop-button"], button[aria-label*="Stop" i], button[aria-label*="停止"]');
+  }
+
+  function readReplyText(node) {
+    if (!node) return '';
+    const content = node.querySelector('[data-message-author-role="assistant"]') || node;
+    return String(content.textContent || '').trim();
+  }
+
+  function disconnectActive() {
+    if (activeObserver) activeObserver.disconnect();
+    activeObserver = null;
+    activeNode = null;
+    if (quietTimer) clearTimeout(quietTimer);
+    quietTimer = null;
+  }
+
+  function scheduleCompletion(node, source) {
+    if (quietTimer) clearTimeout(quietTimer);
+    quietTimer = setTimeout(() => {
+      if (!node.isConnected) {
+        disconnectActive();
+        return;
+      }
+      if (isStreaming()) {
+        scheduleCompletion(node, source);
+        return;
+      }
+      const text = readReplyText(node);
+      disconnectActive();
+      if (!text || processedNodes.has(node)) return;
+      processedNodes.add(node);
+      if (typeof onReplyComplete === 'function') onReplyComplete({ node, text, source, completed_at: nowIso() });
+    }, quietMs);
+  }
+
+  function trackReply(node, source = 'live') {
+    const normalized = normalizeAssistantNode(node);
+    if (!normalized || processedNodes.has(normalized)) return;
+    if (activeNode === normalized) {
+      scheduleCompletion(normalized, source);
+      return;
+    }
+    disconnectActive();
+    activeNode = normalized;
+    activeObserver = new windowObject.MutationObserver(() => scheduleCompletion(normalized, source));
+    activeObserver.observe(normalized, { childList: true, subtree: true, characterData: true });
+    scheduleCompletion(normalized, source);
+  }
+
+  function inspectAddedNode(node) {
+    if (!(node instanceof windowObject.Element)) return;
+    const normalized = normalizeAssistantNode(node);
+    if (normalized) {
+      trackReply(normalized, 'live');
+      return;
+    }
+    const nested = node.querySelector('[data-message-author-role="assistant"]');
+    if (nested) trackReply(nested, 'live');
+  }
+
+  function attachReplyRoot(root) {
+    if (!root || rootObserver) return false;
+    rootObserver = new windowObject.MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes || []) inspectAddedNode(node);
+      }
+    });
+    rootObserver.observe(root, { childList: true, subtree: true });
+
+    const newestFirst = findRecentAssistantNodes(root, recoveryCount);
+    const recent = newestFirst.slice().reverse();
+    for (let index = 0; index < recent.length; index += 1) {
+      const node = recent[index];
+      const isNewest = index === recent.length - 1;
+      if (isNewest && isStreaming()) {
+        trackReply(node, 'recovered-stream');
+        continue;
+      }
+      const text = readReplyText(node);
+      if (text && typeof onReplyComplete === 'function') {
+        processedNodes.add(node);
+        onReplyComplete({ node, text, source: 'bounded-recovery', completed_at: nowIso() });
+      }
+    }
+    return true;
+  }
+
+  function scheduleRootAttach() {
+    if (rootObserver || rootLocatorTimer) return;
+    const attempt = () => {
+      rootLocatorTimer = null;
+      if (attachReplyRoot(findConversationRoot())) return;
+      rootLocatorTimer = windowObject.setTimeout(attempt, 600);
+    };
+    attempt();
+  }
+
+  function startReplyObserver(callback) {
+    onReplyComplete = callback;
+    scheduleRootAttach();
+    urlTimer = windowObject.setInterval(() => {
+      const href = String(windowObject.location && windowObject.location.href || '');
+      if (href === lastUrl) return;
+      lastUrl = href;
+      stopReplyObserver();
+      startReplyObserver(callback);
+    }, 1200);
+    return () => stopReplyObserver();
+  }
+
+  function stopReplyObserver() {
+    if (rootObserver) rootObserver.disconnect();
+    rootObserver = null;
+    disconnectActive();
+    if (urlTimer) windowObject.clearInterval(urlTimer);
+    urlTimer = null;
+    if (rootLocatorTimer) windowObject.clearTimeout(rootLocatorTimer);
+    rootLocatorTimer = null;
+  }
+
+  function composer() {
+    return doc.querySelector('#prompt-textarea,[contenteditable="true"][data-placeholder],textarea[data-id="root"]');
+  }
+
+  function setComposerText(element, text) {
+    element.focus();
+    if (element.tagName === 'TEXTAREA') {
+      element.value = text;
+      element.dispatchEvent(new windowObject.Event('input', { bubbles: true }));
+      return;
+    }
+    element.textContent = text;
+    element.dispatchEvent(new windowObject.InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));
+  }
+
+  async function insertComposer(text, options = {}) {
+    const element = composer();
+    if (!element) throw new Error('ChatGPT composer not found');
+    const existing = String(element.value || element.textContent || '').trim();
+    if (existing && existing !== text) throw new Error('composer contains an existing draft');
+    setComposerText(element, text);
+    if (!options.send) return { inserted: true, sent: false };
+    await new Promise((resolve) => windowObject.setTimeout(resolve, 80));
+    const button = doc.querySelector('[data-testid="send-button"],button[aria-label*="Send" i],button[aria-label*="发送"]');
+    if (!button || button.disabled) throw new Error('ChatGPT send button not available');
+    button.click();
+    return { inserted: true, sent: true };
+  }
+
+  async function copy(text) {
+    if (typeof globalThis.GM_setClipboard === 'function') {
+      globalThis.GM_setClipboard(text);
+      return { copied: true, method: 'GM_setClipboard' };
+    }
+    if (windowObject.navigator && windowObject.navigator.clipboard) {
+      await windowObject.navigator.clipboard.writeText(text);
+      return { copied: true, method: 'clipboard' };
+    }
+    throw new Error('clipboard unavailable');
+  }
+
+  async function notify(text) {
+    if (typeof globalThis.GM_notification === 'function') {
+      globalThis.GM_notification({ title: 'DCF', text });
+      return { notified: true };
+    }
+    return { notified: false };
+  }
+
+  return {
+    startReplyObserver,
+    stopReplyObserver,
+    findConversationRoot,
+    findRecentAssistantNodes,
+    readReplyText,
+    insertComposer,
+    copy,
+    notify,
+    isStreaming
+  };
+}
+
+module.exports = { createChatGPTHost };
+
+},
+"src/modules/standard-packages.js":function(module,exports,require){
+'use strict';
+
+const REQUIRED_PRODUCT_PACKAGES = ['dcf.standard.ammo'];
+
+const STANDARD_PACKS = [
+  {
+    schema: 'dcf.module_pack.v1',
+    pack_id: 'dcf.standard.ammo',
+    revision: '1.0.0',
+    contributes: {
+      content_types: [{ id: 'ammo', marker: 'DCF_AMMO', title: '语言弹药', body_field: 'body', actions: ['fire', 'copy', 'update', 'delete'] }],
+      surfaces: [{ id: 'dcf.ammo', title: '弹药', area: 'primary', order: 10, kind: 'content-list', content_type: 'ammo' }],
+      appearance: { side: 'right', vars: { w: '340px', h: '800px', top: '12px', bottom: '112px', anchor: 'bottom' } }
+    },
+    modules: [{ id: 'dcf.ammo.module', title: '语言弹药', version: '1.0.0', kind: 'ammo' }]
+  },
+  {
+    schema: 'dcf.module_pack.v1',
+    pack_id: 'dcf.standard.shell-adjuster',
+    revision: '1.0.0',
+    modules: [{ id: 'dcf.standard.shell-adjuster', title: '壳体调节', version: '1.0.0', kind: 'shell-adjuster', blocks: [{ id: 'geometry', title: '壳体几何', commands: [
+      { id: 'width_minus', label: '窄', steps: [{ call: 'appearance.adjust', with: { w: -20 } }] },
+      { id: 'width_plus', label: '宽', steps: [{ call: 'appearance.adjust', with: { w: 20 } }] },
+      { id: 'height_minus', label: '矮', steps: [{ call: 'appearance.adjust', with: { h: -40 } }] },
+      { id: 'height_plus', label: '高', steps: [{ call: 'appearance.adjust', with: { h: 40 } }] },
+      { id: 'offset_minus', label: '靠近边缘', steps: [{ call: 'appearance.adjust', with: { offset: -10 } }] },
+      { id: 'offset_plus', label: '远离边缘', steps: [{ call: 'appearance.adjust', with: { offset: 10 } }] },
+      { id: 'top', label: '贴顶', steps: [{ call: 'appearance.adjust', with: { anchor: 'top' } }] },
+      { id: 'bottom', label: '贴底', steps: [{ call: 'appearance.adjust', with: { anchor: 'bottom' } }] },
+      { id: 'side', label: '换边', steps: [{ call: 'appearance.adjust', with: { side: 'toggle' } }] }
+    ]}] }],
+    contributes: { module_display: { 'dcf.standard.shell-adjuster': { area: 'maintenance', order: 20 } } }
+  }
+];
+
+module.exports = { STANDARD_PACKS, REQUIRED_PRODUCT_PACKAGES };
+
+},
+"src/modules/ammo.js":function(module,exports,require){
+'use strict';
+
+function createAmmoModule(engine, effectRunner) {
+  function items() {
+    const registry = engine.getRegistry();
+    return Object.values(registry.content && registry.content.ammo || {}).sort((a, b) => String(a.title || a.id).localeCompare(String(b.title || b.id)));
+  }
+
+  function fire(item) {
+    const mode = engine.getRoot().user.preferences && engine.getRoot().user.preferences.ammo_fire_mode || 'insert';
+    return effectRunner.run({ type: mode === 'send' ? 'composer.send' : 'composer.insert', text: String(item.body || '') }, { module: 'ammo', item_id: item.id });
+  }
+
+  function copy(item) {
+    return effectRunner.run({ type: 'clipboard.write', text: String(item.body || '') }, { module: 'ammo', item_id: item.id });
+  }
+
+  function requestUpdate(item) {
+    const prompt = [
+      '请根据当前对话更新下面这条 DCF 语言弹药。',
+      '保留相同 id，返回且只返回一份完整的 DCF_AMMO 工件；DCF 会在回复完成后自动装填。',
+      '',
+      JSON.stringify(item, null, 2)
+    ].join('\n');
+    return effectRunner.run({ type: 'composer.send', text: prompt }, { module: 'ammo', action: 'update', item_id: item.id });
+  }
+
+  function requestExtract() {
+    const prompt = [
+      '请从当前对话中提取一条最值得长期复用的 DCF 语言弹药。',
+      '返回且只返回一份完整的 DCF_AMMO 工件，字段至少包含 id、title、purpose、body；DCF 会在回复完成后自动装填。'
+    ].join('\n');
+    return effectRunner.run({ type: 'composer.send', text: prompt }, { module: 'ammo', action: 'extract' });
+  }
+
+  return { items, fire, copy, requestUpdate, requestExtract };
+}
+
+module.exports = { createAmmoModule };
+
+},
+"src/modules/catalog.js":function(module,exports,require){
+'use strict';
+
+const { CATALOG_URL, CATALOG_STATE_KEY } = require("src/core/constants.js");
+const { compareRevision, hash, nowIso } = require("src/core/utils.js");
+const { normalizePackage } = require("src/core/artifacts.js");
+
+function createCatalogTransport(storage, engine, api = globalThis) {
+  function requestJson(url) {
+    return new Promise((resolve, reject) => {
+      if (typeof api.GM_xmlhttpRequest !== 'function') return reject(new Error('GM_xmlhttpRequest unavailable'));
+      api.GM_xmlhttpRequest({
+        method: 'GET', url,
+        onload(response) {
+          if (response.status < 200 || response.status >= 300) return reject(new Error(`HTTP ${response.status}`));
+          try { resolve(JSON.parse(response.responseText)); } catch (error) { reject(error); }
+        },
+        onerror: () => reject(new Error('network error')),
+        ontimeout: () => reject(new Error('network timeout'))
+      });
+    });
+  }
+
+  async function check(options = {}) {
+    const currentState = storage.get(CATALOG_STATE_KEY, { last_checked_at: null, last_result: null });
+    const minInterval = Number(options.minIntervalMs || 6 * 60 * 60 * 1000);
+    if (!options.force && currentState.last_checked_at && Date.now() - Date.parse(currentState.last_checked_at) < minInterval) {
+      return { ok: true, skipped: true, reason: 'interval' };
+    }
+    try {
+      const catalog = await requestJson(options.url || CATALOG_URL);
+      if (!catalog || catalog.schema !== 'dcf.catalog.v1' || !Array.isArray(catalog.packages)) throw new Error('invalid catalog');
+      const installed = engine.getRoot().packages.packages;
+      const applied = [];
+      for (const entry of catalog.packages) {
+        const local = installed[entry.package_id];
+        if (!local || local.enabled === false) continue;
+        if (compareRevision(entry.revision, local.active_revision) <= 0) continue;
+        const pack = await requestJson(entry.url);
+        const expected = String(entry.hash || '');
+        const actual = hash(pack);
+        if (expected && expected !== actual) throw new Error(`catalog hash mismatch ${entry.package_id}@${entry.revision}`);
+        const artifact = normalizePackage(pack);
+        const receipt = engine.applyArtifact(artifact, { kind: 'github-catalog', url: entry.url });
+        applied.push({ package_id: entry.package_id, revision: entry.revision, status: receipt.status });
+      }
+      const result = { ok: true, skipped: false, applied };
+      storage.set(CATALOG_STATE_KEY, { last_checked_at: nowIso(), last_result: result });
+      return result;
+    } catch (error) {
+      const result = { ok: false, error: String(error && error.message || error) };
+      storage.set(CATALOG_STATE_KEY, { last_checked_at: nowIso(), last_result: result });
+      return result;
+    }
+  }
+
+  return { check };
+}
+
+module.exports = { createCatalogTransport };
+
+},
+"src/modules/package-manager.js":function(module,exports,require){
+'use strict';
+
+const { decodeArtifacts } = require("src/core/artifacts.js");
+const { REQUIRED_PRODUCT_PACKAGES } = require("src/modules/standard-packages.js");
+
+function createPackageManager(engine, catalog) {
+  function packages() {
+    return Object.values(engine.getRoot().packages.packages || {}).sort((a, b) => String(a.package_id).localeCompare(String(b.package_id)));
+  }
+  function installJson(text) {
+    const parsed = JSON.parse(String(text || '{}'));
+    const wrapper = `<<<DCF_MODULE_PACK\n${JSON.stringify(parsed)}\nDCF_MODULE_PACK>>>`;
+    const decoded = decodeArtifacts(wrapper);
+    if (decoded.errors.length || decoded.artifacts.length !== 1) throw new Error(decoded.errors[0] && decoded.errors[0].error || 'invalid package');
+    return engine.applyArtifact(decoded.artifacts[0], { kind: 'manual-json' });
+  }
+  function assertMutable(id) {
+    if (REQUIRED_PRODUCT_PACKAGES.includes(String(id))) throw new Error(`${id} is required by the DCF product value loop`);
+  }
+  return {
+    packages,
+    installJson,
+    setEnabled: (id, enabled) => { if (!enabled) assertMutable(id); return engine.setPackageEnabled(id, enabled); },
+    uninstall: (id) => { assertMutable(id); return engine.uninstallPackage(id); },
+    switchRevision: (id, revision) => engine.switchPackageRevision(id, revision),
+    checkUpdates: (force) => catalog.check({ force: !!force }),
+    isRequired: (id) => REQUIRED_PRODUCT_PACKAGES.includes(String(id))
+  };
+}
+
+module.exports = { createPackageManager };
+
+},
+"src/modules/maintenance.js":function(module,exports,require){
+'use strict';
+
+const { CATALOG_STATE_KEY } = require("src/core/constants.js");
+
+function createMaintenanceModule(engine, receiptStore, effectRunner, storage) {
+  function summary() {
+    const root = engine.getRoot();
+    const registry = engine.getRegistry();
+    const receipts = receiptStore.list();
+    return {
+      schema: 'dcf.maintenance.summary.v1',
+      kernel_version: root.kernel_version,
+      revision: root.revision,
+      state_hash: root.state_hash,
+      build_id: registry && registry.build && registry.build.build_id,
+      active_packages: Object.keys(registry && registry.installedPacks || {}),
+      recent_failures: receipts.filter((item) => item.status === 'rejected' || item.status === 'error').slice(-10),
+      receipt_count: receipts.length,
+      catalog: storage ? storage.get(CATALOG_STATE_KEY, { last_checked_at: null, last_result: null }) : null
+    };
+  }
+  function copySummary() {
+    return effectRunner.run({ type: 'clipboard.write', text: JSON.stringify(summary(), null, 2) }, { module: 'maintenance' });
+  }
+  return {
+    summary,
+    copySummary,
+    receipts: () => receiptStore.list(),
+    clearReceipts: () => receiptStore.clear(),
+    snapshots: () => engine.snapshots(),
+    rollbackTo: (revision) => engine.rollbackTo(revision)
+  };
+}
+
+module.exports = { createMaintenanceModule };
+
+},
+"src/ui/app.js":function(module,exports,require){
+'use strict';
+
+const { commandList } = require("src/runtime/commands.js");
+
+function escapeHtml(value) {
+  return String(value == null ? '' : value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+}
+
+function computeFenceStyle(rect, viewport, margin = 12) {
+  const originLeft = Number(viewport.left || 0);
+  const originTop = Number(viewport.top || 0);
+  const width = Math.min(Math.max(240, rect.width || 340), Math.max(240, viewport.width - margin * 2));
+  const height = Math.min(Math.max(260, rect.height || 600), Math.max(260, viewport.height - margin * 2));
+  const left = Math.min(Math.max(originLeft + margin, rect.left), Math.max(originLeft + margin, originLeft + viewport.width - width - margin));
+  const top = Math.min(Math.max(originTop + margin, rect.top), Math.max(originTop + margin, originTop + viewport.height - height - margin));
+  return { width, height, left, top };
+}
+
+function createApp(options) {
+  const { engine, ammo, packageManager, maintenance, commandRunner, storage, version } = options;
+  const doc = options.document || document;
+  const windowObject = doc.defaultView || window;
+  const hostElement = doc.createElement('div');
+  hostElement.id = 'dcf-chatgpt-microcore-host';
+  const root = hostElement.attachShadow({ mode: 'open' });
+  root.innerHTML = `
+    <style id="core-style">
+      :host{all:initial}.sh{position:fixed;right:12px;bottom:var(--bottom,112px);top:auto;width:var(--w,340px);height:min(var(--h,800px),calc(100vh - 24px));z-index:2147483646;background:#fffffff2;color:#111;border:1px solid #9996;border-radius:14px;box-shadow:0 18px 44px #0002;font:13px system-ui;overflow:hidden;box-sizing:border-box;display:flex;flex-direction:column}
+      .sh[data-side=left]{left:12px;right:auto}.sh[data-anchor=top]{top:var(--top,12px);bottom:auto}.sh[data-anchor=bottom]{bottom:var(--bottom,112px);top:auto}
+      @media(prefers-color-scheme:dark){.sh{background:#171717ee;color:#eee}}
+      button{border:1px solid #9995;border-radius:9px;background:transparent;color:inherit;padding:6px 8px;cursor:pointer}button:hover{background:#8882}button.danger{border-color:#dc262666}.top{height:42px;flex:0 0 42px;display:flex;align-items:center;gap:6px;padding:6px;border-bottom:1px solid #9993;box-sizing:border-box}.top b{margin-right:auto}.tabs{display:flex;gap:5px}.tabs button.on{background:#2563eb22;border-color:#2563eb66}.body{flex:1;min-height:0;overflow:auto;padding:9px;box-sizing:border-box}.card{border:1px solid #9994;border-radius:12px;background:#8881;padding:9px;margin-bottom:9px;box-sizing:border-box}.name{font-weight:700}.mini{font-size:11px;opacity:.7;word-break:break-all}.actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}textarea,input,select{width:100%;box-sizing:border-box;border:1px solid #9995;border-radius:9px;background:#fff8;color:inherit;padding:7px}textarea{min-height:120px}.notice{padding:6px 9px;border-bottom:1px solid #9993;font-size:12px}.notice:empty{display:none}.row{display:flex;gap:6px;align-items:center}.row>*{min-width:0}.grow{flex:1}.pkg{padding-top:8px;margin-top:8px;border-top:1px solid #9993}.receipt{font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;word-break:break-word;max-height:180px;overflow:auto}
+    </style><style id="package-style"></style><aside class="sh"><div class="top"></div><div class="notice"></div><div class="body"></div></aside>`;
+  doc.documentElement.appendChild(hostElement);
+  const shell = root.querySelector('.sh');
+  const top = root.querySelector('.top');
+  const body = root.querySelector('.body');
+  const notice = root.querySelector('.notice');
+  const packageStyle = root.querySelector('#package-style');
+  let tab = storage.get('dcf.ui.session.v1', { tab: 'ammo' }).tab || 'ammo';
+  let packageDraft = '';
+  let selectedSurface = storage.get('dcf.ui.session.v1', { selectedSurface: null }).selectedSurface || null;
+  let fenceFrame = 0;
+
+  function setNotice(text) {
+    notice.textContent = String(text || '');
+    if (text) windowObject.setTimeout(() => { if (notice.textContent === text) notice.textContent = ''; }, 3200);
+  }
+
+  function runAndRender(action, successText) {
+    try {
+      const result = action();
+      if (result && typeof result.then === 'function') {
+        result.then((value) => { const failed = value && (value.ok === false || value.status === 'error' || value.status === 'rejected'); setNotice(failed ? `操作失败${value.error ? `：${value.error}` : ''}` : successText); render(); });
+      } else {
+        setNotice(result && result.status === 'rejected' ? `失败：${result.error || (result.errors || []).join('; ')}` : successText);
+        render();
+      }
+    } catch (error) {
+      setNotice(`失败：${String(error && error.message || error)}`);
+    }
+  }
+
+  function renderTop() {
+    top.innerHTML = `<b>DCF ${escapeHtml(version)}</b><div class="tabs">
+      <button data-tab="ammo" class="${tab === 'ammo' ? 'on' : ''}">弹药</button>
+      <button data-tab="functions" class="${tab === 'functions' ? 'on' : ''}">功能</button><button data-tab="packages" class="${tab === 'packages' ? 'on' : ''}">模块</button>
+      <button data-tab="maintenance" class="${tab === 'maintenance' ? 'on' : ''}">维护</button>
+    </div>`;
+  }
+
+  function renderAmmo() {
+    const items = ammo.items();
+    const mode = engine.getRoot().user.preferences && engine.getRoot().user.preferences.ammo_fire_mode || 'insert';
+    body.innerHTML = `<div class="card"><div class="name">语言弹药</div><div class="mini">自动提取、自动装填、更新与发射</div><div class="actions"><button data-action="ammo-extract">从当前对话提取</button><button data-action="ammo-mode">发射：${mode === 'send' ? '直接发送' : '填入输入框'}</button></div></div>` +
+      (items.length ? items.map((item) => `<div class="card" data-ammo-id="${escapeHtml(item.id)}"><div class="name">${escapeHtml(item.title || item.id)}</div><div class="mini">${escapeHtml(item.purpose || item.id)}</div><div class="actions"><button data-action="ammo-fire">发射</button><button data-action="ammo-copy">复制</button><button data-action="ammo-update">更新</button><button data-action="ammo-delete" class="danger">删除</button></div></div>`).join('') : '<div class="card mini">弹药库为空。完成一次提取后，回复中的 DCF_AMMO 会自动装填。</div>');
+  }
+
+  function moduleDisplay(module) {
+    return engine.getRegistry().moduleDisplay && engine.getRegistry().moduleDisplay[module.id] || {};
+  }
+
+  function moduleArea(module) {
+    const display = moduleDisplay(module);
+    return display.area || module.area || 'work';
+  }
+
+  function moduleOrder(module) {
+    const display = moduleDisplay(module);
+    return Number(display.order != null ? display.order : module.order != null ? module.order : 1000);
+  }
+
+  function visibleModules(modules) {
+    return modules.filter((module) => moduleDisplay(module).hidden !== true).sort((a, b) => moduleOrder(a) - moduleOrder(b) || String(a.id).localeCompare(String(b.id)));
+  }
+
+  function renderModuleCards(modules) {
+    modules = visibleModules(modules);
+    if (!modules.length) return '<div class="card mini">暂无模块功能</div>';
+    return modules.map((module) => {
+      const display = moduleDisplay(module);
+      const entries = commandList(module);
+      const grouped = [];
+      for (const entry of entries) {
+        const blockTitle = entry.block && entry.block.title;
+        if (blockTitle && !grouped.includes(blockTitle)) grouped.push(blockTitle);
+      }
+      return `<div class="card" data-module-id="${escapeHtml(module.id)}"><div class="name">${escapeHtml(display.title || module.title || module.id)}</div><div class="mini">${escapeHtml(module.version || '')}</div>${grouped.length ? `<div class="mini">${grouped.map(escapeHtml).join(' · ')}</div>` : ''}<div class="actions">${entries.map((entry) => `<button data-action="module-command" data-module-id="${escapeHtml(module.id)}" data-command-id="${escapeHtml(entry.command.id)}">${escapeHtml(entry.command.label || entry.command.title || entry.command.id)}</button>`).join('') || '<span class="mini">无可执行命令</span>'}</div></div>`;
+    }).join('');
+  }
+
+  function renderFunctions() {
+    const registry = engine.getRegistry();
+    const surfaces = Object.values(registry.surfaces || {}).filter((surface) => surface.id !== 'dcf.ammo' && surface.content_type !== 'ammo' && surface.area !== 'maintenance').sort((a, b) => Number(a.order || 1000) - Number(b.order || 1000));
+    if (surfaces.length && !surfaces.some((surface) => surface.id === selectedSurface)) selectedSurface = surfaces[0].id;
+    const surface = surfaces.find((entry) => entry.id === selectedSurface) || null;
+    const modules = registry.modules.filter((module) => {
+      if (module.kind === 'ammo' || moduleArea(module) === 'maintenance') return false;
+      if (!surface) return true;
+      const display = moduleDisplay(module);
+      if (display.surface_id || module.surface_id) return (display.surface_id || module.surface_id) === surface.id;
+      return !surface.area || moduleArea(module) === surface.area;
+    });
+    const rail = surfaces.length ? `<div class="card actions">${surfaces.map((entry) => `<button data-action="surface-select" data-surface-id="${escapeHtml(entry.id)}" class="${entry.id === selectedSurface ? 'on' : ''}">${escapeHtml(entry.title || entry.id)}</button>`).join('')}</div>` : '';
+    body.innerHTML = rail + renderModuleCards(modules);
+  }
+
+  function renderPackages() {
+    const entries = packageManager.packages();
+    body.innerHTML = `<div class="card"><div class="name">安装模块包</div><div class="mini">粘贴完整 dcf.module_pack.v1 JSON；对话与 GitHub 更新仍会自动进入同一事务。</div><textarea data-role="package-json">${escapeHtml(packageDraft)}</textarea><div class="actions"><button data-action="package-install">安装</button><button data-action="package-update">检查 GitHub 更新</button></div></div>` + entries.map((entry) => {
+      const revisions = Object.keys(entry.revisions || {}).sort();
+      const required = packageManager.isRequired(entry.package_id);
+      return `<div class="card"><div class="name">${escapeHtml(entry.package_id)}${required ? ' · 核心' : ''}</div><div class="mini">active ${escapeHtml(entry.active_revision)} · ${entry.enabled === false ? 'disabled' : 'enabled'}</div><div class="actions">${required ? '' : `<button data-action="package-toggle" data-id="${escapeHtml(entry.package_id)}">${entry.enabled === false ? '启用' : '停用'}</button>`}<select data-role="package-revision" data-id="${escapeHtml(entry.package_id)}">${revisions.map((revision) => `<option ${revision === entry.active_revision ? 'selected' : ''}>${escapeHtml(revision)}</option>`).join('')}</select><button data-action="package-switch" data-id="${escapeHtml(entry.package_id)}">切换</button>${required ? '' : `<button data-action="package-uninstall" data-id="${escapeHtml(entry.package_id)}" class="danger">卸载</button>`}</div></div>`;
+    }).join('');
+  }
+
+  function renderMaintenance() {
+    const summary = maintenance.summary();
+    const receipts = maintenance.receipts().slice(-8).reverse();
+    const snapshots = maintenance.snapshots().slice().reverse();
+    body.innerHTML = `<div class="card"><div class="name">运行状态</div><div class="receipt">${escapeHtml(JSON.stringify(summary, null, 2))}</div><div class="actions"><button data-action="maintenance-copy">复制诊断</button><button data-action="receipts-clear">清空回执</button></div></div>
+      <div class="card"><div class="name">最近回执</div>${receipts.length ? receipts.map((item) => `<div class="receipt pkg">${escapeHtml(JSON.stringify(item, null, 2))}</div>`).join('') : '<div class="mini">暂无回执</div>'}</div>
+      <div class="card"><div class="name">状态快照</div>${snapshots.length ? snapshots.map((item) => `<div class="pkg row"><span class="grow mini">r${item.revision} · ${escapeHtml(item.reason)}</span><button data-action="rollback" data-revision="${item.revision}">恢复</button></div>`).join('') : '<div class="mini">暂无快照</div>'}</div>` + renderModuleCards(engine.getRegistry().modules.filter((module) => moduleArea(module) === 'maintenance'));
+  }
+
+  function applyAppearance() {
+    const appearance = engine.getRegistry().appearance;
+    const vars = appearance.vars || {};
+    for (const [key, value] of Object.entries(vars)) shell.style.setProperty(`--${key}`, String(value));
+    shell.dataset.side = appearance.side === 'left' ? 'left' : 'right';
+    shell.dataset.anchor = vars.anchor === 'top' ? 'top' : 'bottom';
+    packageStyle.textContent = appearance.css || '';
+    shell.style.left = ''; shell.style.top = ''; shell.style.right = ''; shell.style.bottom = '';
+    scheduleFence();
+  }
+
+  function applyFence() {
+    fenceFrame = 0;
+    const viewport = windowObject.visualViewport ? { width: windowObject.visualViewport.width, height: windowObject.visualViewport.height, left: windowObject.visualViewport.offsetLeft || 0, top: windowObject.visualViewport.offsetTop || 0 } : { width: windowObject.innerWidth, height: windowObject.innerHeight, left: 0, top: 0 };
+    shell.style.maxWidth = '';
+    shell.style.maxHeight = '';
+    const rect = shell.getBoundingClientRect();
+    const target = computeFenceStyle(rect, viewport, 12);
+    shell.style.maxWidth = `${target.width}px`;
+    shell.style.maxHeight = `${target.height}px`;
+    if (rect.left < viewport.left + 12 || rect.right > viewport.left + viewport.width - 12 || rect.top < viewport.top + 12 || rect.bottom > viewport.top + viewport.height - 12) {
+      shell.style.left = `${target.left}px`;
+      shell.style.top = `${target.top}px`;
+      shell.style.right = 'auto';
+      shell.style.bottom = 'auto';
+    } else {
+      shell.style.left = '';
+      shell.style.top = '';
+      shell.style.right = '';
+      shell.style.bottom = '';
+    }
+  }
+
+  function scheduleFence() {
+    if (fenceFrame) return;
+    fenceFrame = windowObject.requestAnimationFrame(applyFence);
+  }
+
+  function render() {
+    renderTop();
+    if (tab === 'functions') renderFunctions();
+    else if (tab === 'packages') renderPackages();
+    else if (tab === 'maintenance') renderMaintenance();
+    else renderAmmo();
+    applyAppearance();
+  }
+
+  root.addEventListener('input', (event) => {
+    if (event.target && event.target.dataset.role === 'package-json') packageDraft = event.target.value;
+  });
+
+  root.addEventListener('click', (event) => {
+    const button = event.target.closest('button');
+    if (!button) return;
+    if (button.dataset.tab) {
+      tab = button.dataset.tab;
+      storage.set('dcf.ui.session.v1', { tab, selectedSurface });
+      render();
+      return;
+    }
+    const action = button.dataset.action;
+    if (action === 'surface-select') {
+      selectedSurface = button.dataset.surfaceId;
+      storage.set('dcf.ui.session.v1', { tab, selectedSurface });
+      render();
+      return;
+    }
+    const card = button.closest('[data-ammo-id]');
+    const item = card ? ammo.items().find((entry) => entry.id === card.dataset.ammoId) : null;
+    if (action === 'ammo-extract') runAndRender(() => ammo.requestExtract(), '提取请求已发送');
+    else if (action === 'ammo-mode') {
+      const current = engine.getRoot().user.preferences.ammo_fire_mode || 'insert';
+      runAndRender(() => engine.setUserPath(['preferences', 'ammo_fire_mode'], current === 'send' ? 'insert' : 'send'), '发射方式已更新');
+    } else if (action === 'ammo-fire' && item) runAndRender(() => ammo.fire(item), '弹药已发射');
+    else if (action === 'ammo-copy' && item) runAndRender(() => ammo.copy(item), '已复制');
+    else if (action === 'ammo-update' && item) runAndRender(() => ammo.requestUpdate(item), '更新请求已发送');
+    else if (action === 'ammo-delete' && item) runAndRender(() => engine.removeContent('ammo', item.id), '已删除');
+    else if (action === 'package-install') runAndRender(() => packageManager.installJson(packageDraft), '模块已安装');
+    else if (action === 'package-update') runAndRender(() => packageManager.checkUpdates(true), '更新检查完成');
+    else if (action === 'package-toggle') {
+      const entry = packageManager.packages().find((pkg) => pkg.package_id === button.dataset.id);
+      runAndRender(() => packageManager.setEnabled(button.dataset.id, entry && entry.enabled === false), '模块状态已更新');
+    } else if (action === 'package-uninstall') runAndRender(() => packageManager.uninstall(button.dataset.id), '模块已卸载');
+    else if (action === 'package-switch') {
+      const select = Array.from(root.querySelectorAll('select[data-role="package-revision"]')).find((entry) => entry.dataset.id === button.dataset.id);
+      runAndRender(() => packageManager.switchRevision(button.dataset.id, select.value), '版本已切换');
+    } else if (action === 'module-command') {
+      const module = engine.getRegistry().modules.find((entry) => entry.id === button.dataset.moduleId);
+      const found = module && commandList(module).find((entry) => String(entry.command.id) === String(button.dataset.commandId));
+      if (module && found) runAndRender(() => commandRunner.execute(module, found.command, found.block), '命令已执行');
+    } else if (action === 'maintenance-copy') runAndRender(() => maintenance.copySummary(), '诊断已复制');
+    else if (action === 'receipts-clear') runAndRender(() => maintenance.clearReceipts(), '回执已清空');
+    else if (action === 'rollback') runAndRender(() => maintenance.rollbackTo(Number(button.dataset.revision)), '状态已恢复');
+  });
+
+  windowObject.addEventListener('resize', scheduleFence, { passive: true });
+  if (windowObject.visualViewport) {
+    windowObject.visualViewport.addEventListener('resize', scheduleFence, { passive: true });
+    windowObject.visualViewport.addEventListener('scroll', scheduleFence, { passive: true });
+  }
+  render();
+  return { render, setNotice, destroy: () => hostElement.remove(), root, shell };
+}
+
+module.exports = { createApp, computeFenceStyle };
+
+},
+"src/index.js":function(module,exports,require){
+'use strict';
+
+const { VERSION } = require("src/core/constants.js");
+const { clone } = require("src/core/utils.js");
+const { buildProjection } = require("src/core/projection.js");
+const { loadOrMigrate, addPackRevision, finalizeCandidate } = require("src/core/state.js");
+const { decodeArtifacts } = require("src/core/artifacts.js");
+const { createReceiptStore } = require("src/core/receipts.js");
+const { createTransactionEngine } = require("src/core/transactions.js");
+const { createStorage } = require("src/runtime/storage.js");
+const { createEffectRunner } = require("src/runtime/effects.js");
+const { createCommandRunner } = require("src/runtime/commands.js");
+const { createChatGPTHost } = require("src/host/chatgpt.js");
+const { STANDARD_PACKS, REQUIRED_PRODUCT_PACKAGES } = require("src/modules/standard-packages.js");
+const { createAmmoModule } = require("src/modules/ammo.js");
+const { createCatalogTransport } = require("src/modules/catalog.js");
+const { createPackageManager } = require("src/modules/package-manager.js");
+const { createMaintenanceModule } = require("src/modules/maintenance.js");
+const { createApp } = require("src/ui/app.js");
+
+function ensureProductBaseline(root) {
+  let current = root;
+  const ammoPack = STANDARD_PACKS.find((pack) => pack.pack_id === REQUIRED_PRODUCT_PACKAGES[0]);
+  const entry = current.packages.packages[ammoPack.pack_id];
+  const projection = buildProjection(current);
+  const needsAmmo = !projection.ok || !projection.registry.contentTypes.ammo || !entry || entry.enabled === false;
+  if (!needsAmmo) return current;
+  const candidate = clone(current);
+  if (!entry) addPackRevision(candidate, ammoPack, { kind: 'embedded-standard' });
+  else {
+    candidate.packages.packages[ammoPack.pack_id].enabled = true;
+    candidate.packages.revision += 1;
+  }
+  return finalizeCandidate(current, candidate);
+}
+
+function boot(api = globalThis) {
+  const storage = createStorage(api);
+  const receiptStore = createReceiptStore(storage);
+  let initialRoot = loadOrMigrate(storage, STANDARD_PACKS);
+  initialRoot = ensureProductBaseline(initialRoot);
+  const engine = createTransactionEngine(storage, receiptStore, { initialRoot });
+  engine.initialize();
+  const host = createChatGPTHost(api.window || window);
+  const effects = createEffectRunner(host, receiptStore);
+  const catalog = createCatalogTransport(storage, engine, api);
+  const ammo = createAmmoModule(engine, effects);
+  const packageManager = createPackageManager(engine, catalog);
+  const maintenance = createMaintenanceModule(engine, receiptStore, effects, storage);
+  let app = null;
+  const commandRunner = createCommandRunner(engine, effects, receiptStore, () => {
+    if (!app || !app.shell) return null;
+    const rect = app.shell.getBoundingClientRect();
+    return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height };
+  });
+  app = createApp({ engine, ammo, packageManager, maintenance, commandRunner, storage, version: VERSION });
+
+  function processReply(reply) {
+    const decoded = decodeArtifacts(reply.text);
+    let changed = false;
+    for (const artifact of decoded.artifacts) {
+      const receipt = engine.applyArtifact(artifact, { kind: 'chatgpt-reply', completed_at: reply.completed_at });
+      if (receipt.status === 'committed') changed = true;
+    }
+    for (const error of decoded.errors) receiptStore.append({ schema: 'dcf.receipt.v1', intent: { type: 'artifact.decode', source: reply.source }, status: 'rejected', error: error.error, marker: error.marker, preview: error.preview });
+    if (changed) app.setNotice('DCF 工件已自动应用');
+    if (changed || decoded.errors.length) app.render();
+  }
+
+  host.startReplyObserver(processReply);
+  api.setTimeout(() => catalog.check().then((result) => { if (result && result.applied && result.applied.length) { app.setNotice('DCF 模块已自动更新'); app.render(); } }), 1600);
+
+  if (typeof api.GM_registerMenuCommand === 'function') {
+    api.GM_registerMenuCommand('DCF：检查模块更新', () => catalog.check({ force: true }).then(() => app.render()));
+    api.GM_registerMenuCommand('DCF：复制诊断', () => maintenance.copySummary());
+  }
+
+  api.__DCF_RUNTIME__ = { version: VERSION, engine, host, app, catalog, receiptStore };
+  return api.__DCF_RUNTIME__;
+}
+
+if (typeof window !== 'undefined' && typeof document !== 'undefined') boot(globalThis);
+
+module.exports = { boot, ensureProductBaseline };
+
+}
+};
+const cache={};
+function require(id){if(cache[id])return cache[id].exports;if(!modules[id])throw new Error('DCF module not found: '+id);const module={exports:{}};cache[id]=module;modules[id](module,module.exports,require);return module.exports;}
+require('src/index.js');
+})();

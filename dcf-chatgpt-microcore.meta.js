@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         DCF ChatGPT Microcore
 // @namespace    https://chatgpt.com/
-// @version      0.10.0
-// @description  DCF runtime with deterministic package builds, precise package lifecycle, correlated evidence, and viewport containment.
+// @version      0.11.0
+// @description  DCF phase-one architecture: single authoritative state, unified transactions, bounded reply intake, deterministic packages, receipts and viewport containment.
 // @updateURL    https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.meta.js
 // @downloadURL  https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.user.js
 // @supportURL   https://github.com/ysr7255007-maker/dcf-chatgpt-microcore
@@ -17,6 +17,6 @@
 // @grant        GM_registerMenuCommand
 // @grant        GM_notification
 // @grant        GM_xmlhttpRequest
-// @connect      *
+// @connect      raw.githubusercontent.com
 // @run-at       document-idle
 // ==/UserScript==

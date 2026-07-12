@@ -1,39 +1,23 @@
 # DCF 维护技能
 
-本文件维护 DCF 的操作技能，用于约束实际改动步骤。它应保持短小、可执行，不承担长篇架构治理。
+本文件只维护实际改动纪律。
 
-处理任何 DCF 需求时，先做分流：
+先判断需求属于：第一方产品模块、通用资源/命令能力、ChatGPT Host Adapter、Core 状态事务、transport、UI projection，还是发布流程。语言弹药体验变化优先改 ammo 模块；ChatGPT DOM 变化只改 Host Adapter；只有多个真实模块共同需要且现有底座无法表达时才扩展 Core。
 
-1. 先判断变化属于包定义、用户状态，还是内核能力。
-2. 模块、Surface、内容类型、包内资产、样式和显示默认值属于不可变包定义。
-3. 用户外观数值、设置值、用户内容和显示覆盖属于用户状态。
-4. 只有现有构建器、解释器、宿主桥、诊断、迁移或恢复能力无法承载时，才更新 userscript。
-5. 不把具体偏好写入 userscript 默认行为。
+任何权威变化都必须走统一事务：从当前 `dcf.state.root.v1` 生成候选，验证根与资源不变量，构建投影，成功后保存旧根快照并一次提交新根，再写派生 registry 和回执。禁止直接修改 registry，禁止为安装、卸载、内容、设置、迁移或回退另建保存/反向补丁路径。
 
-任何包操作都必须遵循同一流程：修改候选包源集合，在内存中完整构建候选 registry，检查资源冲突和不变量，成功后才提交权威源并替换运行缓存。候选失败时旧状态不得改变。
+包 revision 不可变。同一 package/revision 内容不同必须拒绝。包定义、包默认资产与用户结果分开；用户弹药、设置、外观和显示覆盖不随可选包卸载删除。`dcf.standard.ammo` 是价值闭环所需第一方核心包，不通过包管理停用或卸载。
 
-禁止让包直接 `deepMerge` 进当前 registry。禁止用安装前值、反向补丁、覆盖历史和特殊卸载逻辑恢复包影响。停用、卸载、更新和回退都通过改变输入集合后重新构建完成。
+外部 `DCF_AMMO`、`DCF_MODULE_PACK`、手动 JSON 和 GitHub catalog 都必须先解码成 typed artifact，再进入同一个事务。GitHub 只发现、下载和校验不可变 JSON，不参与 registry 合并，也不执行远程代码。
 
-包 revision 不可变。同一 `package_id + revision` 出现不同内容时必须拒绝。更新应新增 revision 并切换 active revision，旧 revision 保留用于回退。
+对话摄取只通过 Host Adapter 观察 `main` / `[role=main]` 的新增节点，并临时观察当前助手回复。回复完成后只读一次。禁止观察 `document.body`，禁止全页 innerText，禁止枚举全部历史消息，禁止恢复 `seenBlocks` 页面账本。启动补偿必须是固定回复数和硬访问上限。
 
-包定义和用户结果必须分离。卸载只移除包当前提供的定义、默认值、包资产和样式，不撤销模块过去触发的用户操作。用户宽高、设置和用户内容不得随包卸载删除。
+本地状态与外部 effect 分开。composer 有不同草稿时不得覆盖；发送、复制和通知失败只产生 effect receipt，不回滚不相关状态。普通成功不向对话自动发送反馈。
 
-独占资源使用稳定地址并在构建阶段检查冲突。不同包不得通过加载顺序隐式覆盖同一模块、Surface、内容类型或显示定义。替换核心资源必须显式声明。
+命令渲染和执行必须共用同一 `commandList` 解析。新增能力应进入通用命令解释器，不能同时保留一个硬编码 UI 旁路。命令和 effect 回执默认把正文、提示词、内容、凭据等转成长度/hash，不保存明文。
 
-包样式必须保留来源片段。appearance CSS 可以设置外观和内部布局，但不得声明 `.sh` 自身的 position、边界、宽高、min/max 或 transform。壳体几何只由用户 appearance vars、内核锚点解释和统一可视区围栏拥有。
+壳体几何只来自用户 appearance 状态和通用 appearance 命令。任何包/用户 CSS 不得声明 `.sh` 的位置、边界、宽高、min/max 或 transform。最终显示必须通过 `visualViewport` 与实际 shell rect 围栏。
 
-可调节 UI 不能用少量枚举值假装连续控制。壳体宽高、贴顶贴底和避让距离使用通用 appearance 调节能力；最终越界由实际 `visualViewport` 与 `getBoundingClientRect()` 围栏统一处理，不在各按钮中重复计算。
+源码只改 `src/` 与构建输入；根 `.user.js`、`.meta.js` 和 catalog 由 `npm run build` 生成。发布前执行 `npm run verify`、`node --check dcf-chatgpt-microcore.user.js`，回读版本、catalog hash、无 eval/远程代码路径，并执行真实浏览器的“回复工件→自动装填→发射”冒烟。
 
-恢复点应保存包源、用户状态、运行 registry 和必要操作元数据。新备份优先恢复权威源后重新构建；旧 registry-only 备份通过一次性迁移恢复。
-
-内容摄取写入用户状态。包内内容作为只读默认资产参与构建；同 ID 用户内容是明确的用户层覆盖。删除用户内容需要确认。
-
-模块内部命令默认不发送 `DCF_FEEDBACK`。反馈用于安装结果、失败诊断和用户明确授权的维护回传。成功的普通本地测试不要求发送证据。
-
-当按钮存在但结果异常时，先读取同一 `trace_id` 下的命令解析、能力调用、用户状态前后值、持久化结果、运行矩形和 CSS 来源。证据不足时先修复通用诊断链，不继续猜测或替换模块。
-
-证据不得改变被观察行为。sessionStorage 失败时命令继续执行，证据降级到当前启动的内存记录。证据默认过滤对话正文、提示词、内容资产、令牌、认证信息、Cookie、密码和完整权威源。
-
-输出安装块时要注意 DCF 会扫描可见文本。只有确实要让当前页面安装时，才输出完整安装块标记。
-
-每次仓库改动后至少检查：user/meta 版本一致；不存在重新直接修改 registry 的旧路线；运行 `node --check` 和仓库测试；回读关键文件；架构边界变化同步更新共识、维护 skill、ADR 和 current-state。
+架构变化更新 `docs/architecture-current.md`、新 ADR、`docs/adr/status-index.md`、本文件、基本共识和 current-state。旧 ADR 保留历史正文，当前状态以 status index 为准。
