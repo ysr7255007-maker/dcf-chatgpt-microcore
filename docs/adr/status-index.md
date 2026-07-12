@@ -6,6 +6,7 @@ The status in this file is authoritative. A status line inside an older ADR reco
 
 ## Current
 
+- `2026-07-12-dcf-storage-backend-bridge-and-health-report.md` — **accepted**
 - `2026-07-12-dcf-phase-one-whole-project-rebuild.md` — **accepted**
 - `2026-07-12-dcf-shell-geometry-source-of-truth.md` — **accepted**, retained by phase one
 - viewport-containment-fence ADR — **accepted**, retained by phase one
