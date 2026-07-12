@@ -28,7 +28,7 @@ function createApp(options) {
       :host{all:initial}.sh{position:fixed;right:12px;bottom:var(--bottom,112px);top:auto;width:var(--w,340px);height:min(var(--h,800px),calc(100vh - 24px));z-index:2147483646;background:#fffffff2;color:#111;border:1px solid #9996;border-radius:14px;box-shadow:0 18px 44px #0002;font:13px system-ui;overflow:hidden;box-sizing:border-box;display:flex;flex-direction:column}
       .sh[data-side=left]{left:12px;right:auto}.sh[data-anchor=top]{top:var(--top,12px);bottom:auto}.sh[data-anchor=bottom]{bottom:var(--bottom,112px);top:auto}
       @media(prefers-color-scheme:dark){.sh{background:#171717ee;color:#eee}}
-      button{border:1px solid #9995;border-radius:9px;background:transparent;color:inherit;padding:6px 8px;cursor:pointer}button:hover{background:#8882}button.danger{border-color:#dc262666}.top{height:42px;flex:0 0 42px;display:flex;align-items:center;gap:6px;padding:6px;border-bottom:1px solid #9993;box-sizing:border-box}.top b{margin-right:auto}.tabs{display:flex;gap:5px}.tabs button.on{background:#2563eb22;border-color:#2563eb66}.body{flex:1;min-height:0;overflow:auto;padding:9px;box-sizing:border-box}.card{border:1px solid #9994;border-radius:12px;background:#8881;padding:9px;margin-bottom:9px;box-sizing:border-box}.name{font-weight:700}.mini{font-size:11px;opacity:.7;word-break:break-all}.actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}textarea,input,select{width:100%;box-sizing:border-box;border:1px solid #9995;border-radius:9px;background:#fff8;color:inherit;padding:7px}textarea{min-height:120px}.notice{padding:6px 9px;border-bottom:1px solid #9993;font-size:12px}.notice:empty{display:none}.row{display:flex;gap:6px;align-items:center}.row>*{min-width:0}.grow{flex:1}.pkg{padding-top:8px;margin-top:8px;border-top:1px solid #9993}.receipt{font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;word-break:break-word;max-height:180px;overflow:auto}
+      button{border:1px solid #9995;border-radius:9px;background:transparent;color:inherit;padding:6px 8px;cursor:pointer}button:hover{background:#8882}button.danger{border-color:#dc262666}.top{height:42px;flex:0 0 42px;display:flex;align-items:center;gap:6px;padding:6px;border-bottom:1px solid #9993;box-sizing:border-box}.top b{margin-right:auto}.tabs{display:flex;gap:5px}.tabs button.on{background:#2563eb22;border-color:#2563eb66}.body{flex:1;min-height:0;overflow:auto;padding:9px;box-sizing:border-box}.card{border:1px solid #9994;border-radius:12px;background:#8881;padding:9px;margin-bottom:9px;box-sizing:border-box}.name{font-weight:700}.mini{font-size:11px;opacity:.7;word-break:break-all}.actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}textarea,input,select{width:100%;box-sizing:border-box;border:1px solid #9995;border-radius:9px;background:#fff8;color:inherit;padding:7px}textarea{min-height:120px}.notice{padding:6px 9px;border-bottom:1px solid #9993;font-size:12px}.notice:empty{display:none}.row{display:flex;gap:6px;align-items:center}.row>*{min-width:0}.grow{flex:1}.pkg{padding-top:8px;margin-top:8px;border-top:1px solid #9993}.receipt{font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;word-break:break-word;max-height:180px;overflow:auto}.health-ok{border-color:#16a34a66}.health-warning{border-color:#d9770666}.health-error{border-color:#dc262666}
     </style><style id="package-style"></style><aside class="sh"><div class="top"></div><div class="notice"></div><div class="body"></div></aside>`;
   doc.documentElement.appendChild(hostElement);
   const shell = root.querySelector('.sh');
@@ -135,9 +135,13 @@ function createApp(options) {
 
   function renderMaintenance() {
     const summary = maintenance.summary();
+    const health = maintenance.healthReport();
+    const issues = (health.checks || []).filter((item) => item.status !== 'ok');
     const receipts = maintenance.receipts().slice(-8).reverse();
     const snapshots = maintenance.snapshots().slice().reverse();
-    body.innerHTML = `<div class="card"><div class="name">运行状态</div><div class="receipt">${escapeHtml(JSON.stringify(summary, null, 2))}</div><div class="actions"><button data-action="maintenance-copy">复制诊断</button><button data-action="receipts-clear">清空回执</button></div></div>
+    const healthText = issues.length ? issues.map((item) => `${item.status.toUpperCase()} · ${item.summary}`).join('\n') : '全部关键检查通过';
+    body.innerHTML = `<div class="card health-${escapeHtml(health.overall || 'warning')}"><div class="name">一键体检 · ${(health.overall || 'warning').toUpperCase()}</div><div class="mini">覆盖双存储后端、旧模块迁移、权威根、运行投影、包、模块、Surface、宿主监听与失败回执。报告不包含对话正文和弹药正文。</div><div class="receipt">${escapeHtml(healthText)}</div><div class="actions"><button data-action="maintenance-health-copy">一键体检并复制</button></div></div>
+      <div class="card"><div class="name">运行状态</div><div class="receipt">${escapeHtml(JSON.stringify(summary, null, 2))}</div><div class="actions"><button data-action="maintenance-copy">复制简要诊断</button><button data-action="receipts-clear">清空回执</button></div></div>
       <div class="card"><div class="name">最近回执</div>${receipts.length ? receipts.map((item) => `<div class="receipt pkg">${escapeHtml(JSON.stringify(item, null, 2))}</div>`).join('') : '<div class="mini">暂无回执</div>'}</div>
       <div class="card"><div class="name">状态快照</div>${snapshots.length ? snapshots.map((item) => `<div class="pkg row"><span class="grow mini">r${item.revision} · ${escapeHtml(item.reason)}</span><button data-action="rollback" data-revision="${item.revision}">恢复</button></div>`).join('') : '<div class="mini">暂无快照</div>'}</div>` + renderModuleCards(engine.getRegistry().modules.filter((module) => moduleArea(module) === 'maintenance'));
   }
@@ -232,7 +236,8 @@ function createApp(options) {
       const module = engine.getRegistry().modules.find((entry) => entry.id === button.dataset.moduleId);
       const found = module && commandList(module).find((entry) => String(entry.command.id) === String(button.dataset.commandId));
       if (module && found) runAndRender(() => commandRunner.execute(module, found.command, found.block), '命令已执行');
-    } else if (action === 'maintenance-copy') runAndRender(() => maintenance.copySummary(), '诊断已复制');
+    } else if (action === 'maintenance-health-copy') runAndRender(() => maintenance.copyHealthReport(), '完整体检报告已复制');
+    else if (action === 'maintenance-copy') runAndRender(() => maintenance.copySummary(), '简要诊断已复制');
     else if (action === 'receipts-clear') runAndRender(() => maintenance.clearReceipts(), '回执已清空');
     else if (action === 'rollback') runAndRender(() => maintenance.rollbackTo(Number(button.dataset.revision)), '状态已恢复');
   });
