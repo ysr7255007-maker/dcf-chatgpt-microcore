@@ -1,7 +1,7 @@
 # DCF 当前架构
 
 Updated: 2026-07-12  
-Current release candidate: `0.11.1`
+Current release: `0.11.1`
 
 ## 1. Value and engineering dependency
 
