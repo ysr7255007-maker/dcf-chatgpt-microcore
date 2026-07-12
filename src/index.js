@@ -15,6 +15,7 @@ const { STANDARD_PACKS, REQUIRED_PRODUCT_PACKAGES } = require('./modules/standar
 const { createAmmoModule } = require('./modules/ammo');
 const { createCatalogTransport } = require('./modules/catalog');
 const { createPackageManager } = require('./modules/package-manager');
+const { createHealthReporter } = require('./modules/health');
 const { createMaintenanceModule } = require('./modules/maintenance');
 const { createApp } = require('./ui/app');
 
@@ -46,7 +47,8 @@ function boot(api = globalThis) {
   const catalog = createCatalogTransport(storage, engine, api);
   const ammo = createAmmoModule(engine, effects);
   const packageManager = createPackageManager(engine, catalog);
-  const maintenance = createMaintenanceModule(engine, receiptStore, effects, storage);
+  const health = createHealthReporter(engine, receiptStore, storage, host, REQUIRED_PRODUCT_PACKAGES);
+  const maintenance = createMaintenanceModule(engine, receiptStore, effects, storage, health);
   let app = null;
   const commandRunner = createCommandRunner(engine, effects, receiptStore, () => {
     if (!app || !app.shell) return null;
@@ -72,10 +74,11 @@ function boot(api = globalThis) {
 
   if (typeof api.GM_registerMenuCommand === 'function') {
     api.GM_registerMenuCommand('DCF：检查模块更新', () => catalog.check({ force: true }).then(() => app.render()));
-    api.GM_registerMenuCommand('DCF：复制诊断', () => maintenance.copySummary());
+    api.GM_registerMenuCommand('DCF：一键体检并复制', () => maintenance.copyHealthReport());
+    api.GM_registerMenuCommand('DCF：复制简要诊断', () => maintenance.copySummary());
   }
 
-  api.__DCF_RUNTIME__ = { version: VERSION, engine, host, app, catalog, receiptStore };
+  api.__DCF_RUNTIME__ = { version: VERSION, engine, host, app, catalog, receiptStore, health };
   return api.__DCF_RUNTIME__;
 }
 
