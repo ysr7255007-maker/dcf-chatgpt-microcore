@@ -16,7 +16,7 @@ Updated: 2026-07-12
 
 ## 当前版本
 
-当前发布候选版本：`0.11.1`
+当前发布版本：`0.11.1`
 
 一期全项目架构重建已经完成。`0.11.1` 修复 `0.10.0 localStorage -> 0.11.0 GM storage` 之间的存储后端断层，并新增一键全量体检报告。
 
@@ -48,17 +48,16 @@ Updated: 2026-07-12
 - required first-party ammo module and optional declarative shell-adjuster module;
 - package manager, maintenance summary, snapshots/rollback, and viewport fence.
 
-## Verification target
+## Verification
 
-Before merge/release:
+The 0.11.1 release passed:
 
 - `npm run verify`;
 - `node --check dcf-chatgpt-microcore.user.js`;
 - dual-backend bridge test with an existing GM root plus legacy localStorage modules and ammo;
 - bridge idempotence test;
 - whole-runtime health inventory and privacy test;
-- deterministic userscript, metadata, and catalog generation;
-- real browser check: update to `0.11.1`, refresh ChatGPT, confirm old modules reappear, then use `维护 -> 一键体检并复制` and paste the report when any item is warning/error.
+- deterministic userscript, metadata, and catalog generation.
 
 ## User checkpoint after release
 
