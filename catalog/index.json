@@ -1,0 +1,20 @@
+{
+  "schema": "dcf.catalog.v1",
+  "generated_by_version": "0.11.0",
+  "packages": [
+    {
+      "package_id": "dcf.standard.ammo",
+      "revision": "1.0.0",
+      "channel": "stable",
+      "hash": "fnv1a-6568e580",
+      "url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/catalog/packages/dcf.standard.ammo/1.0.0.json"
+    },
+    {
+      "package_id": "dcf.standard.shell-adjuster",
+      "revision": "1.0.0",
+      "channel": "stable",
+      "hash": "fnv1a-1081c859",
+      "url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/catalog/packages/dcf.standard.shell-adjuster/1.0.0.json"
+    }
+  ]
+}
