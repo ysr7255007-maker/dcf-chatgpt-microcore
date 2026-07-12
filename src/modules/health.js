@@ -94,8 +94,9 @@ function createHealthReporter(engine, receiptStore, storage, host, requiredPacka
       checks.push({ id, status, summary, details: details || null });
     }
 
+    const computedHash = computeStateHash(root);
     addCheck('state.root.valid', rootValidation.ok ? 'ok' : 'error', rootValidation.ok ? '权威状态根可验证' : '权威状态根验证失败', rootValidation.errors);
-    addCheck('state.hash.matches', computeStateHash(root) === root.state_hash ? 'ok' : 'error', computeStateHash(root) === root.state_hash ? '状态哈希一致' : '状态哈希不一致');
+    addCheck('state.hash.matches', computedHash === root.state_hash ? 'ok' : 'error', computedHash === root.state_hash ? '状态哈希一致' : '状态哈希不一致');
     addCheck('projection.matches-root', registry && registry.state_hash === root.state_hash ? 'ok' : 'error', registry && registry.state_hash === root.state_hash ? '运行投影与权威根一致' : '运行投影与权威根不一致');
 
     const missingRequired = requiredPackages.filter((id) => {
@@ -104,7 +105,7 @@ function createHealthReporter(engine, receiptStore, storage, host, requiredPacka
     });
     addCheck('product.required-packages', missingRequired.length ? 'error' : 'ok', missingRequired.length ? '产品核心包缺失或停用' : '产品核心包完整', missingRequired);
 
-    const localLegacyPresent = localLegacy.package_ids.length || localLegacy.module_ids.length || localLegacy.ammo_count || localLegacy.stores.root.present;
+    const localLegacyPresent = !!(localLegacy.package_ids.length || localLegacy.module_ids.length || localLegacy.ammo_count || localLegacy.stores.root.present);
     if (missingLegacyModules.length || missingLegacyPackages.length) {
       addCheck('migration.legacy-coverage', 'error', '检测到未进入当前运行态的旧模块或旧包', { missing_module_ids: missingLegacyModules, missing_package_ids: missingLegacyPackages });
     } else if (localLegacyPresent) {
@@ -160,7 +161,7 @@ function createHealthReporter(engine, receiptStore, storage, host, requiredPacka
         revision: root.revision,
         parent_revision: root.parent_revision,
         state_hash: root.state_hash,
-        computed_state_hash: computeStateHash(root),
+        computed_state_hash: computedHash,
         package_revision: root.packages.revision,
         user_revision: root.user.revision,
         migration: root.system.migration || null,
@@ -231,12 +232,11 @@ function createHealthReporter(engine, receiptStore, storage, host, requiredPacka
     };
   }
 
-  function copy() {
-    const payload = `<<<DCF_HEALTH_REPORT\n${JSON.stringify(report(), null, 2)}\nDCF_HEALTH_REPORT>>>`;
-    return host.copy(payload);
+  function format() {
+    return `<<<DCF_HEALTH_REPORT\n${JSON.stringify(report(), null, 2)}\nDCF_HEALTH_REPORT>>>`;
   }
 
-  return { report, copy };
+  return { report, format };
 }
 
 module.exports = { createHealthReporter, legacyInventory, activePackModuleIds };
