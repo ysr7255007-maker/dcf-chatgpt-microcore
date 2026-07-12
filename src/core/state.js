@@ -26,7 +26,8 @@ const EMPTY_ROOT = {
   system: {
     schema: 'dcf.system.state.v1',
     migration: null,
-    artifact_index: {},
+    storage_bridge: null,
+    artifact_index: {}
   }
 };
 
@@ -109,7 +110,7 @@ function addPackRevision(root, pack, source) {
   root.packages.revision += 1;
 }
 
-function migrateLegacyRegistry(registry) {
+function migrateLegacyRegistry(registry, context = {}) {
   const root = normalizeRoot(EMPTY_ROOT);
   const source = isObject(registry) ? registry : {};
   const appearance = isObject(source.appearance) ? source.appearance : {};
@@ -125,21 +126,21 @@ function migrateLegacyRegistry(registry) {
     if (!module || !module.id) continue;
     addPackRevision(root, synthesizeLegacyPack(String(module.id), String(module.version || 'legacy-1'), {
       module_display: source.moduleDisplay && source.moduleDisplay[module.id] ? { [module.id]: source.moduleDisplay[module.id] } : {}
-    }, [module]), { kind: 'legacy-registry' });
+    }, [module]), { kind: 'legacy-registry', backend: context.backend || null });
   }
   for (const surface of Object.values(isObject(source.surfaces) ? source.surfaces : {})) {
     if (!surface || !surface.id) continue;
-    addPackRevision(root, synthesizeLegacyPack(`dcf.surface.${surface.id}`, 'legacy-1', { surfaces: [surface] }), { kind: 'legacy-registry' });
+    addPackRevision(root, synthesizeLegacyPack(`dcf.surface.${surface.id}`, 'legacy-1', { surfaces: [surface] }), { kind: 'legacy-registry', backend: context.backend || null });
   }
   for (const type of Object.values(isObject(source.contentTypes) ? source.contentTypes : {})) {
     if (!type || !type.id) continue;
-    addPackRevision(root, synthesizeLegacyPack(`dcf.content-type.${type.id}`, 'legacy-1', { content_types: [type] }), { kind: 'legacy-registry' });
+    addPackRevision(root, synthesizeLegacyPack(`dcf.content-type.${type.id}`, 'legacy-1', { content_types: [type] }), { kind: 'legacy-registry', backend: context.backend || null });
   }
-  root.system.migration = { from: LEGACY_KEYS.registry, at: nowIso() };
+  root.system.migration = { from: LEGACY_KEYS.registry, backend: context.backend || null, at: nowIso() };
   return finalizeCandidate(null, root);
 }
 
-function migrateFromV10(packages, user, ops) {
+function migrateFromV10(packages, user, ops, context = {}) {
   const root = normalizeRoot(EMPTY_ROOT);
   root.packages = deepMerge(root.packages, packages || {});
   root.packages.schema = 'dcf.package.sources.v2';
@@ -148,6 +149,7 @@ function migrateFromV10(packages, user, ops) {
   const legacyOps = isObject(ops) ? ops : {};
   root.system.migration = {
     from: 'dcf 0.10 source-build stores',
+    backend: context.backend || null,
     at: nowIso(),
     legacy_ops_summary: {
       seen_blocks: Object.keys(isObject(legacyOps.seenBlocks) ? legacyOps.seenBlocks : {}).length,
@@ -158,17 +160,132 @@ function migrateFromV10(packages, user, ops) {
   return finalizeCandidate(null, root);
 }
 
+function readFrom(storage, backend, key, fallback) {
+  return storage && typeof storage.getFrom === 'function' ? storage.getFrom(backend, key, fallback) : storage.get(key, fallback);
+}
+
+function hasMeaningfulRoot(root) {
+  if (!root) return false;
+  const packageCount = Object.keys(root.packages && root.packages.packages || {}).length;
+  const user = root.user || {};
+  const contentCount = Object.values(user.content || {}).reduce((sum, items) => sum + Object.keys(isObject(items) ? items : {}).length, 0);
+  return packageCount > 0 || contentCount > 0 || Object.keys(user.settings || {}).length > 0 || Object.keys(user.moduleDisplay || {}).length > 0 || Object.keys(user.appearance && user.appearance.vars || {}).length > 0 || !!(user.appearance && (user.appearance.side || user.appearance.css));
+}
+
+function readLegacyRootFromBackend(storage, backend) {
+  const rootValue = readFrom(storage, backend, LEGACY_KEYS.root, null);
+  if (rootValue && rootValue.schema === EMPTY_ROOT.schema) return normalizeRoot(rootValue);
+  const packages = readFrom(storage, backend, LEGACY_KEYS.packages, null);
+  const user = readFrom(storage, backend, LEGACY_KEYS.user, null);
+  const ops = readFrom(storage, backend, LEGACY_KEYS.ops, null);
+  if (packages && user) return migrateFromV10(packages, user, ops, { backend });
+  const registry = readFrom(storage, backend, LEGACY_KEYS.registry, null);
+  if (registry && isObject(registry)) {
+    const migrated = migrateLegacyRegistry(registry, { backend });
+    if (hasMeaningfulRoot(migrated)) return migrated;
+  }
+  return null;
+}
+
+function copyMissing(target, source, recovered) {
+  for (const [key, value] of Object.entries(isObject(source) ? source : {})) {
+    if (Object.prototype.hasOwnProperty.call(target, key)) continue;
+    target[key] = clone(value);
+    recovered.push(key);
+  }
+}
+
+function mergeLegacyRoot(currentRoot, legacyRoot, context = {}) {
+  let candidate = clone(currentRoot);
+  const recovered = { packages: [], revisions: [], settings: [], content: [], module_display: [], appearance: [] };
+  const skipped = { packages: [] };
+
+  for (const [packageId, legacyEntry] of Object.entries(legacyRoot.packages && legacyRoot.packages.packages || {})) {
+    const currentEntry = candidate.packages.packages[packageId];
+    if (!currentEntry) {
+      const trial = clone(candidate);
+      trial.packages.packages[packageId] = clone(legacyEntry);
+      trial.packages.revision += 1;
+      const build = buildProjection(trial);
+      if (build.ok) {
+        candidate = trial;
+        recovered.packages.push(packageId);
+      } else {
+        skipped.packages.push({ package_id: packageId, errors: build.errors.slice(0, 8) });
+      }
+      continue;
+    }
+    currentEntry.revisions = isObject(currentEntry.revisions) ? currentEntry.revisions : {};
+    for (const [revision, record] of Object.entries(legacyEntry.revisions || {})) {
+      if (currentEntry.revisions[revision]) continue;
+      currentEntry.revisions[revision] = clone(record);
+      candidate.packages.revision += 1;
+      recovered.revisions.push(`${packageId}@${revision}`);
+    }
+  }
+
+  const currentAppearance = candidate.user.appearance || (candidate.user.appearance = clone(EMPTY_ROOT.user.appearance));
+  const legacyAppearance = legacyRoot.user && legacyRoot.user.appearance || {};
+  if (!currentAppearance.side && legacyAppearance.side) {
+    currentAppearance.side = legacyAppearance.side;
+    recovered.appearance.push('side');
+  }
+  copyMissing(currentAppearance.vars || (currentAppearance.vars = {}), legacyAppearance.vars, recovered.appearance);
+  if (!currentAppearance.css && legacyAppearance.css) {
+    currentAppearance.css = legacyAppearance.css;
+    recovered.appearance.push('css');
+  }
+  copyMissing(candidate.user.settings || (candidate.user.settings = {}), legacyRoot.user && legacyRoot.user.settings, recovered.settings);
+  copyMissing(candidate.user.moduleDisplay || (candidate.user.moduleDisplay = {}), legacyRoot.user && legacyRoot.user.moduleDisplay, recovered.module_display);
+  for (const [type, items] of Object.entries(legacyRoot.user && legacyRoot.user.content || {})) {
+    candidate.user.content[type] = isObject(candidate.user.content[type]) ? candidate.user.content[type] : {};
+    const added = [];
+    copyMissing(candidate.user.content[type], items, added);
+    recovered.content.push(...added.map((id) => `${type}:${id}`));
+  }
+
+  const userRecovered = recovered.settings.length + recovered.content.length + recovered.module_display.length + recovered.appearance.length;
+  if (userRecovered) candidate.user.revision += 1;
+  candidate.system.storage_bridge = {
+    schema: 'dcf.storage.bridge.v1',
+    from_backend: context.from_backend || 'localStorage',
+    to_backend: context.to_backend || null,
+    at: nowIso(),
+    legacy_state_hash: legacyRoot.state_hash,
+    recovered,
+    skipped
+  };
+  return finalizeCandidate(currentRoot, candidate);
+}
+
 function loadOrMigrate(storage, standardPacks) {
+  const primaryBackend = storage.primaryBackend || 'primary';
   const existing = storage.get(LEGACY_KEYS.root || 'dcf.state.root.v1', null);
   let root;
   if (existing && existing.schema === EMPTY_ROOT.schema) {
     root = normalizeRoot(existing);
+    if (primaryBackend !== 'localStorage' && !root.system.storage_bridge) {
+      const localLegacy = readLegacyRootFromBackend(storage, 'localStorage');
+      if (localLegacy && hasMeaningfulRoot(localLegacy) && localLegacy.state_hash !== root.state_hash) {
+        root = mergeLegacyRoot(root, localLegacy, { from_backend: 'localStorage', to_backend: primaryBackend });
+      }
+    }
   } else {
-    const p = storage.get(LEGACY_KEYS.packages, null);
-    const u = storage.get(LEGACY_KEYS.user, null);
-    const o = storage.get(LEGACY_KEYS.ops, null);
-    if (p && u) root = migrateFromV10(p, u, o);
-    else root = migrateLegacyRegistry(storage.get(LEGACY_KEYS.registry, {}));
+    const localRoot = primaryBackend !== 'localStorage' ? readFrom(storage, 'localStorage', LEGACY_KEYS.root, null) : null;
+    if (localRoot && localRoot.schema === EMPTY_ROOT.schema) {
+      const normalized = normalizeRoot(localRoot);
+      const candidate = clone(normalized);
+      candidate.system.storage_bridge = { schema: 'dcf.storage.bridge.v1', from_backend: 'localStorage', to_backend: primaryBackend, at: nowIso(), recovered: { root: true }, skipped: { packages: [] } };
+      root = finalizeCandidate(normalized, candidate);
+    } else {
+      root = readLegacyRootFromBackend(storage, primaryBackend);
+      if (!root && primaryBackend !== 'localStorage') root = readLegacyRootFromBackend(storage, 'localStorage');
+      if (!root) root = migrateLegacyRegistry({});
+      if (root.system.migration && root.system.migration.backend === 'localStorage' && primaryBackend !== 'localStorage') {
+        root.system.storage_bridge = { schema: 'dcf.storage.bridge.v1', from_backend: 'localStorage', to_backend: primaryBackend, at: nowIso(), recovered: { initial_migration: true }, skipped: { packages: [] } };
+        root.state_hash = computeStateHash(root);
+      }
+    }
   }
   if (!Object.keys(root.packages.packages).length && Array.isArray(standardPacks)) {
     const candidate = clone(root);
@@ -181,7 +298,7 @@ function loadOrMigrate(storage, standardPacks) {
     const candidate = clone(root);
     candidate.user.appearance.css = '';
     candidate.user.revision += 1;
-    candidate.system.migration = Object.assign({}, candidate.system.migration || {}, { quarantined_user_css: { at: nowIso(), violations, preview: userCss.slice(0, 180) } });
+    candidate.system.migration = Object.assign({}, candidate.system.migration || {}, { quarantined_user_css: { at: nowIso(), violations, preview: { redacted: true, length: userCss.length, hash: hash(userCss) } } });
     root = finalizeCandidate(root, candidate);
   }
   root.state_hash = computeStateHash(root);
@@ -197,5 +314,7 @@ module.exports = {
   addPackRevision,
   migrateLegacyRegistry,
   migrateFromV10,
+  readLegacyRootFromBackend,
+  mergeLegacyRoot,
   loadOrMigrate
 };

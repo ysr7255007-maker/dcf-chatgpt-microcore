@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         DCF ChatGPT Microcore
 // @namespace    https://chatgpt.com/
-// @version      0.11.0
-// @description  DCF phase-one architecture: single authoritative state, unified transactions, bounded reply intake, deterministic packages, receipts and viewport containment.
+// @version      0.11.1
+// @description  DCF modular runtime with storage bridge, one-click health report, bounded reply intake, unified transactions and deterministic packages.
 // @updateURL    https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.meta.js
 // @downloadURL  https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.user.js
 // @supportURL   https://github.com/ysr7255007-maker/dcf-chatgpt-microcore
@@ -112,7 +112,7 @@ module.exports = {
 "src/core/constants.js":function(module,exports,require){
 'use strict';
 
-const VERSION = '0.11.0';
+const VERSION = '0.11.1';
 const ROOT_KEY = 'dcf.state.root.v1';
 const SNAPSHOT_KEY = 'dcf.state.snapshots.v1';
 const RUNTIME_KEY = 'dcf.runtime.registry.v3';
@@ -141,7 +141,6 @@ module.exports = {
   LEGACY_KEYS,
   CATALOG_URL
 };
-
 },
 "src/core/resources.js":function(module,exports,require){
 'use strict';
@@ -431,7 +430,8 @@ const EMPTY_ROOT = {
   system: {
     schema: 'dcf.system.state.v1',
     migration: null,
-    artifact_index: {},
+    storage_bridge: null,
+    artifact_index: {}
   }
 };
 
@@ -514,7 +514,7 @@ function addPackRevision(root, pack, source) {
   root.packages.revision += 1;
 }
 
-function migrateLegacyRegistry(registry) {
+function migrateLegacyRegistry(registry, context = {}) {
   const root = normalizeRoot(EMPTY_ROOT);
   const source = isObject(registry) ? registry : {};
   const appearance = isObject(source.appearance) ? source.appearance : {};
@@ -530,21 +530,21 @@ function migrateLegacyRegistry(registry) {
     if (!module || !module.id) continue;
     addPackRevision(root, synthesizeLegacyPack(String(module.id), String(module.version || 'legacy-1'), {
       module_display: source.moduleDisplay && source.moduleDisplay[module.id] ? { [module.id]: source.moduleDisplay[module.id] } : {}
-    }, [module]), { kind: 'legacy-registry' });
+    }, [module]), { kind: 'legacy-registry', backend: context.backend || null });
   }
   for (const surface of Object.values(isObject(source.surfaces) ? source.surfaces : {})) {
     if (!surface || !surface.id) continue;
-    addPackRevision(root, synthesizeLegacyPack(`dcf.surface.${surface.id}`, 'legacy-1', { surfaces: [surface] }), { kind: 'legacy-registry' });
+    addPackRevision(root, synthesizeLegacyPack(`dcf.surface.${surface.id}`, 'legacy-1', { surfaces: [surface] }), { kind: 'legacy-registry', backend: context.backend || null });
   }
   for (const type of Object.values(isObject(source.contentTypes) ? source.contentTypes : {})) {
     if (!type || !type.id) continue;
-    addPackRevision(root, synthesizeLegacyPack(`dcf.content-type.${type.id}`, 'legacy-1', { content_types: [type] }), { kind: 'legacy-registry' });
+    addPackRevision(root, synthesizeLegacyPack(`dcf.content-type.${type.id}`, 'legacy-1', { content_types: [type] }), { kind: 'legacy-registry', backend: context.backend || null });
   }
-  root.system.migration = { from: LEGACY_KEYS.registry, at: nowIso() };
+  root.system.migration = { from: LEGACY_KEYS.registry, backend: context.backend || null, at: nowIso() };
   return finalizeCandidate(null, root);
 }
 
-function migrateFromV10(packages, user, ops) {
+function migrateFromV10(packages, user, ops, context = {}) {
   const root = normalizeRoot(EMPTY_ROOT);
   root.packages = deepMerge(root.packages, packages || {});
   root.packages.schema = 'dcf.package.sources.v2';
@@ -553,6 +553,7 @@ function migrateFromV10(packages, user, ops) {
   const legacyOps = isObject(ops) ? ops : {};
   root.system.migration = {
     from: 'dcf 0.10 source-build stores',
+    backend: context.backend || null,
     at: nowIso(),
     legacy_ops_summary: {
       seen_blocks: Object.keys(isObject(legacyOps.seenBlocks) ? legacyOps.seenBlocks : {}).length,
@@ -563,17 +564,132 @@ function migrateFromV10(packages, user, ops) {
   return finalizeCandidate(null, root);
 }
 
+function readFrom(storage, backend, key, fallback) {
+  return storage && typeof storage.getFrom === 'function' ? storage.getFrom(backend, key, fallback) : storage.get(key, fallback);
+}
+
+function hasMeaningfulRoot(root) {
+  if (!root) return false;
+  const packageCount = Object.keys(root.packages && root.packages.packages || {}).length;
+  const user = root.user || {};
+  const contentCount = Object.values(user.content || {}).reduce((sum, items) => sum + Object.keys(isObject(items) ? items : {}).length, 0);
+  return packageCount > 0 || contentCount > 0 || Object.keys(user.settings || {}).length > 0 || Object.keys(user.moduleDisplay || {}).length > 0 || Object.keys(user.appearance && user.appearance.vars || {}).length > 0 || !!(user.appearance && (user.appearance.side || user.appearance.css));
+}
+
+function readLegacyRootFromBackend(storage, backend) {
+  const rootValue = readFrom(storage, backend, LEGACY_KEYS.root, null);
+  if (rootValue && rootValue.schema === EMPTY_ROOT.schema) return normalizeRoot(rootValue);
+  const packages = readFrom(storage, backend, LEGACY_KEYS.packages, null);
+  const user = readFrom(storage, backend, LEGACY_KEYS.user, null);
+  const ops = readFrom(storage, backend, LEGACY_KEYS.ops, null);
+  if (packages && user) return migrateFromV10(packages, user, ops, { backend });
+  const registry = readFrom(storage, backend, LEGACY_KEYS.registry, null);
+  if (registry && isObject(registry)) {
+    const migrated = migrateLegacyRegistry(registry, { backend });
+    if (hasMeaningfulRoot(migrated)) return migrated;
+  }
+  return null;
+}
+
+function copyMissing(target, source, recovered) {
+  for (const [key, value] of Object.entries(isObject(source) ? source : {})) {
+    if (Object.prototype.hasOwnProperty.call(target, key)) continue;
+    target[key] = clone(value);
+    recovered.push(key);
+  }
+}
+
+function mergeLegacyRoot(currentRoot, legacyRoot, context = {}) {
+  let candidate = clone(currentRoot);
+  const recovered = { packages: [], revisions: [], settings: [], content: [], module_display: [], appearance: [] };
+  const skipped = { packages: [] };
+
+  for (const [packageId, legacyEntry] of Object.entries(legacyRoot.packages && legacyRoot.packages.packages || {})) {
+    const currentEntry = candidate.packages.packages[packageId];
+    if (!currentEntry) {
+      const trial = clone(candidate);
+      trial.packages.packages[packageId] = clone(legacyEntry);
+      trial.packages.revision += 1;
+      const build = buildProjection(trial);
+      if (build.ok) {
+        candidate = trial;
+        recovered.packages.push(packageId);
+      } else {
+        skipped.packages.push({ package_id: packageId, errors: build.errors.slice(0, 8) });
+      }
+      continue;
+    }
+    currentEntry.revisions = isObject(currentEntry.revisions) ? currentEntry.revisions : {};
+    for (const [revision, record] of Object.entries(legacyEntry.revisions || {})) {
+      if (currentEntry.revisions[revision]) continue;
+      currentEntry.revisions[revision] = clone(record);
+      candidate.packages.revision += 1;
+      recovered.revisions.push(`${packageId}@${revision}`);
+    }
+  }
+
+  const currentAppearance = candidate.user.appearance || (candidate.user.appearance = clone(EMPTY_ROOT.user.appearance));
+  const legacyAppearance = legacyRoot.user && legacyRoot.user.appearance || {};
+  if (!currentAppearance.side && legacyAppearance.side) {
+    currentAppearance.side = legacyAppearance.side;
+    recovered.appearance.push('side');
+  }
+  copyMissing(currentAppearance.vars || (currentAppearance.vars = {}), legacyAppearance.vars, recovered.appearance);
+  if (!currentAppearance.css && legacyAppearance.css) {
+    currentAppearance.css = legacyAppearance.css;
+    recovered.appearance.push('css');
+  }
+  copyMissing(candidate.user.settings || (candidate.user.settings = {}), legacyRoot.user && legacyRoot.user.settings, recovered.settings);
+  copyMissing(candidate.user.moduleDisplay || (candidate.user.moduleDisplay = {}), legacyRoot.user && legacyRoot.user.moduleDisplay, recovered.module_display);
+  for (const [type, items] of Object.entries(legacyRoot.user && legacyRoot.user.content || {})) {
+    candidate.user.content[type] = isObject(candidate.user.content[type]) ? candidate.user.content[type] : {};
+    const added = [];
+    copyMissing(candidate.user.content[type], items, added);
+    recovered.content.push(...added.map((id) => `${type}:${id}`));
+  }
+
+  const userRecovered = recovered.settings.length + recovered.content.length + recovered.module_display.length + recovered.appearance.length;
+  if (userRecovered) candidate.user.revision += 1;
+  candidate.system.storage_bridge = {
+    schema: 'dcf.storage.bridge.v1',
+    from_backend: context.from_backend || 'localStorage',
+    to_backend: context.to_backend || null,
+    at: nowIso(),
+    legacy_state_hash: legacyRoot.state_hash,
+    recovered,
+    skipped
+  };
+  return finalizeCandidate(currentRoot, candidate);
+}
+
 function loadOrMigrate(storage, standardPacks) {
+  const primaryBackend = storage.primaryBackend || 'primary';
   const existing = storage.get(LEGACY_KEYS.root || 'dcf.state.root.v1', null);
   let root;
   if (existing && existing.schema === EMPTY_ROOT.schema) {
     root = normalizeRoot(existing);
+    if (primaryBackend !== 'localStorage' && !root.system.storage_bridge) {
+      const localLegacy = readLegacyRootFromBackend(storage, 'localStorage');
+      if (localLegacy && hasMeaningfulRoot(localLegacy) && localLegacy.state_hash !== root.state_hash) {
+        root = mergeLegacyRoot(root, localLegacy, { from_backend: 'localStorage', to_backend: primaryBackend });
+      }
+    }
   } else {
-    const p = storage.get(LEGACY_KEYS.packages, null);
-    const u = storage.get(LEGACY_KEYS.user, null);
-    const o = storage.get(LEGACY_KEYS.ops, null);
-    if (p && u) root = migrateFromV10(p, u, o);
-    else root = migrateLegacyRegistry(storage.get(LEGACY_KEYS.registry, {}));
+    const localRoot = primaryBackend !== 'localStorage' ? readFrom(storage, 'localStorage', LEGACY_KEYS.root, null) : null;
+    if (localRoot && localRoot.schema === EMPTY_ROOT.schema) {
+      const normalized = normalizeRoot(localRoot);
+      const candidate = clone(normalized);
+      candidate.system.storage_bridge = { schema: 'dcf.storage.bridge.v1', from_backend: 'localStorage', to_backend: primaryBackend, at: nowIso(), recovered: { root: true }, skipped: { packages: [] } };
+      root = finalizeCandidate(normalized, candidate);
+    } else {
+      root = readLegacyRootFromBackend(storage, primaryBackend);
+      if (!root && primaryBackend !== 'localStorage') root = readLegacyRootFromBackend(storage, 'localStorage');
+      if (!root) root = migrateLegacyRegistry({});
+      if (root.system.migration && root.system.migration.backend === 'localStorage' && primaryBackend !== 'localStorage') {
+        root.system.storage_bridge = { schema: 'dcf.storage.bridge.v1', from_backend: 'localStorage', to_backend: primaryBackend, at: nowIso(), recovered: { initial_migration: true }, skipped: { packages: [] } };
+        root.state_hash = computeStateHash(root);
+      }
+    }
   }
   if (!Object.keys(root.packages.packages).length && Array.isArray(standardPacks)) {
     const candidate = clone(root);
@@ -586,7 +702,7 @@ function loadOrMigrate(storage, standardPacks) {
     const candidate = clone(root);
     candidate.user.appearance.css = '';
     candidate.user.revision += 1;
-    candidate.system.migration = Object.assign({}, candidate.system.migration || {}, { quarantined_user_css: { at: nowIso(), violations, preview: userCss.slice(0, 180) } });
+    candidate.system.migration = Object.assign({}, candidate.system.migration || {}, { quarantined_user_css: { at: nowIso(), violations, preview: { redacted: true, length: userCss.length, hash: hash(userCss) } } });
     root = finalizeCandidate(root, candidate);
   }
   root.state_hash = computeStateHash(root);
@@ -602,9 +718,10 @@ module.exports = {
   addPackRevision,
   migrateLegacyRegistry,
   migrateFromV10,
+  readLegacyRootFromBackend,
+  mergeLegacyRoot,
   loadOrMigrate
 };
-
 },
 "src/core/artifacts.js":function(module,exports,require){
 'use strict';
@@ -922,33 +1039,107 @@ module.exports = { createTransactionEngine };
 
 function createStorage(api = globalThis) {
   const memory = new Map();
-  function get(key, fallback) {
+  const hasGM = typeof api.GM_getValue === 'function' && typeof api.GM_setValue === 'function';
+  const hasLocalStorage = !!api.localStorage;
+  const primaryBackend = hasGM ? 'gm' : hasLocalStorage ? 'localStorage' : 'memory';
+
+  function localGet(key, fallback) {
     try {
-      if (typeof api.GM_getValue === 'function') return api.GM_getValue(key, fallback);
-      if (api.localStorage) {
-        const raw = api.localStorage.getItem(key);
-        return raw == null ? fallback : JSON.parse(raw);
-      }
-    } catch (_) {}
-    return memory.has(key) ? memory.get(key) : fallback;
+      const raw = api.localStorage && api.localStorage.getItem(key);
+      return raw == null ? fallback : JSON.parse(raw);
+    } catch (_) {
+      return fallback;
+    }
   }
-  function set(key, value) {
-    if (typeof api.GM_setValue === 'function') return api.GM_setValue(key, value);
-    if (api.localStorage) return api.localStorage.setItem(key, JSON.stringify(value));
+
+  function localSet(key, value) {
+    if (!api.localStorage) return undefined;
+    return api.localStorage.setItem(key, JSON.stringify(value));
+  }
+
+  function localRemove(key) {
+    if (!api.localStorage) return undefined;
+    return api.localStorage.removeItem(key);
+  }
+
+  function getFrom(backend, key, fallback) {
+    try {
+      if (backend === 'gm' && hasGM) return api.GM_getValue(key, fallback);
+      if (backend === 'localStorage' && hasLocalStorage) return localGet(key, fallback);
+      if (backend === 'memory') return memory.has(key) ? memory.get(key) : fallback;
+    } catch (_) {}
+    return fallback;
+  }
+
+  function setTo(backend, key, value) {
+    if (backend === 'gm' && hasGM) return api.GM_setValue(key, value);
+    if (backend === 'localStorage' && hasLocalStorage) return localSet(key, value);
     memory.set(key, value);
     return undefined;
   }
-  function remove(key) {
-    if (typeof api.GM_deleteValue === 'function') return api.GM_deleteValue(key);
-    if (api.localStorage) return api.localStorage.removeItem(key);
+
+  function removeFrom(backend, key) {
+    if (backend === 'gm' && typeof api.GM_deleteValue === 'function') return api.GM_deleteValue(key);
+    if (backend === 'localStorage' && hasLocalStorage) return localRemove(key);
     memory.delete(key);
     return undefined;
   }
-  return { get, set, remove };
+
+  function listKeys(backend) {
+    try {
+      if (backend === 'gm' && typeof api.GM_listValues === 'function') return api.GM_listValues().map(String);
+      if (backend === 'localStorage' && hasLocalStorage) {
+        const keys = [];
+        for (let index = 0; index < api.localStorage.length; index += 1) {
+          const key = api.localStorage.key(index);
+          if (key != null) keys.push(String(key));
+        }
+        return keys;
+      }
+      if (backend === 'memory') return Array.from(memory.keys());
+    } catch (_) {}
+    return [];
+  }
+
+  function hasIn(backend, key) {
+    const listed = listKeys(backend);
+    if (listed.length || backend === 'memory') return listed.includes(String(key));
+    const sentinel = { __dcf_missing__: true };
+    return getFrom(backend, key, sentinel) !== sentinel;
+  }
+
+  function get(key, fallback) {
+    return getFrom(primaryBackend, key, fallback);
+  }
+
+  function set(key, value) {
+    return setTo(primaryBackend, key, value);
+  }
+
+  function remove(key) {
+    return removeFrom(primaryBackend, key);
+  }
+
+  function dcfKeys(backend) {
+    return listKeys(backend).filter((key) => /^dcf[._-]/i.test(key)).sort();
+  }
+
+  return {
+    get,
+    set,
+    remove,
+    getFrom,
+    setTo,
+    removeFrom,
+    hasIn,
+    listKeys,
+    dcfKeys,
+    primaryBackend,
+    availableBackends: ['gm', 'localStorage', 'memory'].filter((backend) => backend === 'gm' ? hasGM : backend === 'localStorage' ? hasLocalStorage : true)
+  };
 }
 
 module.exports = { createStorage };
-
 },
 "src/runtime/effects.js":function(module,exports,require){
 'use strict';
@@ -1115,6 +1306,7 @@ function createChatGPTHost(windowObject = window, options = {}) {
   const quietMs = Number(options.quietMs || 900);
   const recoveryCount = Number(options.recoveryCount || 3);
   let rootObserver = null;
+  let observedRoot = null;
   let activeObserver = null;
   let activeNode = null;
   let quietTimer = null;
@@ -1227,6 +1419,7 @@ function createChatGPTHost(windowObject = window, options = {}) {
 
   function attachReplyRoot(root) {
     if (!root || rootObserver) return false;
+    observedRoot = root;
     rootObserver = new windowObject.MutationObserver((mutations) => {
       for (const mutation of mutations) {
         for (const node of mutation.addedNodes || []) inspectAddedNode(node);
@@ -1278,6 +1471,7 @@ function createChatGPTHost(windowObject = window, options = {}) {
   function stopReplyObserver() {
     if (rootObserver) rootObserver.disconnect();
     rootObserver = null;
+    observedRoot = null;
     disconnectActive();
     if (urlTimer) windowObject.clearInterval(urlTimer);
     urlTimer = null;
@@ -1334,6 +1528,39 @@ function createChatGPTHost(windowObject = window, options = {}) {
     return { notified: false };
   }
 
+  function routeKind() {
+    const pathname = String(windowObject.location && windowObject.location.pathname || '/');
+    if (/^\/c\/[^/]+/.test(pathname)) return '/c/:conversation';
+    if (/^\/g\/[^/]+\/c\/[^/]+/.test(pathname)) return '/g/:gpt/c/:conversation';
+    return pathname.replace(/[0-9a-f]{8,}/gi, ':id');
+  }
+
+  function diagnostics() {
+    const root = findConversationRoot();
+    const input = composer();
+    const sendButton = doc.querySelector('[data-testid="send-button"],button[aria-label*="Send" i],button[aria-label*="发送"]');
+    return {
+      schema: 'dcf.host.diagnostics.v1',
+      origin: String(windowObject.location && windowObject.location.origin || ''),
+      route_kind: routeKind(),
+      conversation_root_found: !!root,
+      reply_root_observer_attached: !!rootObserver,
+      observed_root_connected: !!(observedRoot && observedRoot.isConnected),
+      active_reply_tracked: !!activeNode,
+      active_reply_connected: !!(activeNode && activeNode.isConnected),
+      streaming: isStreaming(),
+      composer_found: !!input,
+      composer_has_draft: !!(input && String(input.value || input.textContent || '').trim()),
+      send_button_found: !!sendButton,
+      send_button_enabled: !!(sendButton && !sendButton.disabled),
+      observer_scope: 'conversation-root-added-nodes + current-reply',
+      recovery_count: recoveryCount,
+      quiet_ms: quietMs,
+      root_locator_pending: !!rootLocatorTimer,
+      url_watch_active: !!urlTimer
+    };
+  }
+
   return {
     startReplyObserver,
     stopReplyObserver,
@@ -1343,12 +1570,12 @@ function createChatGPTHost(windowObject = window, options = {}) {
     insertComposer,
     copy,
     notify,
-    isStreaming
+    isStreaming,
+    diagnostics
   };
 }
 
 module.exports = { createChatGPTHost };
-
 },
 "src/modules/standard-packages.js":function(module,exports,require){
 'use strict';
@@ -1527,12 +1754,256 @@ function createPackageManager(engine, catalog) {
 module.exports = { createPackageManager };
 
 },
+"src/modules/health.js":function(module,exports,require){
+'use strict';
+
+const { VERSION, ROOT_KEY, SNAPSHOT_KEY, RUNTIME_KEY, RECEIPT_KEY, CATALOG_STATE_KEY, LEGACY_KEYS } = require("src/core/constants.js");
+const { computeStateHash, validateRoot } = require("src/core/state.js");
+const { hash, isObject, nowIso } = require("src/core/utils.js");
+const { commandList } = require("src/runtime/commands.js");
+
+function summarizeStoredValue(value) {
+  if (value == null) return { present: false };
+  const summary = { present: true, type: Array.isArray(value) ? 'array' : typeof value, hash: hash(value) };
+  if (isObject(value)) {
+    if (value.schema) summary.schema = value.schema;
+    if (value.revision != null) summary.revision = value.revision;
+    summary.key_count = Object.keys(value).length;
+  }
+  if (Array.isArray(value)) summary.item_count = value.length;
+  return summary;
+}
+
+function activePackModuleIds(packageState) {
+  const ids = [];
+  for (const entry of Object.values(packageState && packageState.packages || {})) {
+    if (!entry || entry.enabled === false) continue;
+    const revision = entry.active_revision;
+    const pack = entry.revisions && entry.revisions[revision] && entry.revisions[revision].pack;
+    for (const module of Array.isArray(pack && pack.modules) ? pack.modules : []) {
+      if (module && module.id) ids.push(String(module.id));
+    }
+  }
+  return Array.from(new Set(ids)).sort();
+}
+
+function legacyInventory(storage, backend) {
+  const packages = storage.getFrom(backend, LEGACY_KEYS.packages, null);
+  const user = storage.getFrom(backend, LEGACY_KEYS.user, null);
+  const ops = storage.getFrom(backend, LEGACY_KEYS.ops, null);
+  const registry = storage.getFrom(backend, LEGACY_KEYS.registry, null);
+  const root = storage.getFrom(backend, ROOT_KEY, null);
+  const packageIds = Object.keys(packages && packages.packages || {}).sort();
+  const moduleIds = new Set(activePackModuleIds(packages));
+  for (const module of Array.isArray(registry && registry.modules) ? registry.modules : []) {
+    if (module && module.id) moduleIds.add(String(module.id));
+  }
+  const ammoCount = Object.keys(user && user.content && user.content.ammo || registry && registry.content && registry.content.ammo || {}).length;
+  return {
+    backend,
+    dcf_keys: storage.dcfKeys(backend),
+    stores: {
+      root: summarizeStoredValue(root),
+      packages: summarizeStoredValue(packages),
+      user: summarizeStoredValue(user),
+      ops: summarizeStoredValue(ops),
+      registry: summarizeStoredValue(registry)
+    },
+    package_ids: packageIds,
+    module_ids: Array.from(moduleIds).sort(),
+    ammo_count: ammoCount,
+    settings_count: Object.keys(user && user.settings || registry && registry.settings || {}).length,
+    module_display_count: Object.keys(user && user.moduleDisplay || registry && registry.moduleDisplay || {}).length
+  };
+}
+
+function receiptSummary(receipt) {
+  return {
+    receipt_id: receipt.receipt_id || null,
+    status: receipt.status || null,
+    stage: receipt.stage || null,
+    intent_type: receipt.intent && receipt.intent.type || null,
+    package_id: receipt.intent && receipt.intent.package_id || null,
+    content_type: receipt.intent && receipt.intent.content_type || null,
+    error: receipt.error || null,
+    errors: Array.isArray(receipt.errors) ? receipt.errors.slice(0, 8) : [],
+    revision: receipt.revision == null ? null : receipt.revision,
+    duration_ms: receipt.duration_ms == null ? null : receipt.duration_ms
+  };
+}
+
+function createHealthReporter(engine, receiptStore, storage, host, requiredPackages = []) {
+  function report() {
+    const root = engine.getRoot();
+    const registry = engine.getRegistry();
+    const receipts = receiptStore.list();
+    const snapshots = engine.snapshots();
+    const currentPackageIds = Object.keys(root.packages && root.packages.packages || {}).sort();
+    const currentModuleIds = (registry.modules || []).map((module) => String(module.id)).sort();
+    const localLegacy = legacyInventory(storage, 'localStorage');
+    const gmInventory = legacyInventory(storage, 'gm');
+    const missingLegacyModules = localLegacy.module_ids.filter((id) => !currentModuleIds.includes(id));
+    const missingLegacyPackages = localLegacy.package_ids.filter((id) => !currentPackageIds.includes(id));
+    const rootValidation = validateRoot(root);
+    const checks = [];
+
+    function addCheck(id, status, summary, details) {
+      checks.push({ id, status, summary, details: details || null });
+    }
+
+    const computedHash = computeStateHash(root);
+    addCheck('state.root.valid', rootValidation.ok ? 'ok' : 'error', rootValidation.ok ? '权威状态根可验证' : '权威状态根验证失败', rootValidation.errors);
+    addCheck('state.hash.matches', computedHash === root.state_hash ? 'ok' : 'error', computedHash === root.state_hash ? '状态哈希一致' : '状态哈希不一致');
+    addCheck('projection.matches-root', registry && registry.state_hash === root.state_hash ? 'ok' : 'error', registry && registry.state_hash === root.state_hash ? '运行投影与权威根一致' : '运行投影与权威根不一致');
+
+    const missingRequired = requiredPackages.filter((id) => {
+      const entry = root.packages.packages[id];
+      return !entry || entry.enabled === false;
+    });
+    addCheck('product.required-packages', missingRequired.length ? 'error' : 'ok', missingRequired.length ? '产品核心包缺失或停用' : '产品核心包完整', missingRequired);
+
+    const localLegacyPresent = !!(localLegacy.package_ids.length || localLegacy.module_ids.length || localLegacy.ammo_count || localLegacy.stores.root.present);
+    if (missingLegacyModules.length || missingLegacyPackages.length) {
+      addCheck('migration.legacy-coverage', 'error', '检测到未进入当前运行态的旧模块或旧包', { missing_module_ids: missingLegacyModules, missing_package_ids: missingLegacyPackages });
+    } else if (localLegacyPresent) {
+      addCheck('migration.legacy-coverage', 'ok', '检测到旧存储，当前运行态已覆盖其模块与包');
+    } else {
+      addCheck('migration.legacy-coverage', 'ok', '未检测到需要迁移的旧模块存储');
+    }
+
+    if (storage.primaryBackend === 'gm' && localLegacyPresent && !root.system.storage_bridge) {
+      addCheck('storage.backend-bridge', 'error', 'GM 存储与 localStorage 之间存在旧数据，但没有桥接记录');
+    } else if (root.system.storage_bridge && root.system.storage_bridge.skipped && root.system.storage_bridge.skipped.packages && root.system.storage_bridge.skipped.packages.length) {
+      addCheck('storage.backend-bridge', 'warning', '存储桥已运行，但有旧包因冲突被跳过', root.system.storage_bridge.skipped.packages);
+    } else {
+      addCheck('storage.backend-bridge', 'ok', root.system.storage_bridge ? '旧存储桥已完成' : '当前无需存储桥接');
+    }
+
+    const hostDiagnostics = host && typeof host.diagnostics === 'function' ? host.diagnostics() : null;
+    addCheck('host.reply-observer', hostDiagnostics && hostDiagnostics.reply_root_observer_attached ? 'ok' : 'warning', hostDiagnostics && hostDiagnostics.reply_root_observer_attached ? '回复监听器已连接' : '回复监听器尚未连接', hostDiagnostics);
+    addCheck('host.composer', hostDiagnostics && hostDiagnostics.composer_found ? 'ok' : 'warning', hostDiagnostics && hostDiagnostics.composer_found ? '输入框可用' : '当前页面未找到输入框');
+
+    const recentFailures = receipts.filter((item) => item.status === 'rejected' || item.status === 'error').slice(-20).map(receiptSummary);
+    addCheck('receipts.recent-failures', recentFailures.length ? 'warning' : 'ok', recentFailures.length ? `最近存在 ${recentFailures.length} 条失败回执` : '最近没有失败回执');
+
+    const overall = checks.some((item) => item.status === 'error') ? 'error' : checks.some((item) => item.status === 'warning') ? 'warning' : 'ok';
+    const statusCounts = receipts.reduce((result, item) => {
+      const status = item.status || 'unknown';
+      result[status] = (result[status] || 0) + 1;
+      return result;
+    }, {});
+
+    return {
+      schema: 'dcf.health.report.v1',
+      generated_at: nowIso(),
+      overall,
+      kernel_version: VERSION,
+      checks,
+      storage: {
+        primary_backend: storage.primaryBackend,
+        available_backends: storage.availableBackends,
+        authoritative_keys: {
+          root: ROOT_KEY,
+          snapshots: SNAPSHOT_KEY,
+          runtime_projection: RUNTIME_KEY,
+          receipts: RECEIPT_KEY,
+          catalog: CATALOG_STATE_KEY
+        },
+        bridge: root.system.storage_bridge || null,
+        gm: gmInventory,
+        local_storage: localLegacy
+      },
+      state: {
+        schema: root.schema,
+        revision: root.revision,
+        parent_revision: root.parent_revision,
+        state_hash: root.state_hash,
+        computed_state_hash: computedHash,
+        package_revision: root.packages.revision,
+        user_revision: root.user.revision,
+        migration: root.system.migration || null,
+        artifact_index_count: Object.keys(root.system.artifact_index || {}).length,
+        snapshot_count: snapshots.length
+      },
+      projection: {
+        schema: registry.schema,
+        build_id: registry.build && registry.build.build_id,
+        state_revision: registry.state_revision,
+        state_hash: registry.state_hash,
+        package_count: currentPackageIds.length,
+        module_count: currentModuleIds.length,
+        surface_count: Object.keys(registry.surfaces || {}).length,
+        content_type_count: Object.keys(registry.contentTypes || {}).length,
+        style_source_count: (registry.appearance && registry.appearance.styles || []).length
+      },
+      packages: currentPackageIds.map((packageId) => {
+        const entry = root.packages.packages[packageId];
+        const active = entry.revisions && entry.revisions[entry.active_revision];
+        return {
+          package_id: packageId,
+          enabled: entry.enabled !== false,
+          active_revision: entry.active_revision,
+          revision_count: Object.keys(entry.revisions || {}).length,
+          active_hash: active && active.hash || null,
+          source_kind: entry.source && entry.source.kind || null,
+          required: requiredPackages.includes(packageId)
+        };
+      }),
+      modules: (registry.modules || []).map((module) => ({
+        module_id: module.id,
+        title: module.title || null,
+        version: module.version || null,
+        area: registry.moduleDisplay && registry.moduleDisplay[module.id] && registry.moduleDisplay[module.id].area || module.area || 'work',
+        hidden: !!(registry.moduleDisplay && registry.moduleDisplay[module.id] && registry.moduleDisplay[module.id].hidden),
+        command_count: commandList(module).length,
+        provider: registry.build && registry.build.resource_ownership && registry.build.resource_ownership[`module:${module.id}`] || null
+      })),
+      surfaces: Object.values(registry.surfaces || {}).map((surface) => ({ id: surface.id, title: surface.title || null, area: surface.area || null, kind: surface.kind || null, content_type: surface.content_type || null })),
+      user_data: {
+        content_counts: Object.fromEntries(Object.entries(root.user.content || {}).map(([type, items]) => [type, Object.keys(isObject(items) ? items : {}).length])),
+        settings_keys: Object.keys(root.user.settings || {}).sort(),
+        module_display_keys: Object.keys(root.user.moduleDisplay || {}).sort(),
+        appearance: {
+          side: root.user.appearance && root.user.appearance.side || null,
+          variable_keys: Object.keys(root.user.appearance && root.user.appearance.vars || {}).sort(),
+          has_user_css: !!(root.user.appearance && root.user.appearance.css),
+          safe_mode: !!(root.user.appearance && root.user.appearance.safe_mode)
+        }
+      },
+      host: hostDiagnostics,
+      receipts: { count: receipts.length, status_counts: statusCounts, recent_failures: recentFailures },
+      comparison: {
+        legacy_local_module_ids: localLegacy.module_ids,
+        current_module_ids: currentModuleIds,
+        missing_legacy_module_ids: missingLegacyModules,
+        legacy_local_package_ids: localLegacy.package_ids,
+        current_package_ids: currentPackageIds,
+        missing_legacy_package_ids: missingLegacyPackages
+      },
+      privacy: {
+        conversation_text_included: false,
+        ammo_bodies_included: false,
+        package_payloads_included: false,
+        authentication_data_included: false
+      }
+    };
+  }
+
+  function format() {
+    return `<<<DCF_HEALTH_REPORT\n${JSON.stringify(report(), null, 2)}\nDCF_HEALTH_REPORT>>>`;
+  }
+
+  return { report, format };
+}
+
+module.exports = { createHealthReporter, legacyInventory, activePackModuleIds };
+},
 "src/modules/maintenance.js":function(module,exports,require){
 'use strict';
 
 const { CATALOG_STATE_KEY } = require("src/core/constants.js");
 
-function createMaintenanceModule(engine, receiptStore, effectRunner, storage) {
+function createMaintenanceModule(engine, receiptStore, effectRunner, storage, healthReporter) {
   function summary() {
     const root = engine.getRoot();
     const registry = engine.getRegistry();
@@ -1550,11 +2021,20 @@ function createMaintenanceModule(engine, receiptStore, effectRunner, storage) {
     };
   }
   function copySummary() {
-    return effectRunner.run({ type: 'clipboard.write', text: JSON.stringify(summary(), null, 2) }, { module: 'maintenance' });
+    return effectRunner.run({ type: 'clipboard.write', text: JSON.stringify(summary(), null, 2) }, { module: 'maintenance', report: 'summary' });
+  }
+  function healthReport() {
+    return healthReporter ? healthReporter.report() : { schema: 'dcf.health.report.v1', overall: 'error', checks: [{ id: 'health.reporter', status: 'error', summary: '体检器未初始化' }] };
+  }
+  function copyHealthReport() {
+    const text = healthReporter ? healthReporter.format() : `<<<DCF_HEALTH_REPORT\n${JSON.stringify(healthReport(), null, 2)}\nDCF_HEALTH_REPORT>>>`;
+    return effectRunner.run({ type: 'clipboard.write', text }, { module: 'maintenance', report: 'health' });
   }
   return {
     summary,
     copySummary,
+    healthReport,
+    copyHealthReport,
     receipts: () => receiptStore.list(),
     clearReceipts: () => receiptStore.clear(),
     snapshots: () => engine.snapshots(),
@@ -1563,7 +2043,6 @@ function createMaintenanceModule(engine, receiptStore, effectRunner, storage) {
 }
 
 module.exports = { createMaintenanceModule };
-
 },
 "src/ui/app.js":function(module,exports,require){
 'use strict';
@@ -1596,7 +2075,7 @@ function createApp(options) {
       :host{all:initial}.sh{position:fixed;right:12px;bottom:var(--bottom,112px);top:auto;width:var(--w,340px);height:min(var(--h,800px),calc(100vh - 24px));z-index:2147483646;background:#fffffff2;color:#111;border:1px solid #9996;border-radius:14px;box-shadow:0 18px 44px #0002;font:13px system-ui;overflow:hidden;box-sizing:border-box;display:flex;flex-direction:column}
       .sh[data-side=left]{left:12px;right:auto}.sh[data-anchor=top]{top:var(--top,12px);bottom:auto}.sh[data-anchor=bottom]{bottom:var(--bottom,112px);top:auto}
       @media(prefers-color-scheme:dark){.sh{background:#171717ee;color:#eee}}
-      button{border:1px solid #9995;border-radius:9px;background:transparent;color:inherit;padding:6px 8px;cursor:pointer}button:hover{background:#8882}button.danger{border-color:#dc262666}.top{height:42px;flex:0 0 42px;display:flex;align-items:center;gap:6px;padding:6px;border-bottom:1px solid #9993;box-sizing:border-box}.top b{margin-right:auto}.tabs{display:flex;gap:5px}.tabs button.on{background:#2563eb22;border-color:#2563eb66}.body{flex:1;min-height:0;overflow:auto;padding:9px;box-sizing:border-box}.card{border:1px solid #9994;border-radius:12px;background:#8881;padding:9px;margin-bottom:9px;box-sizing:border-box}.name{font-weight:700}.mini{font-size:11px;opacity:.7;word-break:break-all}.actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}textarea,input,select{width:100%;box-sizing:border-box;border:1px solid #9995;border-radius:9px;background:#fff8;color:inherit;padding:7px}textarea{min-height:120px}.notice{padding:6px 9px;border-bottom:1px solid #9993;font-size:12px}.notice:empty{display:none}.row{display:flex;gap:6px;align-items:center}.row>*{min-width:0}.grow{flex:1}.pkg{padding-top:8px;margin-top:8px;border-top:1px solid #9993}.receipt{font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;word-break:break-word;max-height:180px;overflow:auto}
+      button{border:1px solid #9995;border-radius:9px;background:transparent;color:inherit;padding:6px 8px;cursor:pointer}button:hover{background:#8882}button.danger{border-color:#dc262666}.top{height:42px;flex:0 0 42px;display:flex;align-items:center;gap:6px;padding:6px;border-bottom:1px solid #9993;box-sizing:border-box}.top b{margin-right:auto}.tabs{display:flex;gap:5px}.tabs button.on{background:#2563eb22;border-color:#2563eb66}.body{flex:1;min-height:0;overflow:auto;padding:9px;box-sizing:border-box}.card{border:1px solid #9994;border-radius:12px;background:#8881;padding:9px;margin-bottom:9px;box-sizing:border-box}.name{font-weight:700}.mini{font-size:11px;opacity:.7;word-break:break-all}.actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}textarea,input,select{width:100%;box-sizing:border-box;border:1px solid #9995;border-radius:9px;background:#fff8;color:inherit;padding:7px}textarea{min-height:120px}.notice{padding:6px 9px;border-bottom:1px solid #9993;font-size:12px}.notice:empty{display:none}.row{display:flex;gap:6px;align-items:center}.row>*{min-width:0}.grow{flex:1}.pkg{padding-top:8px;margin-top:8px;border-top:1px solid #9993}.receipt{font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;word-break:break-word;max-height:180px;overflow:auto}.health-ok{border-color:#16a34a66}.health-warning{border-color:#d9770666}.health-error{border-color:#dc262666}
     </style><style id="package-style"></style><aside class="sh"><div class="top"></div><div class="notice"></div><div class="body"></div></aside>`;
   doc.documentElement.appendChild(hostElement);
   const shell = root.querySelector('.sh');
@@ -1703,9 +2182,13 @@ function createApp(options) {
 
   function renderMaintenance() {
     const summary = maintenance.summary();
+    const health = maintenance.healthReport();
+    const issues = (health.checks || []).filter((item) => item.status !== 'ok');
     const receipts = maintenance.receipts().slice(-8).reverse();
     const snapshots = maintenance.snapshots().slice().reverse();
-    body.innerHTML = `<div class="card"><div class="name">运行状态</div><div class="receipt">${escapeHtml(JSON.stringify(summary, null, 2))}</div><div class="actions"><button data-action="maintenance-copy">复制诊断</button><button data-action="receipts-clear">清空回执</button></div></div>
+    const healthText = issues.length ? issues.map((item) => `${item.status.toUpperCase()} · ${item.summary}`).join('\n') : '全部关键检查通过';
+    body.innerHTML = `<div class="card health-${escapeHtml(health.overall || 'warning')}"><div class="name">一键体检 · ${(health.overall || 'warning').toUpperCase()}</div><div class="mini">覆盖双存储后端、旧模块迁移、权威根、运行投影、包、模块、Surface、宿主监听与失败回执。报告不包含对话正文和弹药正文。</div><div class="receipt">${escapeHtml(healthText)}</div><div class="actions"><button data-action="maintenance-health-copy">一键体检并复制</button></div></div>
+      <div class="card"><div class="name">运行状态</div><div class="receipt">${escapeHtml(JSON.stringify(summary, null, 2))}</div><div class="actions"><button data-action="maintenance-copy">复制简要诊断</button><button data-action="receipts-clear">清空回执</button></div></div>
       <div class="card"><div class="name">最近回执</div>${receipts.length ? receipts.map((item) => `<div class="receipt pkg">${escapeHtml(JSON.stringify(item, null, 2))}</div>`).join('') : '<div class="mini">暂无回执</div>'}</div>
       <div class="card"><div class="name">状态快照</div>${snapshots.length ? snapshots.map((item) => `<div class="pkg row"><span class="grow mini">r${item.revision} · ${escapeHtml(item.reason)}</span><button data-action="rollback" data-revision="${item.revision}">恢复</button></div>`).join('') : '<div class="mini">暂无快照</div>'}</div>` + renderModuleCards(engine.getRegistry().modules.filter((module) => moduleArea(module) === 'maintenance'));
   }
@@ -1800,7 +2283,8 @@ function createApp(options) {
       const module = engine.getRegistry().modules.find((entry) => entry.id === button.dataset.moduleId);
       const found = module && commandList(module).find((entry) => String(entry.command.id) === String(button.dataset.commandId));
       if (module && found) runAndRender(() => commandRunner.execute(module, found.command, found.block), '命令已执行');
-    } else if (action === 'maintenance-copy') runAndRender(() => maintenance.copySummary(), '诊断已复制');
+    } else if (action === 'maintenance-health-copy') runAndRender(() => maintenance.copyHealthReport(), '完整体检报告已复制');
+    else if (action === 'maintenance-copy') runAndRender(() => maintenance.copySummary(), '简要诊断已复制');
     else if (action === 'receipts-clear') runAndRender(() => maintenance.clearReceipts(), '回执已清空');
     else if (action === 'rollback') runAndRender(() => maintenance.rollbackTo(Number(button.dataset.revision)), '状态已恢复');
   });
@@ -1815,7 +2299,6 @@ function createApp(options) {
 }
 
 module.exports = { createApp, computeFenceStyle };
-
 },
 "src/index.js":function(module,exports,require){
 'use strict';
@@ -1835,6 +2318,7 @@ const { STANDARD_PACKS, REQUIRED_PRODUCT_PACKAGES } = require("src/modules/stand
 const { createAmmoModule } = require("src/modules/ammo.js");
 const { createCatalogTransport } = require("src/modules/catalog.js");
 const { createPackageManager } = require("src/modules/package-manager.js");
+const { createHealthReporter } = require("src/modules/health.js");
 const { createMaintenanceModule } = require("src/modules/maintenance.js");
 const { createApp } = require("src/ui/app.js");
 
@@ -1866,7 +2350,8 @@ function boot(api = globalThis) {
   const catalog = createCatalogTransport(storage, engine, api);
   const ammo = createAmmoModule(engine, effects);
   const packageManager = createPackageManager(engine, catalog);
-  const maintenance = createMaintenanceModule(engine, receiptStore, effects, storage);
+  const health = createHealthReporter(engine, receiptStore, storage, host, REQUIRED_PRODUCT_PACKAGES);
+  const maintenance = createMaintenanceModule(engine, receiptStore, effects, storage, health);
   let app = null;
   const commandRunner = createCommandRunner(engine, effects, receiptStore, () => {
     if (!app || !app.shell) return null;
@@ -1892,17 +2377,17 @@ function boot(api = globalThis) {
 
   if (typeof api.GM_registerMenuCommand === 'function') {
     api.GM_registerMenuCommand('DCF：检查模块更新', () => catalog.check({ force: true }).then(() => app.render()));
-    api.GM_registerMenuCommand('DCF：复制诊断', () => maintenance.copySummary());
+    api.GM_registerMenuCommand('DCF：一键体检并复制', () => maintenance.copyHealthReport());
+    api.GM_registerMenuCommand('DCF：复制简要诊断', () => maintenance.copySummary());
   }
 
-  api.__DCF_RUNTIME__ = { version: VERSION, engine, host, app, catalog, receiptStore };
+  api.__DCF_RUNTIME__ = { version: VERSION, engine, host, app, catalog, receiptStore, health };
   return api.__DCF_RUNTIME__;
 }
 
 if (typeof window !== 'undefined' && typeof document !== 'undefined') boot(globalThis);
 
 module.exports = { boot, ensureProductBaseline };
-
 }
 };
 const cache={};

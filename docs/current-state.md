@@ -16,11 +16,23 @@ Updated: 2026-07-12
 
 ## 当前版本
 
-当前发布版本：`0.11.0`
+当前发布版本：`0.11.1`
 
-一期全项目架构重建已经完成并发布。源码位于 `src/`，根 userscript、metadata 和 catalog 由构建脚本确定性生成。
+一期全项目架构重建已经完成。`0.11.1` 修复 `0.10.0 localStorage -> 0.11.0 GM storage` 之间的存储后端断层，并新增一键全量体检报告。
 
-## Phase one completed
+## 0.11.1 修复
+
+- GM storage 继续作为可用时的唯一权威写入后端；
+- boot 期间显式检查 page `localStorage` 中的旧 root、`0.10.0` package/user/ops 和更早 registry；
+- 当 GM root 已经存在时，旧数据进入候选合并，而不是覆盖当前状态；
+- 当前用户值优先，缺失的旧包、revision、弹药、设置、moduleDisplay 和 appearance 被补回；
+- 每个缺失旧包先单独构建投影，冲突包被跳过并记录原因，不允许阻塞启动或静默丢失；
+- `system.storage_bridge` 记录桥接来源、目标、恢复项和跳过项，桥接不会重复运行；
+- 维护页与 Tampermonkey 菜单新增“一键体检并复制”；
+- `dcf.health.report.v1` 同时检查 GM/localStorage、迁移覆盖、root/hash/projection、包、模块、Surface、命令数、宿主监听、输入框、回执和快照；
+- 报告不包含对话正文、弹药正文、包 payload、命令参数、凭据或认证数据。
+
+## Phase one baseline
 
 - modular source and deterministic complete-userscript release;
 - one authoritative `dcf.state.root.v1`;
@@ -34,32 +46,26 @@ Updated: 2026-07-12
 - generic command interpreter preserving legacy top-level and block commands;
 - state/effect separation with privacy-filtered receipts;
 - required first-party ammo module and optional declarative shell-adjuster module;
-- package manager, maintenance summary, snapshots/rollback, and viewport fence;
-- one-time migration from `0.10.0` package/user/ops stores and older registries without carrying page-scan ledgers into the new authority.
+- package manager, maintenance summary, snapshots/rollback, and viewport fence.
 
 ## Verification
 
-Local and GitHub branch verification passed:
+The 0.11.1 release passed:
 
 - `npm run verify`;
 - `node --check dcf-chatgpt-microcore.user.js`;
-- deterministic userscript, metadata, and catalog generation;
-- one-root/transaction/resource/migration/legacy-command/catalog/viewport/release tests;
-- bounded host-intake static contract;
-- real headless Chromium smoke: new assistant `DCF_AMMO` reply → automatic root commit → ammo UI → 发射 → composer receives body.
+- dual-backend bridge test with an existing GM root plus legacy localStorage modules and ammo;
+- bridge idempotence test;
+- whole-runtime health inventory and privacy test;
+- deterministic userscript, metadata, and catalog generation.
 
-The permanent GitHub workflow runs `npm run verify` for pull requests and pushes. It never edits or commits generated files.
+## User checkpoint after release
 
-## Next real-browser checkpoint
-
-The remaining checkpoint is the user's existing Tampermonkey environment:
-
-1. update to `0.11.0` and refresh ChatGPT;
-2. confirm existing ammo, appearance values, module display, Surfaces, and legacy modules migrated;
-3. confirm a new `DCF_AMMO` reply automatically loads;
-4. fire one ammo item and run one legacy module command;
-5. confirm maintenance shows one authoritative root and local receipts;
-6. normal success stays silent; only migration or runtime failure needs copied evidence.
+1. update Tampermonkey to `0.11.1` and refresh ChatGPT;
+2. open `维护` and click `一键体检并复制`;
+3. confirm old modules, Surfaces, appearance values and ammunition are present;
+4. paste the complete `DCF_HEALTH_REPORT` block if `overall` is not `ok` or any expected module remains missing;
+5. fire one ammo item and run one recovered legacy command.
 
 ## Deferred to phase two
 

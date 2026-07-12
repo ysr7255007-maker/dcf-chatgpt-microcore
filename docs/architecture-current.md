@@ -1,7 +1,7 @@
 # DCF 当前架构
 
 Updated: 2026-07-12  
-Current release: `0.11.0`
+Current release: `0.11.1`
 
 ## 1. Value and engineering dependency
 
@@ -23,9 +23,11 @@ Language ammunition owns product value: the architecture may change its implemen
 
 Source is modular under `src/`. `scripts/build-userscript.js` deterministically bundles it into the complete root userscript and metadata files. Tampermonkey still installs one file. Runtime JavaScript download/eval, chunk bootloaders, and local-storage-as-code are not used.
 
-## 3. One authoritative state root
+## 3. One authoritative state root and one authoritative backend
 
 `dcf.state.root.v1` is the only authoritative runtime state. It contains package sources, user-owned data/preferences, and minimal system metadata.
+
+When Tampermonkey GM storage is available, GM storage is the sole authoritative write backend. Page `localStorage` is not a second authority. It remains readable only as a bounded migration source for pre-`0.11.1` state.
 
 The following are non-authoritative derived or bounded operational stores:
 
@@ -75,7 +77,7 @@ Artifact identity, not DOM-block history, provides idempotence. Same package rev
 
 ## 7. ChatGPT host adapter
 
-Core code does not access ChatGPT DOM. The host adapter owns reply discovery, completion detection, composer insertion/sending, clipboard, notification, and navigation changes.
+Core code does not access ChatGPT DOM. The host adapter owns reply discovery, completion detection, composer insertion/sending, clipboard, notification, navigation changes, and privacy-safe host diagnostics.
 
 Reply intake has a history-independent cost model:
 
@@ -96,29 +98,37 @@ Local state transitions and external effects are separate. Composer insert/send,
 
 Transactions, commands, and effects emit bounded receipts. Conversational bodies, prompts, content, tokens, credentials, and similar values are represented by redacted length/hash summaries. Success remains local and quiet; failures are available for explicit diagnostic copying.
 
-## 9. UI projection
+## 9. UI projection and one-click health report
 
 The sidebar is a projection of current state and active resources. The ammo view is a first-party product view. Generic module cards consume module, Surface, area/order, and module-display projections. Package management and maintenance are first-party modules outside Core.
 
+Maintenance exposes a privacy-safe `dcf.health.report.v1`. It is a diagnostic projection, not another authority store. It compares GM and page localStorage inventories; validates root/hash/projection; lists packages, modules, Surfaces, command counts and providers; reports migration/bridge coverage; inspects Host Adapter connection and composer state; and summarizes recent failures. It excludes conversation text, ammo bodies, package payloads, command arguments and authentication data.
+
 Shell geometry has one source of truth in user appearance state and is finally constrained by the actual `visualViewport` and shell rectangle. The shell adjuster is declarative; no second hard-coded adjustment path exists.
 
-## 10. Migration and recovery
+## 10. Migration, storage bridge, and recovery
 
-`0.10.0` package/user/ops stores migrate once into the root. Older registries are converted into synthetic immutable packages plus user-owned state. User ammo, appearance, settings, module display, Surfaces, modules, and valid styles are preserved. Geometry-owning legacy CSS is quarantined rather than allowed to break boot.
+`0.10.0` package/user/ops stores and older registries may exist in page `localStorage`, while `0.11.x` authority lives in GM storage. Boot therefore inspects both backends before runtime initialization.
+
+If a GM root already exists, legacy local data is merged into a candidate root rather than replacing current state. Current values win; missing packages, revisions, ammo, settings, module display and appearance values are recovered. Every missing package is projection-tested before acceptance. Conflicting packages are skipped with explicit reasons in `system.storage_bridge`. The bridge result is recorded and does not replay on every load.
+
+Older registries are converted into synthetic immutable packages plus user-owned state. Geometry-owning legacy CSS is quarantined rather than allowed to break boot.
 
 Rollback selects a previous root snapshot and passes it through the same validation, projection, commit, and receipt path as every other state change.
 
 ## 11. Verification boundary
 
-Phase-one acceptance requires:
+Acceptance requires:
 
 - value loop preserved: automatic ammo intake and low-friction firing work;
 - source modules build to one deterministic userscript;
-- one authoritative state root;
+- one authoritative state root and one authoritative storage backend;
 - all authoritative writes use the transaction engine;
 - Core has no ChatGPT DOM dependency;
 - reply intake work does not grow with total conversation rounds;
-- legacy modules/commands and user data survive migration;
+- legacy localStorage modules/commands and user data survive migration into GM storage;
+- storage bridge is idempotent and records skipped conflicts;
+- one-click health report can establish cross-layer state without leaking content;
 - GitHub and reply artifacts share the same application path;
 - no runtime remote-code execution;
 - real-browser smoke proves reply → auto-load → fire → composer.

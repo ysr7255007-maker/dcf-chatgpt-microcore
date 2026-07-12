@@ -2,7 +2,7 @@
 
 const { CATALOG_STATE_KEY } = require('../core/constants');
 
-function createMaintenanceModule(engine, receiptStore, effectRunner, storage) {
+function createMaintenanceModule(engine, receiptStore, effectRunner, storage, healthReporter) {
   function summary() {
     const root = engine.getRoot();
     const registry = engine.getRegistry();
@@ -20,11 +20,20 @@ function createMaintenanceModule(engine, receiptStore, effectRunner, storage) {
     };
   }
   function copySummary() {
-    return effectRunner.run({ type: 'clipboard.write', text: JSON.stringify(summary(), null, 2) }, { module: 'maintenance' });
+    return effectRunner.run({ type: 'clipboard.write', text: JSON.stringify(summary(), null, 2) }, { module: 'maintenance', report: 'summary' });
+  }
+  function healthReport() {
+    return healthReporter ? healthReporter.report() : { schema: 'dcf.health.report.v1', overall: 'error', checks: [{ id: 'health.reporter', status: 'error', summary: '体检器未初始化' }] };
+  }
+  function copyHealthReport() {
+    const text = healthReporter ? healthReporter.format() : `<<<DCF_HEALTH_REPORT\n${JSON.stringify(healthReport(), null, 2)}\nDCF_HEALTH_REPORT>>>`;
+    return effectRunner.run({ type: 'clipboard.write', text }, { module: 'maintenance', report: 'health' });
   }
   return {
     summary,
     copySummary,
+    healthReport,
+    copyHealthReport,
     receipts: () => receiptStore.list(),
     clearReceipts: () => receiptStore.clear(),
     snapshots: () => engine.snapshots(),
