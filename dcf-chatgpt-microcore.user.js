@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DCF ChatGPT Microcore
 // @namespace    https://chatgpt.com/
-// @version      0.13.0
+// @version      0.14.0
 // @description  DCF conversation-environment runtime with unified intents, resources, profiles, reconciliation and independent Runtime observation.
 // @updateURL    https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.meta.js
 // @downloadURL  https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.user.js
@@ -112,7 +112,7 @@ module.exports = {
 "src/core/constants.js":function(module,exports,require){
 'use strict';
 
-const VERSION = '0.13.0';
+const VERSION = '0.14.0';
 const ROOT_KEY = 'dcf.state.root.v1';
 const SNAPSHOT_KEY = 'dcf.state.snapshots.v1';
 const RUNTIME_KEY = 'dcf.runtime.registry.v3';
@@ -141,7 +141,6 @@ module.exports = {
   LEGACY_KEYS,
   CATALOG_URL
 };
-
 },
 "src/core/resources.js":function(module,exports,require){
 'use strict';
@@ -2006,16 +2005,29 @@ const STANDARD_PACKS = [
   {
     schema: 'dcf.module_pack.v1',
     pack_id: 'dcf.standard.ammo',
-    revision: '1.1.0',
+    revision: '1.2.0',
     title: '语言弹药核心',
-    description: '提供语言弹药内容、主入口和低摩擦发射能力。',
+    description: '提供语言弹药内容、语境化调用、实质更新和低摩擦发射能力。',
     contributes: {
       content_types: [{ id: 'ammo', marker: 'DCF_AMMO', title: '语言弹药', body_field: 'body', actions: ['fire', 'copy', 'update', 'delete'] }],
       surfaces: [{ id: 'dcf.ammo', title: '弹药', area: 'primary', order: 10, kind: 'content-list', content_type: 'ammo' }],
-      ui_views: [{ id: 'ammo', kind: 'content', projection: 'content:ammo', tab_label: '弹药', title: '语言弹药', description: '自动提取、自动装填、更新与发射。', order: 10 }],
+      ui_views: [{ id: 'ammo', kind: 'content', projection: 'content:ammo', tab_label: '弹药', title: '语言弹药', description: '自动提取、自动装填、语境化调用与实质更新。', order: 10 }],
+      policies: {
+        ammo_protocol: {
+          invocation_marker: '〔DCF·语言弹药〕',
+          update_marker: '〔DCF·弹药更新〕',
+          update_intro: '下面是一枚已经存在的 DCF 语言弹药。请把当前对话作为本次修订的语境和依据，先重新理解它的核心意图，再判断哪些部分需要保留、修正、补充或删除。',
+          update_rules: [
+            '保留仍然成立的核心意图和适用边界；不要因为当前一句修正就机械重写整枚弹药。',
+            '吸收当前对话中已经形成的稳定变化；不要只做措辞润色，也不要把当前对话机械摘要进正文。',
+            '这是对同一枚长期弹药的更新，不要另建一枚相似弹药；必须保留原有 id。'
+          ],
+          output_instruction: '完成后返回且只返回一份完整的 DCF_AMMO 工件，字段至少包含 id、title、purpose、body；DCF 会在回复完成后自动装填。'
+        }
+      },
       appearance: { side: 'right', vars: { w: '340px', h: '800px', top: '12px', bottom: '112px', anchor: 'bottom' } }
     },
-    modules: [{ id: 'dcf.ammo.module', title: '语言弹药', version: '1.1.0', kind: 'ammo' }]
+    modules: [{ id: 'dcf.ammo.module', title: '语言弹药', version: '1.2.0', kind: 'ammo' }]
   },
   {
     schema: 'dcf.module_pack.v1',
@@ -2080,10 +2092,51 @@ const STANDARD_PACKS = [
 ];
 
 module.exports = { STANDARD_PACKS, REQUIRED_PRODUCT_PACKAGES };
-
 },
 "src/modules/ammo.js":function(module,exports,require){
 'use strict';
+
+const DEFAULT_AMMO_PROTOCOL = {
+  invocation_marker: '〔DCF·语言弹药〕',
+  update_marker: '〔DCF·弹药更新〕',
+  update_intro: '下面是一枚已经存在的 DCF 语言弹药。请把当前对话作为本次修订的语境和依据，先重新理解它的核心意图，再判断哪些部分需要保留、修正、补充或删除。',
+  update_rules: [
+    '保留仍然成立的核心意图和适用边界；不要因为当前一句修正就机械重写整枚弹药。',
+    '吸收当前对话中已经形成的稳定变化；不要只做措辞润色，也不要把当前对话机械摘要进正文。',
+    '这是对同一枚长期弹药的更新，不要另建一枚相似弹药；必须保留原有 id。'
+  ],
+  output_instruction: '完成后返回且只返回一份完整的 DCF_AMMO 工件，字段至少包含 id、title、purpose、body；DCF 会在回复完成后自动装填。'
+};
+
+function ammoProtocol(registry) {
+  const configured = registry && registry.policies && registry.policies.ammo_protocol || {};
+  return {
+    invocation_marker: String(configured.invocation_marker || DEFAULT_AMMO_PROTOCOL.invocation_marker),
+    update_marker: String(configured.update_marker || DEFAULT_AMMO_PROTOCOL.update_marker),
+    update_intro: String(configured.update_intro || DEFAULT_AMMO_PROTOCOL.update_intro),
+    update_rules: Array.isArray(configured.update_rules) && configured.update_rules.length ? configured.update_rules.map(String) : DEFAULT_AMMO_PROTOCOL.update_rules.slice(),
+    output_instruction: String(configured.output_instruction || DEFAULT_AMMO_PROTOCOL.output_instruction)
+  };
+}
+
+function buildAmmoInvocation(item, protocol = DEFAULT_AMMO_PROTOCOL) {
+  return [String(protocol.invocation_marker || DEFAULT_AMMO_PROTOCOL.invocation_marker), '', String(item && item.body || '')].join('\n');
+}
+
+function buildAmmoUpdateRequest(item, protocol = DEFAULT_AMMO_PROTOCOL) {
+  const rules = Array.isArray(protocol.update_rules) ? protocol.update_rules : DEFAULT_AMMO_PROTOCOL.update_rules;
+  return [
+    String(protocol.update_marker || DEFAULT_AMMO_PROTOCOL.update_marker),
+    '',
+    String(protocol.update_intro || DEFAULT_AMMO_PROTOCOL.update_intro),
+    ...rules.map((rule) => `- ${String(rule)}`),
+    '',
+    String(protocol.output_instruction || DEFAULT_AMMO_PROTOCOL.output_instruction),
+    '',
+    '当前弹药：',
+    JSON.stringify(item, null, 2)
+  ].join('\n');
+}
 
 function createAmmoModule(engine, effectRunner) {
   function items() {
@@ -2091,9 +2144,13 @@ function createAmmoModule(engine, effectRunner) {
     return Object.values(registry.content && registry.content.ammo || {}).sort((a, b) => String(a.title || a.id).localeCompare(String(b.title || b.id)));
   }
 
+  function protocol() {
+    return ammoProtocol(engine.getRegistry());
+  }
+
   function fire(item) {
     const mode = engine.getRoot().user.preferences && engine.getRoot().user.preferences.ammo_fire_mode || 'insert';
-    return effectRunner.run({ type: mode === 'send' ? 'composer.send' : 'composer.insert', text: String(item.body || '') }, { module: 'ammo', item_id: item.id });
+    return effectRunner.run({ type: mode === 'send' ? 'composer.send' : 'composer.insert', text: buildAmmoInvocation(item, protocol()) }, { module: 'ammo', action: 'invoke', item_id: item.id });
   }
 
   function copy(item) {
@@ -2101,13 +2158,7 @@ function createAmmoModule(engine, effectRunner) {
   }
 
   function requestUpdate(item) {
-    const prompt = [
-      '请根据当前对话更新下面这条 DCF 语言弹药。',
-      '保留相同 id，返回且只返回一份完整的 DCF_AMMO 工件；DCF 会在回复完成后自动装填。',
-      '',
-      JSON.stringify(item, null, 2)
-    ].join('\n');
-    return effectRunner.run({ type: 'composer.send', text: prompt }, { module: 'ammo', action: 'update', item_id: item.id });
+    return effectRunner.run({ type: 'composer.send', text: buildAmmoUpdateRequest(item, protocol()) }, { module: 'ammo', action: 'update', item_id: item.id });
   }
 
   function requestExtract() {
@@ -2121,8 +2172,7 @@ function createAmmoModule(engine, effectRunner) {
   return { items, fire, copy, requestUpdate, requestExtract };
 }
 
-module.exports = { createAmmoModule };
-
+module.exports = { DEFAULT_AMMO_PROTOCOL, ammoProtocol, buildAmmoInvocation, buildAmmoUpdateRequest, createAmmoModule };
 },
 "src/modules/catalog.js":function(module,exports,require){
 'use strict';
