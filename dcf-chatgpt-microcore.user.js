@@ -2166,7 +2166,6 @@ function createApp(options) {
   let collapsedModules = initialSession.collapsed_modules && typeof initialSession.collapsed_modules === 'object' ? Object.assign({}, initialSession.collapsed_modules) : {};
   let packageDraft = '';
   let fenceFrame = 0;
-  let capturing = false;
 
   function saveSession() {
     storage.set(UI_KEY, { tab, collapsed_modules: collapsedModules });
@@ -2352,7 +2351,6 @@ function createApp(options) {
     const originalTab = tab;
     const originalScroll = body.scrollTop;
     const views = {};
-    capturing = true;
     try {
       tab = 'packages'; render();
       views.packages = { entry_ids: collectIds('[data-runtime-section="packages"] [data-package-id]', 'data-package-id') };
@@ -2370,7 +2368,6 @@ function createApp(options) {
       tab = originalTab;
       render();
       body.scrollTop = originalScroll;
-      capturing = false;
     }
     const rect = shell.getBoundingClientRect();
     const style = typeof windowObject.getComputedStyle === 'function' ? windowObject.getComputedStyle(shell) : null;
@@ -2397,15 +2394,15 @@ function createApp(options) {
     if (event.target && event.target.dataset.role === 'package-json') packageDraft = event.target.value;
   });
 
-  root.addEventListener('toggle', (event) => {
-    if (capturing) return;
-    const details = event.target && event.target.closest && event.target.closest('details[data-module-id]');
-    if (!details) return;
-    collapsedModules[details.dataset.moduleId] = !details.open;
-    saveSession();
-  }, true);
-
   root.addEventListener('click', (event) => {
+    const moduleSummary = event.target.closest('details[data-module-id] > summary');
+    if (moduleSummary) {
+      const details = moduleSummary.parentElement;
+      collapsedModules[details.dataset.moduleId] = details.open;
+      saveSession();
+      return;
+    }
+
     const button = event.target.closest('button');
     if (!button) return;
     if (button.dataset.tab) {
@@ -2419,7 +2416,7 @@ function createApp(options) {
     const item = card ? ammo.items().find((entry) => entry.id === card.dataset.ammoId) : null;
     if (action === 'ammo-extract') runAndRender(() => ammo.requestExtract(), '提取请求已发送');
     else if (action === 'ammo-mode') {
-      const current = engine.getRoot().user.preferences.ammo_fire_mode || 'insert';
+      const current = engine.getRoot().user.preferences && engine.getRoot().user.preferences.ammo_fire_mode || 'insert';
       runAndRender(() => engine.setUserPath(['preferences', 'ammo_fire_mode'], current === 'send' ? 'insert' : 'send'), '发射方式已更新');
     } else if (action === 'ammo-fire' && item) runAndRender(() => ammo.fire(item), '弹药已发射');
     else if (action === 'ammo-copy' && item) runAndRender(() => ammo.copy(item), '已复制');
