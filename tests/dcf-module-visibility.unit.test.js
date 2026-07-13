@@ -41,17 +41,17 @@ const modules = Object.fromEntries(registry.modules.map((module) => [module.id, 
 
 assert.deepStrictEqual(classifyModule(engine.getRoot(), registry, modules['dcf.ammo_workbench']), { placement: 'daily', source: 'legacy-product-map' });
 assert.deepStrictEqual(classifyModule(engine.getRoot(), registry, modules['dcf.runtime_inspector']), { placement: 'maintenance', source: 'legacy-product-map' });
-assert.deepStrictEqual(classifyModule(engine.getRoot(), registry, modules['custom.hidden']), { placement: 'daily', source: 'declaration' });
+assert.deepStrictEqual(classifyModule(engine.getRoot(), registry, modules['custom.hidden']), { placement: 'hidden', source: 'declaration' });
 
 let groups = modulesByPlacement(engine.getRoot(), registry);
 assert(groups.daily.some((module) => module.id === 'dcf.ammo_workbench'));
 assert(groups.maintenance.some((module) => module.id === 'dcf.runtime_inspector'));
-assert(groups.daily.some((module) => module.id === 'custom.hidden'));
+assert(groups.hidden.some((module) => module.id === 'custom.hidden'));
 
-let receipt = engine.setUserPath(['moduleDisplay', 'custom.hidden'], { hidden: true });
+let receipt = engine.setUserPath(['moduleDisplay', 'custom.hidden'], { hidden: false, role: 'daily', area: 'work' });
 assert.strictEqual(receipt.status, 'committed');
 groups = modulesByPlacement(engine.getRoot(), engine.getRegistry());
-assert(groups.hidden.some((module) => module.id === 'custom.hidden'));
+assert(groups.daily.some((module) => module.id === 'custom.hidden'));
 
 receipt = engine.setUserPath(['moduleDisplay', 'dcf.runtime_inspector'], { hidden: false, role: 'daily', area: 'work' });
 assert.strictEqual(receipt.status, 'committed');
@@ -59,12 +59,16 @@ groups = modulesByPlacement(engine.getRoot(), engine.getRegistry());
 assert(groups.daily.some((module) => module.id === 'dcf.runtime_inspector'));
 assert(engine.getRoot().packages.packages['legacy.roles-pack'], 'changing placement removed its package');
 
+receipt = engine.setUserPath(['moduleDisplay', 'custom.hidden'], { hidden: true, role: 'daily', area: 'work' });
+assert.strictEqual(receipt.status, 'committed');
+
 const reporter = createHealthReporter(engine, receipts, storage, { diagnostics: () => ({ reply_root_observer_attached: true, composer_found: true }) }, []);
 const report = reporter.report();
 assert.strictEqual(report.schema, 'dcf.health.report.v2');
 assert.strictEqual(report.projection.installed_package_count, 1);
 assert.strictEqual(report.projection.runtime_module_count, 3);
 assert.strictEqual(report.projection.daily_function_count, 2);
+assert.strictEqual(report.projection.maintenance_tool_count, 0);
 assert.strictEqual(report.projection.hidden_runtime_module_count, 1);
 assert(report.runtime_modules.some((item) => item.module_id === 'dcf.runtime_inspector' && item.placement === 'daily' && item.placement_source === 'user'));
 
