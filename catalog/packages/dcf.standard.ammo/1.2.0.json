@@ -1,0 +1,75 @@
+{
+  "schema": "dcf.module_pack.v1",
+  "pack_id": "dcf.standard.ammo",
+  "revision": "1.2.0",
+  "title": "语言弹药核心",
+  "description": "提供语言弹药内容、语境化调用、实质更新和低摩擦发射能力。",
+  "contributes": {
+    "content_types": [
+      {
+        "id": "ammo",
+        "marker": "DCF_AMMO",
+        "title": "语言弹药",
+        "body_field": "body",
+        "actions": [
+          "fire",
+          "copy",
+          "update",
+          "delete"
+        ]
+      }
+    ],
+    "surfaces": [
+      {
+        "id": "dcf.ammo",
+        "title": "弹药",
+        "area": "primary",
+        "order": 10,
+        "kind": "content-list",
+        "content_type": "ammo"
+      }
+    ],
+    "ui_views": [
+      {
+        "id": "ammo",
+        "kind": "content",
+        "projection": "content:ammo",
+        "tab_label": "弹药",
+        "title": "语言弹药",
+        "description": "自动提取、自动装填、语境化调用与实质更新。",
+        "order": 10
+      }
+    ],
+    "policies": {
+      "ammo_protocol": {
+        "invocation_marker": "〔DCF·语言弹药〕",
+        "update_marker": "〔DCF·弹药更新〕",
+        "update_intro": "下面是一枚已经存在的 DCF 语言弹药。请把当前对话作为本次修订的语境和依据，先重新理解它的核心意图，再判断哪些部分需要保留、修正、补充或删除。",
+        "update_rules": [
+          "保留仍然成立的核心意图和适用边界；不要因为当前一句修正就机械重写整枚弹药。",
+          "吸收当前对话中已经形成的稳定变化；不要只做措辞润色，也不要把当前对话机械摘要进正文。",
+          "这是对同一枚长期弹药的更新，不要另建一枚相似弹药；必须保留原有 id。"
+        ],
+        "output_instruction": "完成后返回且只返回一份完整的 DCF_AMMO 工件，字段至少包含 id、title、purpose、body；DCF 会在回复完成后自动装填。"
+      }
+    },
+    "appearance": {
+      "side": "right",
+      "vars": {
+        "w": "340px",
+        "h": "800px",
+        "top": "12px",
+        "bottom": "112px",
+        "anchor": "bottom"
+      }
+    }
+  },
+  "modules": [
+    {
+      "id": "dcf.ammo.module",
+      "title": "语言弹药",
+      "version": "1.2.0",
+      "kind": "ammo"
+    }
+  ]
+}
