@@ -1,0 +1,25 @@
+
+> dcf-chatgpt-microcore@0.12.0 verify
+> npm run build && npm test
+
+
+> dcf-chatgpt-microcore@0.12.0 build
+> node scripts/build-userscript.js
+
+/home/runner/work/dcf-chatgpt-microcore/dcf-chatgpt-microcore/src/modules/standard-packages.js:1
+\
+^
+
+SyntaxError: Invalid or unexpected token
+    at wrapSafe (node:internal/modules/cjs/loader:1713:18)
+    at Module._compile (node:internal/modules/cjs/loader:1755:20)
+    at Object..js (node:internal/modules/cjs/loader:1913:10)
+    at Module.load (node:internal/modules/cjs/loader:1505:32)
+    at Function._load (node:internal/modules/cjs/loader:1309:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+    at Module.require (node:internal/modules/cjs/loader:1527:12)
+    at require (node:internal/modules/helpers:147:16)
+    at Object.<anonymous> (/home/runner/work/dcf-chatgpt-microcore/dcf-chatgpt-microcore/scripts/build-userscript.js:6:28)
+    at Module._compile (node:internal/modules/cjs/loader:1781:14)
+
+Node.js v22.23.1
