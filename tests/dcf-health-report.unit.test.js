@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('assert');
+const { VERSION } = require('../src/core/constants');
 const { createStorage } = require('../src/runtime/storage');
 const { loadOrMigrate } = require('../src/core/state');
 const { ensureProductBaseline } = require('../src/index');
@@ -8,6 +9,7 @@ const { STANDARD_PACKS, REQUIRED_PRODUCT_PACKAGES } = require('../src/modules/st
 const { createReceiptStore } = require('../src/core/receipts');
 const { createTransactionEngine } = require('../src/core/transactions');
 const { createHealthReporter } = require('../src/modules/health');
+const { modulesByRole } = require('../src/modules/module-roles');
 
 function localStore() {
   const values = new Map();
@@ -42,36 +44,69 @@ localStorage.setItem('dcf.kernel.ops.v2', JSON.stringify({ schema: 'dcf.kernel.o
 
 const clean = ensureProductBaseline(loadOrMigrate(createStorage({}), STANDARD_PACKS));
 gm.set('dcf.state.root.v1', clean);
-const root = loadOrMigrate(storage, STANDARD_PACKS);
+const loaded = loadOrMigrate(storage, STANDARD_PACKS);
 const receipts = createReceiptStore(storage);
-const engine = createTransactionEngine(storage, receipts, { initialRoot: root });
+const engine = createTransactionEngine(storage, receipts, { initialRoot: loaded });
 engine.initialize();
-const host = {
-  diagnostics() {
-    return { schema: 'dcf.host.diagnostics.v1', reply_root_observer_attached: true, composer_found: true, conversation_root_found: true };
+
+let hostState = {
+  schema: 'dcf.host.diagnostics.v1',
+  route_kind: '/c/:conversation',
+  conversation_root_found: true,
+  reply_root_observer_attached: true,
+  observed_root_connected: true,
+  observed_root_is_current: true,
+  composer_found: true
+};
+const host = { diagnostics: () => hostState };
+const roles = modulesByRole(engine.getRoot(), engine.getRegistry());
+const packageIds = Object.keys(engine.getRoot().packages.packages).sort();
+let uiState = {
+  schema: 'dcf.ui.runtime.snapshot.v1',
+  host_count: 1,
+  host_connected: true,
+  shadow_root_attached: true,
+  shell_connected: true,
+  shell_visible: true,
+  shell_intersects_viewport: true,
+  shell_rect: { left: 10, top: 10, right: 350, bottom: 700, width: 340, height: 690 },
+  current_tab: 'maintenance',
+  tab_ids: ['ammo', 'functions', 'packages', 'maintenance'],
+  version_text: `DCF ${VERSION}`,
+  views: {
+    packages: { entry_ids: packageIds.slice() },
+    functions: { module_ids: roles.daily.map((module) => module.id), collapsed_module_ids: [] },
+    maintenance: { module_ids: roles.maintenance.map((module) => module.id), collapsed_module_ids: roles.maintenance.map((module) => module.id) }
   }
 };
-const reporter = createHealthReporter(engine, receipts, storage, host, REQUIRED_PRODUCT_PACKAGES);
-const report = reporter.report();
-const serialized = JSON.stringify(report);
+const runtimeObject = { version: VERSION };
+const app = { captureRuntimeViews: () => JSON.parse(JSON.stringify(uiState)) };
+const reporter = createHealthReporter(engine, receipts, storage, host, REQUIRED_PRODUCT_PACKAGES, {
+  getApp: () => app,
+  getRuntime: () => runtimeObject
+});
 
-assert.strictEqual(report.schema, 'dcf.health.report.v2');
-assert.strictEqual(report.overall, 'ok');
-assert.strictEqual(report.storage.primary_backend, 'gm');
-assert(report.storage.bridge, 'storage bridge missing from report');
-assert(report.comparison.current_runtime_module_ids.includes('legacy.tools'), 'legacy module missing from runtime inventory');
-assert.deepStrictEqual(report.comparison.missing_legacy_runtime_module_ids, []);
-assert(report.packages.some((item) => item.package_id === 'legacy.tools'));
-assert(report.runtime_modules.some((item) => item.module_id === 'legacy.tools' && item.command_count === 1 && item.placement === 'daily'));
-assert(report.projection.installed_package_count >= 3);
-assert(report.projection.runtime_module_count >= 3);
-assert(report.projection.daily_function_count >= 1);
-assert(report.projection.maintenance_tool_count >= 1);
-assert.strictEqual(report.user_data.content_counts.ammo, 1);
-assert(!serialized.includes('SECRET-AMMO-BODY'), 'ammo body leaked into health report');
-assert(!serialized.includes('SECRET-COMMAND-TEXT'), 'command payload leaked into health report');
+let report = reporter.report();
+let serialized = JSON.stringify(report);
+assert.strictEqual(report.schema, 'dcf.runtime.health.diff.v1');
+assert.strictEqual(report.status, 'healthy');
+assert.deepStrictEqual(report.deviations, []);
+assert(!serialized.includes('SECRET-AMMO-BODY'), 'ammo body leaked into Runtime health report');
+assert(!serialized.includes('SECRET-COMMAND-TEXT'), 'command payload leaked into Runtime health report');
 assert.strictEqual(report.privacy.conversation_text_included, false);
-assert(reporter.format().startsWith('<<<DCF_HEALTH_REPORT\n'));
-assert(reporter.format().endsWith('\nDCF_HEALTH_REPORT>>>'));
+assert(reporter.format().startsWith('<<<DCF_RUNTIME_HEALTH\n'));
+assert(reporter.format().endsWith('\nDCF_RUNTIME_HEALTH>>>'));
 
-console.log(JSON.stringify({ ok: true, package_inventory: true, runtime_module_inventory: true, placement_inventory: true, migration_coverage: true, host_diagnostics: true, privacy_redaction: true }, null, 2));
+uiState.host_count = 2;
+uiState.views.functions.module_ids = uiState.views.functions.module_ids.filter((id) => id !== 'legacy.tools');
+hostState = Object.assign({}, hostState, { observed_root_is_current: false });
+report = reporter.report();
+const codes = report.deviations.map((item) => item.code);
+assert.strictEqual(report.status, 'error');
+assert(codes.includes('runtime_host_count_mismatch'));
+assert(codes.includes('runtime_function_entries_diverged'));
+assert(codes.includes('runtime_reply_observer_stale'));
+const entryDeviation = report.deviations.find((item) => item.code === 'runtime_function_entries_diverged');
+assert(entryDeviation.evidence.missing_daily.includes('legacy.tools'));
+
+console.log(JSON.stringify({ ok: true, healthy_report_is_diff_only: true, browser_dom_divergence_detected: true, duplicate_runtime_detected: true, stale_host_detected: true, privacy_redaction: true }, null, 2));
