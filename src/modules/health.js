@@ -83,10 +83,12 @@ function createHealthReporter(engine, receiptStore, storage, host, requiredPacka
     const snapshots = engine.snapshots();
     const currentPackageIds = Object.keys(root.packages && root.packages.packages || {}).sort();
     const currentModuleIds = (registry.modules || []).map((module) => String(module.id)).sort();
+    const hiddenModuleIds = (registry.modules || []).filter((module) => registry.moduleDisplay && registry.moduleDisplay[module.id] && registry.moduleDisplay[module.id].hidden === true).map((module) => String(module.id)).sort();
     const localLegacy = legacyInventory(storage, 'localStorage');
     const gmInventory = legacyInventory(storage, 'gm');
     const missingLegacyModules = localLegacy.module_ids.filter((id) => !currentModuleIds.includes(id));
     const missingLegacyPackages = localLegacy.package_ids.filter((id) => !currentPackageIds.includes(id));
+    const hiddenLegacyModules = localLegacy.module_ids.filter((id) => hiddenModuleIds.includes(id));
     const rootValidation = validateRoot(root);
     const checks = [];
 
@@ -121,6 +123,11 @@ function createHealthReporter(engine, receiptStore, storage, host, requiredPacka
     } else {
       addCheck('storage.backend-bridge', 'ok', root.system.storage_bridge ? '旧存储桥已完成' : '当前无需存储桥接');
     }
+
+    addCheck('ui.hidden-modules', hiddenModuleIds.length ? 'info' : 'ok', hiddenModuleIds.length ? `${hiddenModuleIds.length} 个模块已安装但处于隐藏状态` : '没有隐藏模块', {
+      hidden_module_ids: hiddenModuleIds,
+      hidden_legacy_module_ids: hiddenLegacyModules
+    });
 
     const hostDiagnostics = host && typeof host.diagnostics === 'function' ? host.diagnostics() : null;
     addCheck('host.reply-observer', hostDiagnostics && hostDiagnostics.reply_root_observer_attached ? 'ok' : 'warning', hostDiagnostics && hostDiagnostics.reply_root_observer_attached ? '回复监听器已连接' : '回复监听器尚未连接', hostDiagnostics);
@@ -175,6 +182,8 @@ function createHealthReporter(engine, receiptStore, storage, host, requiredPacka
         state_hash: registry.state_hash,
         package_count: currentPackageIds.length,
         module_count: currentModuleIds.length,
+        visible_module_count: currentModuleIds.length - hiddenModuleIds.length,
+        hidden_module_count: hiddenModuleIds.length,
         surface_count: Object.keys(registry.surfaces || {}).length,
         content_type_count: Object.keys(registry.contentTypes || {}).length,
         style_source_count: (registry.appearance && registry.appearance.styles || []).length
@@ -219,6 +228,7 @@ function createHealthReporter(engine, receiptStore, storage, host, requiredPacka
         legacy_local_module_ids: localLegacy.module_ids,
         current_module_ids: currentModuleIds,
         missing_legacy_module_ids: missingLegacyModules,
+        hidden_legacy_module_ids: hiddenLegacyModules,
         legacy_local_package_ids: localLegacy.package_ids,
         current_package_ids: currentPackageIds,
         missing_legacy_package_ids: missingLegacyPackages

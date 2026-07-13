@@ -4,7 +4,7 @@ DCF is a personally maintained ChatGPT Tampermonkey system whose value goal is a
 
 ## Current architecture
 
-DCF `0.11.1` separates the product goal from the engineering dependency:
+DCF `0.11.2` separates the product goal from the engineering dependency:
 
 ```text
 language-ammunition loop
@@ -29,6 +29,8 @@ ChatGPT replies and the private GitHub catalog are transports. They decode typed
 
 When GM storage is available it is the authoritative backend. A boot-time bridge inspects legacy page `localStorage` and safely recovers missing pre-`0.11.1` packages, modules, ammunition, settings, display data, and appearance values. The maintenance page and Tampermonkey menu provide **一键体检并复制**, which emits a privacy-safe `dcf.health.report.v1` covering both storage backends, migration coverage, root/projection integrity, packages, modules, Surfaces, Host Adapter status, and recent failures.
 
+Installed state and display state are separate. Hidden modules remain installed and executable in the runtime projection. The Functions view reports when modules are hidden, and Maintenance exposes the full visibility inventory with per-module and one-click restore controls.
+
 See `docs/architecture-current.md` for the current structure and `docs/adr/status-index.md` for the canonical ADR status.
 
 ## Build and verification
@@ -37,4 +39,4 @@ See `docs/architecture-current.md` for the current structure and `docs/adr/statu
 npm run verify
 ```
 
-This builds the complete `.user.js`, generates the catalog, and verifies state transactions, resource conflicts, dual-backend migration, legacy commands, health-report privacy, bounded reply intake, automatic artifact application, catalog updates, viewport containment, release integrity, and deterministic output.
+This builds the complete `.user.js`, generates the catalog, and verifies state transactions, resource conflicts, dual-backend migration, legacy commands, health-report privacy, hidden-module observability, bounded reply intake, automatic artifact application, catalog updates, viewport containment, release integrity, and deterministic output.

@@ -1,6 +1,6 @@
 # DCF 当前状态与新会话交接
 
-Updated: 2026-07-12
+Updated: 2026-07-13
 
 ## 读取顺序
 
@@ -16,9 +16,21 @@ Updated: 2026-07-12
 
 ## 当前版本
 
-当前发布版本：`0.11.1`
+当前发布版本：`0.11.2`
 
-一期全项目架构重建已经完成。`0.11.1` 修复 `0.10.0 localStorage -> 0.11.0 GM storage` 之间的存储后端断层，并新增一键全量体检报告。
+一期全项目架构重建已经完成。`0.11.1` 修复 `0.10.0 localStorage -> 0.11.0 GM storage` 的存储后端断层并新增一键体检；`0.11.2` 修复“旧模块已迁移但被旧显示规则隐藏，用户误判为未迁移”的可观察性问题。
+
+## 0.11.2 修复
+
+- 体检报告确认旧包和旧模块迁移完整，缺失清单为空；
+- 安装状态与显示状态正式分离：`hidden: true` 不再被表现成模块不存在；
+- 功能页在存在隐藏模块时显示明确提示与数量；
+- 维护页新增完整模块显示状态清单；
+- 每个模块可单独恢复显示或隐藏；
+- 可一次事务恢复全部隐藏模块显示；
+- 显示覆盖写入用户 `moduleDisplay` 状态，不修改、卸载或重写原包；
+- `dcf.health.report.v1` 新增 `visible_module_count`、`hidden_module_count`、隐藏模块清单与隐藏旧模块清单；
+- 隐藏模块仅产生信息级检查，不把有意隐藏误报为运行故障。
 
 ## 0.11.1 修复
 
@@ -36,7 +48,7 @@ Updated: 2026-07-12
 
 - modular source and deterministic complete-userscript release;
 - one authoritative `dcf.state.root.v1`;
-- one candidate/validate/commit transaction for package, content, setting, appearance, migration, and rollback changes;
+- one candidate/validate/commit transaction for package, content, setting, appearance, migration, rollback, and module-display changes;
 - immutable package revisions and stable resource claims;
 - user state separated from package defaults;
 - registry and UI as projections;
@@ -46,26 +58,27 @@ Updated: 2026-07-12
 - generic command interpreter preserving legacy top-level and block commands;
 - state/effect separation with privacy-filtered receipts;
 - required first-party ammo module and optional declarative shell-adjuster module;
-- package manager, maintenance summary, snapshots/rollback, and viewport fence.
+- package manager, maintenance summary, health report, visibility manager, snapshots/rollback, and viewport fence.
 
 ## Verification
 
-The 0.11.1 release passed:
+The 0.11.2 release must pass:
 
 - `npm run verify`;
 - `node --check dcf-chatgpt-microcore.user.js`;
-- dual-backend bridge test with an existing GM root plus legacy localStorage modules and ammo;
-- bridge idempotence test;
+- dual-backend bridge and bridge-idempotence tests;
 - whole-runtime health inventory and privacy test;
+- hidden-module observability and user-override test;
 - deterministic userscript, metadata, and catalog generation.
 
 ## User checkpoint after release
 
-1. update Tampermonkey to `0.11.1` and refresh ChatGPT;
-2. open `维护` and click `一键体检并复制`;
-3. confirm old modules, Surfaces, appearance values and ammunition are present;
-4. paste the complete `DCF_HEALTH_REPORT` block if `overall` is not `ok` or any expected module remains missing;
-5. fire one ammo item and run one recovered legacy command.
+1. update Tampermonkey to `0.11.2` and refresh ChatGPT;
+2. open `功能` and confirm the hidden-module notice appears when applicable;
+3. open `维护 -> 模块显示状态`;
+4. use `全部恢复显示` or restore individual modules;
+5. confirm the expected recovered modules appear in the Functions or Maintenance views;
+6. run one recovered legacy command and, if anything remains inconsistent, copy a fresh `DCF_HEALTH_REPORT`.
 
 ## Deferred to phase two
 
