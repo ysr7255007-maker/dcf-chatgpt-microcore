@@ -18,9 +18,9 @@ Updated: 2026-07-13
 
 当前候选版本：`0.11.6`
 
-此次采用增量修正，而不是回滚 0.11.3。0.11.3 已经正确分离安装包、运行模块、日常功能和维护工具；回滚会连同这部分正确结构一起撤销。0.11.6 只移除错误的 hidden 产品语义，并重建 Runtime 体检。
+`0.11.4` 保留了 0.11.3 已正确完成的包管理、日常功能和维护工具分区，移除错误的 hidden 产品语义，并把体检重建为真实浏览器 Runtime 偏差报告。`0.11.5` 修正 Runtime DOM 入口采样误报。`0.11.6` 聚焦包管理的中文可读性和紧凑总览，不改变包身份、事务、迁移或 Runtime 架构。
 
-## 0.11.6 修正
+## 0.11.4 Runtime 体检与折叠模型
 
 - 运行模块只属于 `ammo / daily / maintenance`；
 - 旧包和旧用户状态中的 `hidden:true` 不再让模块失去入口；
@@ -33,6 +33,22 @@ Updated: 2026-07-13
 - 健康报告只包含 `deviations: []`；异常报告只附上解释偏差所需的最小证据；
 - 模块入口覆盖检查不复用 UI role resolver，而是直接比较全部非弹药 Runtime module ID 与真实日常＋维护 DOM 标题 ID；
 - Host diagnostics 新增 `observed_root_is_current`，用于识别仍连着但已经不是当前 ChatGPT 主节点的 observer。
+
+## 0.11.5 Runtime 入口采样修正
+
+- Runtime DOM 采样只统计顶层 `details.module-card`；
+- 携带 `data-module-id` 的命令按钮不再被误算为独立模块入口；
+- 修正 0.11.4 的 `runtime_duplicate_entries` 假警报，不改变模块角色或 Runtime 状态。
+
+## 0.11.6 包管理可读性与紧凑布局
+
+- 包卡片以中文名称和一句功能说明为主，英文 package ID 降为次要技术标识；
+- 新包可直接声明 `title / display_name / name / label` 与 `description / summary / purpose`；
+- 现有旧包从模块标题、Surface、内容类型和有限兼容展示表生成中文说明；
+- 单版本包只显示紧凑版本标签，多版本包才显示版本选择与切换；
+- 版本、切换、启停和卸载集中在同一操作带，版本选择器不再独占整行；
+- 手动安装 JSON 折叠为低频入口，包总览成为页面主体；
+- 英文 package ID 仍作为操作、Runtime 对照和技术排查使用的真实身份，不被本地化替换。
 
 ## Phase one baseline
 
@@ -51,6 +67,8 @@ Updated: 2026-07-13
 
 - `npm run verify`;
 - `node --check dcf-chatgpt-microcore.user.js`;
+- package presentation derives stable Chinese titles and descriptions without changing package identity;
+- package version, switch, enable/disable and uninstall controls remain operational in one compact band;
 - legacy hidden metadata remains discoverable;
 - daily/maintenance roles and fold state remain separate;
 - folding never changes authoritative state;
@@ -62,25 +80,12 @@ Updated: 2026-07-13
 ## User checkpoint after release
 
 1. update Tampermonkey to `0.11.6` and refresh ChatGPT;
-2. confirm tabs are `弹药 / 功能 / 包管理 / 维护`;
-3. confirm every module title remains discoverable under either `功能` or `维护`;
-4. expand and collapse several daily and maintenance cards, then refresh and confirm fold state persists without moving modules;
-5. run `维护 -> 一键 Runtime 体检` and paste the complete `DCF_RUNTIME_HEALTH` block if deviations are present.
+2. open `包管理` and confirm each package uses a readable Chinese title and one-line function description;
+3. confirm the English package ID remains visible only as a smaller technical identifier;
+4. confirm single-version packages show a compact version label, while multi-version packages keep version selection and `切换`;
+5. confirm `启用/停用`、`切换`、`卸载` stay together in the package operation band and the page can be scanned globally;
+6. run `维护 -> 一键 Runtime 体检` and paste the complete `DCF_RUNTIME_HEALTH` block if deviations are present.
 
 ## Deferred to phase two
 
 ChatGPT historical-message virtualization, turn-window rendering, DOM/memory dashboard, and other attempts to reduce ChatGPT's own long-thread rendering cost.
-
-## 0.11.6 Runtime entry sampling fix
-
-- Runtime DOM sampling counts only top-level `details.module-card` entries.
-- Command buttons carrying `data-module-id` are excluded from duplicate-entry detection.
-- This fixes the 0.11.4 false `runtime_duplicate_entries` warning without changing module roles or Runtime state.
-
-## 0.11.6 包管理可读性与紧凑布局
-
-- 包卡片以中文名称和一句功能说明为主，英文 package ID 降为次要技术标识。
-- 现有旧包优先从包元数据、模块标题、Surface、内容类型和兼容展示表生成中文说明。
-- 单版本包只显示紧凑版本标签；多版本包才显示版本选择与切换。
-- 版本、切换、启停和卸载集中在同一操作带，版本选择器不再独占整行。
-- 手动安装 JSON 折叠为低频入口，包总览成为页面主体。
