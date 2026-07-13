@@ -1,6 +1,6 @@
 # DCF 当前状态与新会话交接
 
-Updated: 2026-07-13
+Updated: 2026-07-14
 
 ## 读取顺序
 
@@ -12,13 +12,31 @@ Updated: 2026-07-13
 6. 与当前事项相关的 ADR
 7. 本文件
 
+需要把新维护窗口直接接入当前仓库与用户浏览器现场时，使用 `docs/prompts/dcf-current-loaded-system-handoff.md`。
+
 根 `.user.js` 是生成发布物，不再作为理解源码架构的首要入口。
 
 ## 当前版本
 
-当前候选版本：`0.13.0`
+当前正式版本：`0.13.0`
 
 `0.11.4` 保留包管理、日常功能和维护工具分区，移除错误的 hidden 产品语义，并把体检重建为真实浏览器 Runtime 偏差报告。`0.11.5` 修正 Runtime DOM 入口采样误报。`0.11.6` 聚焦包管理中文可读性和紧凑总览。`0.12.0` 统一按值/按引用能力包更新。`0.13.0` 将系统整体收拢为期望对话环境、typed intent、有限资源族、环境投影和 Profile/恢复架构。
+
+## 当前浏览器 Runtime 检查点
+
+用户已确认完成 `0.13.0` 迁移。最近一次真实浏览器体检生成于 `2026-07-13T14:01:49.777Z`：
+
+```text
+schema: dcf.runtime.health.diff.v1
+version: 0.13.0
+route_kind: /c/:conversation
+primary_backend: gm
+current_tab: maintenance
+status: healthy
+deviations: []
+```
+
+体检隐私边界确认未包含对话正文、弹药正文、包 payload、命令参数或认证数据。该结果关闭 0.13.0 的 Runtime 迁移检查点，但不单独证明 Environment Profile、具体模块命令和用户内容隔离等业务行为；这些继续由对应功能验收负责。
 
 ## 0.11.4 Runtime 体检与折叠模型
 
@@ -79,12 +97,12 @@ Updated: 2026-07-13
 
 ## User checkpoint after release
 
-1. update Tampermonkey to `0.13.0` and refresh ChatGPT;
-2. confirm the four tabs remain available and use package-provided labels/order;
-3. open `维护 -> 环境 Profile`，保存一个当前环境，修改发射方式或界面组织后再激活该 Profile，确认恢复但弹药正文未被复制或覆盖；
-4. run a module command that changes shell appearance and confirm it still applies normally;
-5. open `包管理` and confirm existing package names, compact controls and immutable revisions remain intact;
-6. run `维护 -> 一键 Runtime 体检` and paste the complete `DCF_RUNTIME_HEALTH` block if deviations are present.
+1. Tampermonkey 已加载 `0.13.0`，迁移与基础 Runtime 体检通过；
+2. 四个标签及包提供的标签/顺序已进入当前 Runtime；
+3. Environment Profile 的保存、修改后激活恢复和弹药正文隔离仍属于可按需要执行的专项行为验收；
+4. 模块命令产生的 appearance、setting、content 持久变化必须继续经 Environment Reconciler；
+5. 包管理名称、紧凑控制和已有不可变 revision 必须保持兼容；
+6. 后续只有出现用户现场异常或相关功能变化时，才重新运行并提交完整 `DCF_RUNTIME_HEALTH`。
 
 ## Deferred to phase two
 
