@@ -234,13 +234,13 @@ function createApp(options) {
       views.packages = { entry_ids: collectIds('[data-runtime-section="packages"] [data-package-id]', 'data-package-id') };
       tab = 'functions'; render();
       views.functions = {
-        module_ids: collectIds('[data-runtime-section="daily"] [data-module-id]', 'data-module-id'),
-        collapsed_module_ids: collectIds('[data-runtime-section="daily"] details[data-module-id]:not([open])', 'data-module-id')
+        module_ids: collectIds('[data-runtime-section="daily"] > details.module-card[data-module-id]', 'data-module-id'),
+        collapsed_module_ids: collectIds('[data-runtime-section="daily"] > details.module-card[data-module-id]:not([open])', 'data-module-id')
       };
       tab = 'maintenance'; render();
       views.maintenance = {
-        module_ids: collectIds('[data-runtime-section="maintenance-tools"] [data-module-id]', 'data-module-id'),
-        collapsed_module_ids: collectIds('[data-runtime-section="maintenance-tools"] details[data-module-id]:not([open])', 'data-module-id')
+        module_ids: collectIds('[data-runtime-section="maintenance-tools"] > details.module-card[data-module-id]', 'data-module-id'),
+        collapsed_module_ids: collectIds('[data-runtime-section="maintenance-tools"] > details.module-card[data-module-id]:not([open])', 'data-module-id')
       };
     } finally {
       tab = originalTab;

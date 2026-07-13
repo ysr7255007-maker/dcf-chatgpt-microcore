@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DCF ChatGPT Microcore
 // @namespace    https://chatgpt.com/
-// @version      0.11.4
+// @version      0.11.5
 // @description  DCF modular runtime with foldable daily and maintenance views, browser Runtime deviation health checks, bounded reply intake and unified transactions.
 // @updateURL    https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.meta.js
 // @downloadURL  https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.user.js
@@ -112,7 +112,7 @@ module.exports = {
 "src/core/constants.js":function(module,exports,require){
 'use strict';
 
-const VERSION = '0.11.4';
+const VERSION = '0.11.5';
 const ROOT_KEY = 'dcf.state.root.v1';
 const SNAPSHOT_KEY = 'dcf.state.snapshots.v1';
 const RUNTIME_KEY = 'dcf.runtime.registry.v3';
@@ -2356,13 +2356,13 @@ function createApp(options) {
       views.packages = { entry_ids: collectIds('[data-runtime-section="packages"] [data-package-id]', 'data-package-id') };
       tab = 'functions'; render();
       views.functions = {
-        module_ids: collectIds('[data-runtime-section="daily"] [data-module-id]', 'data-module-id'),
-        collapsed_module_ids: collectIds('[data-runtime-section="daily"] details[data-module-id]:not([open])', 'data-module-id')
+        module_ids: collectIds('[data-runtime-section="daily"] > details.module-card[data-module-id]', 'data-module-id'),
+        collapsed_module_ids: collectIds('[data-runtime-section="daily"] > details.module-card[data-module-id]:not([open])', 'data-module-id')
       };
       tab = 'maintenance'; render();
       views.maintenance = {
-        module_ids: collectIds('[data-runtime-section="maintenance-tools"] [data-module-id]', 'data-module-id'),
-        collapsed_module_ids: collectIds('[data-runtime-section="maintenance-tools"] details[data-module-id]:not([open])', 'data-module-id')
+        module_ids: collectIds('[data-runtime-section="maintenance-tools"] > details.module-card[data-module-id]', 'data-module-id'),
+        collapsed_module_ids: collectIds('[data-runtime-section="maintenance-tools"] > details.module-card[data-module-id]:not([open])', 'data-module-id')
       };
     } finally {
       tab = originalTab;
