@@ -1,258 +1,224 @@
 'use strict';
 
-const { VERSION, ROOT_KEY, SNAPSHOT_KEY, RUNTIME_KEY, RECEIPT_KEY, CATALOG_STATE_KEY, LEGACY_KEYS } = require('../core/constants');
-const { computeStateHash, validateRoot } = require('../core/state');
-const { hash, isObject, nowIso } = require('../core/utils');
-const { commandList } = require('../runtime/commands');
-const { classifyModule, modulesByPlacement } = require('./module-roles');
+const { VERSION, ROOT_KEY } = require('../core/constants');
+const { nowIso } = require('../core/utils');
+const { modulesByRole } = require('./module-roles');
 
-function summarizeStoredValue(value) {
-  if (value == null) return { present: false };
-  const summary = { present: true, type: Array.isArray(value) ? 'array' : typeof value, hash: hash(value) };
-  if (isObject(value)) {
-    if (value.schema) summary.schema = value.schema;
-    if (value.revision != null) summary.revision = value.revision;
-    summary.key_count = Object.keys(value).length;
-  }
-  if (Array.isArray(value)) summary.item_count = value.length;
-  return summary;
+function sortedUnique(values) {
+  return Array.from(new Set((values || []).map(String))).sort();
 }
 
-function activePackModuleIds(packageState) {
-  const ids = [];
-  for (const entry of Object.values(packageState && packageState.packages || {})) {
+function difference(left, right) {
+  const rightSet = new Set(right || []);
+  return sortedUnique((left || []).filter((value) => !rightSet.has(value)));
+}
+
+function duplicates(values) {
+  const seen = new Set();
+  const duplicate = new Set();
+  for (const value of values || []) {
+    if (seen.has(value)) duplicate.add(value);
+    seen.add(value);
+  }
+  return Array.from(duplicate).sort();
+}
+
+function activePackModules(packageState) {
+  const result = [];
+  for (const [packageId, entry] of Object.entries(packageState && packageState.packages || {})) {
     if (!entry || entry.enabled === false) continue;
     const revision = entry.active_revision;
     const pack = entry.revisions && entry.revisions[revision] && entry.revisions[revision].pack;
     for (const module of Array.isArray(pack && pack.modules) ? pack.modules : []) {
-      if (module && module.id) ids.push(String(module.id));
+      if (module && module.id) result.push({ module_id: String(module.id), package_id: String(packageId) });
     }
   }
-  return Array.from(new Set(ids)).sort();
+  return result;
 }
 
 function legacyInventory(storage, backend) {
-  const packages = storage.getFrom(backend, LEGACY_KEYS.packages, null);
-  const user = storage.getFrom(backend, LEGACY_KEYS.user, null);
-  const ops = storage.getFrom(backend, LEGACY_KEYS.ops, null);
-  const registry = storage.getFrom(backend, LEGACY_KEYS.registry, null);
+  const packages = storage.getFrom(backend, 'dcf.package.sources.v1', null);
+  const registry = storage.getFrom(backend, 'dcf.kernel.registry.v1', null);
   const root = storage.getFrom(backend, ROOT_KEY, null);
   const packageIds = Object.keys(packages && packages.packages || {}).sort();
-  const moduleIds = new Set(activePackModuleIds(packages));
+  const moduleProviders = activePackModules(packages);
+  const moduleIds = new Set(moduleProviders.map((item) => item.module_id));
   for (const module of Array.isArray(registry && registry.modules) ? registry.modules : []) {
     if (module && module.id) moduleIds.add(String(module.id));
   }
-  const ammoCount = Object.keys(user && user.content && user.content.ammo || registry && registry.content && registry.content.ammo || {}).length;
   return {
     backend,
     dcf_keys: storage.dcfKeys(backend),
-    stores: {
-      root: summarizeStoredValue(root),
-      packages: summarizeStoredValue(packages),
-      user: summarizeStoredValue(user),
-      ops: summarizeStoredValue(ops),
-      registry: summarizeStoredValue(registry)
-    },
+    root_present: !!root,
     package_ids: packageIds,
     runtime_module_ids: Array.from(moduleIds).sort(),
-    ammo_count: ammoCount,
-    settings_count: Object.keys(user && user.settings || registry && registry.settings || {}).length,
-    module_display_count: Object.keys(user && user.moduleDisplay || registry && registry.moduleDisplay || {}).length
+    module_providers: moduleProviders
   };
 }
 
 function receiptSummary(receipt) {
   return {
-    receipt_id: receipt.receipt_id || null,
+    at: receipt.at || null,
     status: receipt.status || null,
     stage: receipt.stage || null,
     intent_type: receipt.intent && receipt.intent.type || null,
     package_id: receipt.intent && receipt.intent.package_id || null,
-    content_type: receipt.intent && receipt.intent.content_type || null,
     error: receipt.error || null,
-    errors: Array.isArray(receipt.errors) ? receipt.errors.slice(0, 8) : [],
-    revision: receipt.revision == null ? null : receipt.revision,
-    duration_ms: receipt.duration_ms == null ? null : receipt.duration_ms
+    errors: Array.isArray(receipt.errors) ? receipt.errors.slice(0, 4) : []
   };
 }
 
-function createHealthReporter(engine, receiptStore, storage, host, requiredPackages = []) {
+function skippedPackageIds(root) {
+  const items = root && root.system && root.system.storage_bridge && root.system.storage_bridge.skipped && root.system.storage_bridge.skipped.packages || [];
+  return new Set(items.map((item) => String(typeof item === 'string' ? item : item && (item.package_id || item.id) || '')).filter(Boolean));
+}
+
+function createHealthReporter(engine, receiptStore, storage, host, requiredPackages = [], runtime = {}) {
   function report() {
+    const generatedAt = nowIso();
     const root = engine.getRoot();
     const registry = engine.getRegistry();
-    const receipts = receiptStore.list();
-    const snapshots = engine.snapshots();
-    const currentPackageIds = Object.keys(root.packages && root.packages.packages || {}).sort();
-    const currentRuntimeModuleIds = (registry.modules || []).map((module) => String(module.id)).sort();
-    const placement = modulesByPlacement(root, registry);
-    const localLegacy = legacyInventory(storage, 'localStorage');
-    const gmInventory = legacyInventory(storage, 'gm');
-    const missingLegacyModules = localLegacy.runtime_module_ids.filter((id) => !currentRuntimeModuleIds.includes(id));
-    const missingLegacyPackages = localLegacy.package_ids.filter((id) => !currentPackageIds.includes(id));
-    const rootValidation = validateRoot(root);
-    const checks = [];
+    const runtimeObject = typeof runtime.getRuntime === 'function' ? runtime.getRuntime() : null;
+    const app = typeof runtime.getApp === 'function' ? runtime.getApp() : null;
+    const deviations = [];
 
-    function addCheck(id, status, summary, details) {
-      checks.push({ id, status, summary, details: details || null });
+    function add(code, severity, subject, expected, actual, evidence, explanation) {
+      deviations.push({ code, severity, subject: subject || null, expected, actual, evidence: evidence || null, explanation });
     }
 
-    const computedHash = computeStateHash(root);
-    addCheck('state.root.valid', rootValidation.ok ? 'ok' : 'error', rootValidation.ok ? '权威状态根可验证' : '权威状态根验证失败', rootValidation.errors);
-    addCheck('state.hash.matches', computedHash === root.state_hash ? 'ok' : 'error', computedHash === root.state_hash ? '状态哈希一致' : '状态哈希不一致');
-    addCheck('projection.matches-root', registry && registry.state_hash === root.state_hash ? 'ok' : 'error', registry && registry.state_hash === root.state_hash ? '运行投影与权威根一致' : '运行投影与权威根不一致');
+    let ui = null;
+    if (app && typeof app.captureRuntimeViews === 'function') {
+      try {
+        ui = app.captureRuntimeViews();
+      } catch (error) {
+        add('runtime_ui_snapshot_failed', 'error', 'dcf-ui', 'runtime UI can be observed without changing authoritative state', 'snapshot threw', { error: String(error && error.message || error) }, 'The report could not observe the real Shadow DOM, so UI/runtime consistency is unknown.');
+      }
+    } else {
+      add('runtime_app_unavailable', 'error', 'dcf-app', 'a mounted app exposes captureRuntimeViews()', 'app or runtime observer missing', null, 'The userscript runtime exists without an observable app instance, or boot did not finish.');
+    }
 
+    if (!runtimeObject) {
+      add('runtime_global_missing', 'error', '__DCF_RUNTIME__', 'the current userscript instance publishes its runtime object', 'missing', null, 'The browser page does not expose the runtime object created at the end of DCF boot.');
+    } else if (runtimeObject.version !== VERSION) {
+      add('runtime_version_mismatch', 'error', '__DCF_RUNTIME__.version', VERSION, runtimeObject.version || null, null, 'The in-memory runtime and the installed userscript source are not the same version.');
+    }
+
+    if (ui) {
+      if (ui.host_count !== 1) add('runtime_host_count_mismatch', 'error', '#dcf-chatgpt-microcore-host', 1, ui.host_count, null, ui.host_count === 0 ? 'DCF boot produced no host in the real document.' : 'The userscript appears to have been injected more than once in the same page.');
+      if (!ui.host_connected || !ui.shadow_root_attached || !ui.shell_connected) add('runtime_ui_detached', 'error', 'dcf-ui', 'host, shadow root and shell are connected', { host_connected: ui.host_connected, shadow_root_attached: ui.shadow_root_attached, shell_connected: ui.shell_connected }, null, 'The in-memory app exists but part of its real DOM is detached.');
+      if (!ui.shell_visible || !ui.shell_intersects_viewport) add('runtime_shell_not_visible', 'warning', 'dcf-shell', 'the shell has a visible rectangle intersecting the viewport', { shell_visible: ui.shell_visible, shell_intersects_viewport: ui.shell_intersects_viewport }, { rect: ui.shell_rect }, 'DCF is mounted but its real browser geometry makes it unavailable to the user.');
+      if (!String(ui.version_text || '').includes(VERSION)) add('runtime_ui_version_mismatch', 'warning', 'dcf-ui-version', VERSION, ui.version_text || null, null, 'The visible sidebar version text does not match the running source version.');
+    }
+
+    const persistedRoot = storage.getFrom(storage.primaryBackend, ROOT_KEY, null);
+    if (!persistedRoot) {
+      add('runtime_authoritative_root_missing', 'error', `${storage.primaryBackend}:${ROOT_KEY}`, 'the authoritative backend contains the current root', 'missing', null, 'The in-memory runtime has no corresponding persisted authority in the backend it claims to use.');
+    } else if (persistedRoot.state_hash !== root.state_hash || persistedRoot.revision !== root.revision) {
+      add('runtime_memory_storage_diverged', 'error', ROOT_KEY, { revision: root.revision, state_hash: root.state_hash }, { revision: persistedRoot.revision, state_hash: persistedRoot.state_hash }, null, 'The current in-memory root and the actual persisted root have diverged.');
+    }
+    if (!registry || registry.state_hash !== root.state_hash) {
+      add('runtime_projection_stale', 'error', 'runtime-registry', root.state_hash, registry && registry.state_hash || null, { root_revision: root.revision, projection_revision: registry && registry.state_revision }, 'The registry currently used by the browser was not built from the current in-memory root.');
+    }
+
+    const probeKey = `dcf.runtime.probe.${Date.now()}`;
+    const probeValue = `ok:${Math.random().toString(36).slice(2)}`;
+    try {
+      storage.set(probeKey, probeValue);
+      const readBack = storage.get(probeKey, null);
+      storage.remove(probeKey);
+      if (readBack !== probeValue) add('runtime_storage_roundtrip_failed', 'error', storage.primaryBackend, probeValue, readBack, null, 'The browser storage API accepted a write call but did not return the same value.');
+    } catch (error) {
+      try { storage.remove(probeKey); } catch (_) {}
+      add('runtime_storage_roundtrip_failed', 'error', storage.primaryBackend, 'write/read/delete succeeds', 'probe threw', { error: String(error && error.message || error) }, 'The actual browser storage backend is not usable by this running userscript instance.');
+    }
+
+    const currentPackageIds = Object.keys(root.packages && root.packages.packages || {}).sort();
     const missingRequired = requiredPackages.filter((id) => {
-      const entry = root.packages.packages[id];
+      const entry = root.packages && root.packages.packages && root.packages.packages[id];
       return !entry || entry.enabled === false;
     });
-    addCheck('product.required-packages', missingRequired.length ? 'error' : 'ok', missingRequired.length ? '产品核心包缺失或停用' : '产品核心包完整', missingRequired);
+    if (missingRequired.length) add('runtime_required_packages_missing', 'error', 'product-baseline', 'all required first-party packages installed and enabled', missingRequired, null, 'The running browser state cannot provide the language-ammunition value loop.');
 
-    const localLegacyPresent = !!(localLegacy.package_ids.length || localLegacy.runtime_module_ids.length || localLegacy.ammo_count || localLegacy.stores.root.present);
-    if (missingLegacyModules.length || missingLegacyPackages.length) {
-      addCheck('migration.legacy-coverage', 'error', '检测到未进入当前运行态的旧模块或旧包', { missing_runtime_module_ids: missingLegacyModules, missing_package_ids: missingLegacyPackages });
-    } else if (localLegacyPresent) {
-      addCheck('migration.legacy-coverage', 'ok', '检测到旧存储，当前运行态已覆盖其包与运行模块');
-    } else {
-      addCheck('migration.legacy-coverage', 'ok', '未检测到需要迁移的旧存储');
+    const currentRuntimeModuleIds = sortedUnique((registry && registry.modules || []).map((module) => module.id));
+    const providerMap = registry && registry.build && registry.build.resource_ownership || {};
+    const orphanModules = currentRuntimeModuleIds.filter((id) => !providerMap[`module:${id}`]);
+    if (orphanModules.length) add('runtime_modules_without_provider', 'error', 'runtime-registry', 'every runtime module is traceable to an active package resource', orphanModules, null, 'These modules exist in memory without a provider that can explain why they are present.');
+
+    const legacy = legacyInventory(storage, 'localStorage');
+    const skipped = skippedPackageIds(root);
+    const unexplainedLegacyPackages = legacy.package_ids.filter((id) => !currentPackageIds.includes(id) && !skipped.has(id));
+    if (unexplainedLegacyPackages.length) add('runtime_storage_bridge_gap', 'error', 'legacy-packages', 'every legacy package is migrated or has an explicit skip record', unexplainedLegacyPackages, { bridge_present: !!(root.system && root.system.storage_bridge) }, 'The actual browser still contains legacy packages that neither reached the current root nor received an explicit conflict explanation.');
+    const legacyModulesMissingFromPresentPackages = legacy.module_providers.filter((item) => currentPackageIds.includes(item.package_id) && !currentRuntimeModuleIds.includes(item.module_id));
+    if (legacyModulesMissingFromPresentPackages.length) add('runtime_legacy_module_projection_gap', 'error', 'legacy-runtime-modules', 'modules from migrated active packages enter the current runtime registry', legacyModulesMissingFromPresentPackages, null, 'The package exists in the current browser state, but one or more of its legacy modules did not reach the running registry.');
+
+    const roles = modulesByRole(root, registry || { modules: [] });
+    const expectedDaily = sortedUnique(roles.daily.map((module) => module.id));
+    const expectedMaintenance = sortedUnique(roles.maintenance.map((module) => module.id));
+    if (ui && ui.views) {
+      const actualPackages = sortedUnique(ui.views.packages && ui.views.packages.entry_ids);
+      const missingPackageCards = difference(currentPackageIds, actualPackages);
+      const extraPackageCards = difference(actualPackages, currentPackageIds);
+      if (missingPackageCards.length || extraPackageCards.length) add('runtime_package_view_diverged', 'error', 'package-management-dom', currentPackageIds, actualPackages, { missing: missingPackageCards, extra: extraPackageCards }, 'The package list rendered in the real Shadow DOM does not match the packages held by the running authoritative state.');
+
+      const actualDaily = sortedUnique(ui.views.functions && ui.views.functions.module_ids);
+      const actualMaintenance = sortedUnique(ui.views.maintenance && ui.views.maintenance.module_ids);
+      const missingDaily = difference(expectedDaily, actualDaily);
+      const missingMaintenance = difference(expectedMaintenance, actualMaintenance);
+      const extraDaily = difference(actualDaily, currentRuntimeModuleIds);
+      const extraMaintenance = difference(actualMaintenance, currentRuntimeModuleIds);
+      const wrongDaily = actualDaily.filter((id) => expectedMaintenance.includes(id));
+      const wrongMaintenance = actualMaintenance.filter((id) => expectedDaily.includes(id));
+      if (missingDaily.length || missingMaintenance.length || extraDaily.length || extraMaintenance.length || wrongDaily.length || wrongMaintenance.length) {
+        add('runtime_function_entries_diverged', 'error', 'module-entry-dom', { daily: expectedDaily, maintenance: expectedMaintenance }, { daily: actualDaily, maintenance: actualMaintenance }, { missing_daily: missingDaily, missing_maintenance: missingMaintenance, extra_daily: extraDaily, extra_maintenance: extraMaintenance, maintenance_in_daily: wrongDaily, daily_in_maintenance: wrongMaintenance }, 'The real browser entry points do not faithfully expose the modules held by the current runtime. Folded cards still count as present because their headers remain in the DOM.');
+      }
+      const duplicateCards = {
+        daily: duplicates(ui.views.functions && ui.views.functions.module_ids),
+        maintenance: duplicates(ui.views.maintenance && ui.views.maintenance.module_ids),
+        packages: duplicates(ui.views.packages && ui.views.packages.entry_ids)
+      };
+      if (duplicateCards.daily.length || duplicateCards.maintenance.length || duplicateCards.packages.length) add('runtime_duplicate_entries', 'warning', 'dcf-shadow-dom', 'each package or module has one entry in its owning view', duplicateCards, null, 'The real DOM contains duplicate entries even though the underlying runtime identities are unique.');
     }
-
-    if (storage.primaryBackend === 'gm' && localLegacyPresent && !root.system.storage_bridge) {
-      addCheck('storage.backend-bridge', 'error', 'GM 存储与 localStorage 之间存在旧数据，但没有桥接记录');
-    } else if (root.system.storage_bridge && root.system.storage_bridge.skipped && root.system.storage_bridge.skipped.packages && root.system.storage_bridge.skipped.packages.length) {
-      addCheck('storage.backend-bridge', 'warning', '存储桥已运行，但有旧包因冲突被跳过', root.system.storage_bridge.skipped.packages);
-    } else {
-      addCheck('storage.backend-bridge', 'ok', root.system.storage_bridge ? '旧存储桥已完成' : '当前无需存储桥接');
-    }
-
-    addCheck('ui.module-placement', 'info', `运行态模块 ${currentRuntimeModuleIds.length} 个：日常 ${placement.daily.length}、维护 ${placement.maintenance.length}、隐藏 ${placement.hidden.length}、弹药专用 ${placement.ammo.length}`, {
-      daily_function_ids: placement.daily.map((module) => module.id),
-      maintenance_tool_ids: placement.maintenance.map((module) => module.id),
-      hidden_runtime_module_ids: placement.hidden.map((module) => module.id),
-      ammo_module_ids: placement.ammo.map((module) => module.id)
-    });
 
     const hostDiagnostics = host && typeof host.diagnostics === 'function' ? host.diagnostics() : null;
-    addCheck('host.reply-observer', hostDiagnostics && hostDiagnostics.reply_root_observer_attached ? 'ok' : 'warning', hostDiagnostics && hostDiagnostics.reply_root_observer_attached ? '回复监听器已连接' : '回复监听器尚未连接', hostDiagnostics);
-    addCheck('host.composer', hostDiagnostics && hostDiagnostics.composer_found ? 'ok' : 'warning', hostDiagnostics && hostDiagnostics.composer_found ? '输入框可用' : '当前页面未找到输入框');
+    if (!hostDiagnostics || !hostDiagnostics.conversation_root_found) {
+      add('runtime_conversation_root_missing', 'warning', 'chatgpt-main', 'the current ChatGPT route exposes a conversation root', hostDiagnostics && hostDiagnostics.conversation_root_found || false, { route_kind: hostDiagnostics && hostDiagnostics.route_kind || null }, 'The Host Adapter cannot observe replies on the current page because the expected live page root is absent.');
+    } else {
+      if (!hostDiagnostics.reply_root_observer_attached) add('runtime_reply_observer_missing', 'error', 'reply-observer', 'observer attached to the current conversation root', false, hostDiagnostics, 'Automatic reply ingestion is not connected in this browser tab.');
+      else if (!hostDiagnostics.observed_root_connected || hostDiagnostics.observed_root_is_current === false) add('runtime_reply_observer_stale', 'error', 'reply-observer', 'the observed node is connected and is the current conversation root', { connected: hostDiagnostics.observed_root_connected, is_current: hostDiagnostics.observed_root_is_current }, hostDiagnostics, 'ChatGPT navigation replaced the page root while DCF kept observing an old node.');
+    }
+    if (!hostDiagnostics || !hostDiagnostics.composer_found) add('runtime_composer_missing', 'warning', 'chatgpt-composer', 'the current page exposes a writable composer', false, { route_kind: hostDiagnostics && hostDiagnostics.route_kind || null }, 'DCF cannot insert or send ammunition in the current browser state.');
 
-    const recentFailures = receipts.filter((item) => item.status === 'rejected' || item.status === 'error').slice(-20).map(receiptSummary);
-    addCheck('receipts.recent-failures', recentFailures.length ? 'warning' : 'ok', recentFailures.length ? `最近存在 ${recentFailures.length} 条失败回执` : '最近没有失败回执');
+    const cutoff = Date.now() - 30 * 60 * 1000;
+    const recentFailures = receiptStore.list().filter((item) => (item.status === 'rejected' || item.status === 'error') && (!item.at || Date.parse(item.at) >= cutoff)).slice(-8).map(receiptSummary);
+    if (recentFailures.length) add('runtime_recent_failures', 'warning', 'runtime-receipts', 'no rejected or failed operations in the last 30 minutes', recentFailures.length, { failures: recentFailures }, 'The current browser session recently attempted operations that did not complete successfully.');
 
-    const overall = checks.some((item) => item.status === 'error') ? 'error' : checks.some((item) => item.status === 'warning') ? 'warning' : 'ok';
-    const statusCounts = receipts.reduce((result, item) => {
-      const status = item.status || 'unknown';
-      result[status] = (result[status] || 0) + 1;
-      return result;
-    }, {});
-
+    const status = deviations.some((item) => item.severity === 'error') ? 'error' : deviations.some((item) => item.severity === 'warning') ? 'warning' : 'healthy';
     return {
-      schema: 'dcf.health.report.v2',
-      generated_at: nowIso(),
-      overall,
-      kernel_version: VERSION,
-      checks,
-      storage: {
+      schema: 'dcf.runtime.health.diff.v1',
+      generated_at: generatedAt,
+      status,
+      runtime: {
+        version: VERSION,
+        route_kind: hostDiagnostics && hostDiagnostics.route_kind || null,
         primary_backend: storage.primaryBackend,
-        available_backends: storage.availableBackends,
-        authoritative_keys: {
-          root: ROOT_KEY,
-          snapshots: SNAPSHOT_KEY,
-          runtime_projection: RUNTIME_KEY,
-          receipts: RECEIPT_KEY,
-          catalog: CATALOG_STATE_KEY
-        },
-        bridge: root.system.storage_bridge || null,
-        gm: gmInventory,
-        local_storage: localLegacy
+        current_tab: ui && ui.current_tab || null
       },
-      state: {
-        schema: root.schema,
-        revision: root.revision,
-        parent_revision: root.parent_revision,
-        state_hash: root.state_hash,
-        computed_state_hash: computedHash,
-        package_revision: root.packages.revision,
-        user_revision: root.user.revision,
-        migration: root.system.migration || null,
-        artifact_index_count: Object.keys(root.system.artifact_index || {}).length,
-        snapshot_count: snapshots.length
-      },
-      projection: {
-        schema: registry.schema,
-        build_id: registry.build && registry.build.build_id,
-        state_revision: registry.state_revision,
-        state_hash: registry.state_hash,
-        installed_package_count: currentPackageIds.length,
-        runtime_module_count: currentRuntimeModuleIds.length,
-        daily_function_count: placement.daily.length,
-        maintenance_tool_count: placement.maintenance.length,
-        hidden_runtime_module_count: placement.hidden.length,
-        ammo_module_count: placement.ammo.length,
-        surface_count: Object.keys(registry.surfaces || {}).length,
-        content_type_count: Object.keys(registry.contentTypes || {}).length,
-        style_source_count: (registry.appearance && registry.appearance.styles || []).length
-      },
-      packages: currentPackageIds.map((packageId) => {
-        const entry = root.packages.packages[packageId];
-        const active = entry.revisions && entry.revisions[entry.active_revision];
-        return {
-          package_id: packageId,
-          enabled: entry.enabled !== false,
-          active_revision: entry.active_revision,
-          revision_count: Object.keys(entry.revisions || {}).length,
-          active_hash: active && active.hash || null,
-          source_kind: entry.source && entry.source.kind || null,
-          required: requiredPackages.includes(packageId)
-        };
-      }),
-      runtime_modules: (registry.modules || []).map((module) => {
-        const classification = classifyModule(root, registry, module);
-        return {
-          module_id: module.id,
-          title: module.title || null,
-          version: module.version || null,
-          placement: classification.placement,
-          placement_source: classification.source,
-          command_count: commandList(module).length,
-          provider: registry.build && registry.build.resource_ownership && registry.build.resource_ownership[`module:${module.id}`] || null
-        };
-      }),
-      surfaces: Object.values(registry.surfaces || {}).map((surface) => ({ id: surface.id, title: surface.title || null, area: surface.area || null, kind: surface.kind || null, content_type: surface.content_type || null })),
-      user_data: {
-        content_counts: Object.fromEntries(Object.entries(root.user.content || {}).map(([type, items]) => [type, Object.keys(isObject(items) ? items : {}).length])),
-        settings_keys: Object.keys(root.user.settings || {}).sort(),
-        module_display_keys: Object.keys(root.user.moduleDisplay || {}).sort(),
-        appearance: {
-          side: root.user.appearance && root.user.appearance.side || null,
-          variable_keys: Object.keys(root.user.appearance && root.user.appearance.vars || {}).sort(),
-          has_user_css: !!(root.user.appearance && root.user.appearance.css),
-          safe_mode: !!(root.user.appearance && root.user.appearance.safe_mode)
-        }
-      },
-      host: hostDiagnostics,
-      receipts: { count: receipts.length, status_counts: statusCounts, recent_failures: recentFailures },
-      comparison: {
-        legacy_local_package_ids: localLegacy.package_ids,
-        current_package_ids: currentPackageIds,
-        missing_legacy_package_ids: missingLegacyPackages,
-        legacy_local_runtime_module_ids: localLegacy.runtime_module_ids,
-        current_runtime_module_ids: currentRuntimeModuleIds,
-        missing_legacy_runtime_module_ids: missingLegacyModules
-      },
+      deviations,
       privacy: {
         conversation_text_included: false,
         ammo_bodies_included: false,
         package_payloads_included: false,
+        command_arguments_included: false,
         authentication_data_included: false
       }
     };
   }
 
   function format() {
-    return `<<<DCF_HEALTH_REPORT\n${JSON.stringify(report(), null, 2)}\nDCF_HEALTH_REPORT>>>`;
+    return `<<<DCF_RUNTIME_HEALTH\n${JSON.stringify(report(), null, 2)}\nDCF_RUNTIME_HEALTH>>>`;
   }
 
   return { report, format };
 }
 
-module.exports = { createHealthReporter, legacyInventory, activePackModuleIds };
+module.exports = { createHealthReporter, legacyInventory, activePackModules, difference, duplicates };
