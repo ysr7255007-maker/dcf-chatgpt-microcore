@@ -7,51 +7,15 @@ on:
       - main
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   verify:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: feature/conversation-environment-architecture
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: python scripts/finalize-environment-routing.py
-      - name: Fix routing guard assertion quoting
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('tests/dcf-conversation-environment.unit.test.js')
-          text = path.read_text()
-          text = text.replace("assert(!commandSource.includes('engine.transact({ type: 'capability.'), 'command persistence bypasses Environment Intent');", "assert(!commandSource.includes(\"engine.transact({ type: 'capability.\"), 'command persistence bypasses Environment Intent');")
-          path.write_text(text)
-          PY
-      - name: Verify finalized source
-        shell: bash
-        run: |
-          set +e
-          npm run verify > /tmp/dcf-verify.log 2>&1
-          status=$?
-          tail -n 240 /tmp/dcf-verify.log > .environment-verify.log
-          exit "$status"
-      - name: Publish failure evidence
-        if: failure()
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .environment-verify.log
-          git commit -m 'Record finalized environment routing failure'
-          git push origin HEAD:feature/conversation-environment-architecture
+      - run: npm run verify
       - run: node --check dcf-chatgpt-microcore.user.js
-      - name: Commit finalized source and generated release
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          rm -f .environment-verify.log
-          git add src tests catalog dcf-chatgpt-microcore.user.js dcf-chatgpt-microcore.meta.js .environment-verify.log
-          git commit -m 'Route persistent changes through Environment Reconciler'
-          git push origin HEAD:feature/conversation-environment-architecture
