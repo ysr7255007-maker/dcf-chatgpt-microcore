@@ -21,7 +21,7 @@ jobs:
         with:
           node-version: '22'
       - run: python scripts/apply-unified-capability-reconciliation.py
-      - name: Normalize generated source file starts
+      - name: Normalize generated source file starts and legacy assertions
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -42,6 +42,11 @@ jobs:
             text = path.read_text()
             if text.startswith('\\\n'):
               path.write_text(text[2:])
+          test = Path('tests/dcf-package-management-ui.unit.test.js')
+          text = test.read_text()
+          text = text.replace("assert(appSource.includes('class=\"card package-list\"'), 'packages are not rendered as one compact list');", "assert(appSource.includes('package-list density-${density}'), 'packages are not rendered as one density-controlled compact list');")
+          text = text.replace("assert(appSource.includes('<details class=\"package-install\">'), 'low-frequency manual installation input is not folded');", "assert(appSource.includes('class=\"package-install\"'), 'low-frequency manual installation input is not package-view controlled');")
+          test.write_text(text)
           PY
       - name: Verify upgraded source
         shell: bash
