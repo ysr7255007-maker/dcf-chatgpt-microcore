@@ -19,6 +19,7 @@ const modules = [
   'src/runtime/storage.js',
   'src/runtime/effects.js',
   'src/runtime/commands.js',
+  'src/runtime/reconciler.js',
   'src/host/chatgpt.js',
   'src/modules/standard-packages.js',
   'src/modules/ammo.js',
@@ -47,7 +48,7 @@ const moduleTable = modules.map((id) => {
   return `${JSON.stringify(id)}:function(module,exports,require){\n${source}\n}`;
 }).join(',\n');
 
-const header = `// ==UserScript==\n// @name         DCF ChatGPT Microcore\n// @namespace    https://chatgpt.com/\n// @version      ${VERSION}\n// @description  DCF modular runtime with foldable daily and maintenance views, browser Runtime deviation health checks, bounded reply intake and unified transactions.\n// @updateURL    https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.meta.js\n// @downloadURL  https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.user.js\n// @supportURL   https://github.com/ysr7255007-maker/dcf-chatgpt-microcore\n// @match        https://chatgpt.com/*\n// @match        https://chat.openai.com/*\n// @grant        GM_setClipboard\n// @grant        GM_getValue\n// @grant        GM_setValue\n// @grant        GM_deleteValue\n// @grant        GM_listValues\n// @grant        GM_addStyle\n// @grant        GM_registerMenuCommand\n// @grant        GM_notification\n// @grant        GM_xmlhttpRequest\n// @connect      raw.githubusercontent.com\n// @run-at       document-idle\n// ==/UserScript==\n`;
+const header = `// ==UserScript==\n// @name         DCF ChatGPT Microcore\n// @namespace    https://chatgpt.com/\n// @version      ${VERSION}\n// @description  DCF capability reconciler with value/reference artifacts, self-updating declarative views, Runtime health checks and bounded reply intake.\n// @updateURL    https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.meta.js\n// @downloadURL  https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.user.js\n// @supportURL   https://github.com/ysr7255007-maker/dcf-chatgpt-microcore\n// @match        https://chatgpt.com/*\n// @match        https://chat.openai.com/*\n// @grant        GM_setClipboard\n// @grant        GM_getValue\n// @grant        GM_setValue\n// @grant        GM_deleteValue\n// @grant        GM_listValues\n// @grant        GM_addStyle\n// @grant        GM_registerMenuCommand\n// @grant        GM_notification\n// @grant        GM_xmlhttpRequest\n// @connect      raw.githubusercontent.com\n// @run-at       document-idle\n// ==/UserScript==\n`;
 
 const runtime = `(function(){'use strict';\nconst modules={\n${moduleTable}\n};\nconst cache={};\nfunction require(id){if(cache[id])return cache[id].exports;if(!modules[id])throw new Error('DCF module not found: '+id);const module={exports:{}};cache[id]=module;modules[id](module,module.exports,require);return module.exports;}\nrequire('src/index.js');\n})();\n`;
 

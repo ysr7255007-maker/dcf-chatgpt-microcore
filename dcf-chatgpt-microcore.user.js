@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         DCF ChatGPT Microcore
 // @namespace    https://chatgpt.com/
-// @version      0.11.6
-// @description  DCF modular runtime with foldable daily and maintenance views, browser Runtime deviation health checks, bounded reply intake and unified transactions.
+// @version      0.12.0
+// @description  DCF capability reconciler with value/reference artifacts, self-updating declarative views, Runtime health checks and bounded reply intake.
 // @updateURL    https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.meta.js
 // @downloadURL  https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.user.js
 // @supportURL   https://github.com/ysr7255007-maker/dcf-chatgpt-microcore
@@ -112,7 +112,7 @@ module.exports = {
 "src/core/constants.js":function(module,exports,require){
 'use strict';
 
-const VERSION = '0.11.6';
+const VERSION = '0.12.0';
 const ROOT_KEY = 'dcf.state.root.v1';
 const SNAPSHOT_KEY = 'dcf.state.snapshots.v1';
 const RUNTIME_KEY = 'dcf.runtime.registry.v3';
@@ -212,6 +212,9 @@ function normalizePack(pack, fallbackId, fallbackRevision) {
   }
   for (const surface of Array.isArray(contributions.surfaces) ? contributions.surfaces : []) {
     if (surface && surface.id) claims.push(normalizeClaim(`surface:${surface.id}`, surface, provider, 'exclusive', replaces));
+  }
+  for (const view of Array.isArray(contributions.ui_views) ? contributions.ui_views : []) {
+    if (view && view.id) claims.push(normalizeClaim(`ui-view:${view.id}`, view, provider, 'exclusive', replaces));
   }
   for (const module of Array.isArray(source.modules) ? source.modules : []) {
     if (module && module.id) claims.push(normalizeClaim(`module:${module.id}`, module, provider, 'exclusive', replaces));
@@ -333,6 +336,7 @@ function buildProjection(root) {
   const contentTypes = {};
   const packageContent = {};
   const surfaces = {};
+  const uiViews = {};
   const modules = [];
   const moduleDisplayDefaults = {};
   const settingDefaults = {};
@@ -342,6 +346,7 @@ function buildProjection(root) {
     if (address.startsWith('appearance-var:')) appearanceVars[address.slice(15)] = clone(claim.value);
     else if (address.startsWith('content-type:')) contentTypes[address.slice(13)] = clone(claim.value);
     else if (address.startsWith('surface:')) surfaces[address.slice(8)] = clone(claim.value);
+    else if (address.startsWith('ui-view:')) uiViews[address.slice(8)] = clone(claim.value);
     else if (address.startsWith('module:')) modules.push(clone(claim.value));
     else if (address.startsWith('module-display:')) moduleDisplayDefaults[address.slice(15)] = clone(claim.value);
     else if (address.startsWith('setting-default:')) settingDefaults[address.slice(16)] = clone(claim.value);
@@ -385,6 +390,7 @@ function buildProjection(root) {
     contentTypes,
     content,
     surfaces,
+    uiViews,
     modules,
     moduleDisplay: deepMerge(moduleDisplayDefaults, user.moduleDisplay || {}),
     settings: Object.assign({}, settingDefaults, clone(user.settings || {})),
@@ -731,7 +737,8 @@ const { clone, hash, isObject } = require("src/core/utils.js");
 
 const BLOCKS = [
   { marker: 'DCF_AMMO', type: 'ammo' },
-  { marker: 'DCF_MODULE_PACK', type: 'package' }
+  { marker: 'DCF_MODULE_PACK', type: 'package' },
+  { marker: 'DCF_PACKAGE_UPDATE', type: 'package-reference' }
 ];
 
 function extractBlocks(text, marker) {
@@ -784,6 +791,24 @@ function normalizePackage(payload) {
   };
 }
 
+function normalizePackageReference(payload) {
+  if (!isObject(payload) || !(payload.package_id || payload.pack_id)) throw new Error('DCF_PACKAGE_UPDATE requires package_id');
+  const reference = {
+    schema: 'dcf.package.reference.v1',
+    package_id: String(payload.package_id || payload.pack_id),
+    target: String(payload.target || payload.revision || 'latest'),
+    channel: String(payload.channel || 'stable')
+  };
+  if (payload.catalog_url) reference.catalog_url = String(payload.catalog_url);
+  return {
+    schema: 'dcf.artifact.v1',
+    type: 'package-reference',
+    identity: `package-reference:${hash(reference)}`,
+    logical_id: `package-reference:${reference.package_id}:${reference.target}`,
+    payload: reference
+  };
+}
+
 function decodeArtifacts(text) {
   const artifacts = [];
   const errors = [];
@@ -794,7 +819,9 @@ function decodeArtifacts(text) {
       if (!trimmed.startsWith('{') || !/["'](?:schema|id|pack_id|package_id)["']\s*:/.test(trimmed)) continue;
       try {
         const payload = JSON.parse(trimmed);
-        artifacts.push(block.type === 'ammo' ? normalizeAmmo(payload) : normalizePackage(payload));
+        if (block.type === 'ammo') artifacts.push(normalizeAmmo(payload));
+        else if (block.type === 'package') artifacts.push(normalizePackage(payload));
+        else artifacts.push(normalizePackageReference(payload));
       } catch (error) {
         errors.push({ marker: block.marker, error: String(error && error.message || error), preview: { redacted: true, length: raw.length, hash: hash(raw) } });
       }
@@ -803,7 +830,7 @@ function decodeArtifacts(text) {
   return { artifacts, errors };
 }
 
-module.exports = { decodeArtifacts, normalizeAmmo, normalizePackage, extractBlocks };
+module.exports = { decodeArtifacts, normalizeAmmo, normalizePackage, normalizePackageReference, extractBlocks };
 
 },
 "src/core/receipts.js":function(module,exports,require){
@@ -1297,6 +1324,97 @@ function createCommandRunner(engine, effectRunner, receiptStore, shellObserver) 
 module.exports = { createCommandRunner, commandList, sanitizeValue };
 
 },
+"src/runtime/reconciler.js":function(module,exports,require){
+'use strict';
+
+const { clone, nowIso } = require("src/core/utils.js");
+
+function createCapabilityReconciler(engine, catalog, receiptStore, options = {}) {
+  let lastResult = null;
+
+  function desiredState() {
+    const packages = engine.getRoot().packages && engine.getRoot().packages.packages || {};
+    return {
+      schema: 'dcf.desired.capabilities.v1',
+      state_revision: engine.getRoot().revision,
+      packages: Object.values(packages).map((entry) => ({
+        package_id: entry.package_id,
+        active_revision: entry.active_revision,
+        enabled: entry.enabled !== false
+      })).sort((a, b) => String(a.package_id).localeCompare(String(b.package_id)))
+    };
+  }
+
+  function activationFor(artifact, status) {
+    if (status !== 'committed') return 'none';
+    if (artifact.type === 'package') return 'runtime-reprojected';
+    if (artifact.type === 'ammo') return 'content-projected';
+    return 'none';
+  }
+
+  function applyResolved(resolved, sourceOverride) {
+    const artifact = resolved && resolved.artifact || resolved;
+    if (!artifact || artifact.type === 'package-reference') throw new Error('resolved artifact must contain value payload');
+    const source = sourceOverride || resolved && resolved.source || { kind: 'resolved-artifact' };
+    const receipt = engine.applyArtifact(artifact, source);
+    const result = {
+      schema: 'dcf.reconcile.result.v1',
+      at: nowIso(),
+      input_mode: resolved && resolved.input_mode || 'value',
+      artifact_type: artifact.type,
+      package_id: artifact.type === 'package' ? artifact.payload.pack_id : null,
+      revision: artifact.type === 'package' ? artifact.payload.revision : null,
+      status: receipt.status,
+      activation: activationFor(artifact, receipt.status),
+      desired_state_revision: engine.getRoot().revision,
+      receipt
+    };
+    lastResult = clone(result);
+    if (receipt.status === 'committed' && typeof options.onCommitted === 'function') options.onCommitted(result);
+    return result;
+  }
+
+  function rejectReference(artifact, source, error) {
+    const message = String(error && error.message || error);
+    const receipt = receiptStore.append({
+      schema: 'dcf.receipt.v1',
+      intent: { type: 'capability.reconcile', input_mode: 'reference', package_id: artifact.payload.package_id, target: artifact.payload.target, source: clone(source || {}) },
+      status: 'rejected',
+      stage: 'resolve',
+      error: message
+    });
+    const result = {
+      schema: 'dcf.reconcile.result.v1',
+      at: nowIso(),
+      input_mode: 'reference',
+      artifact_type: 'package-reference',
+      package_id: artifact.payload.package_id,
+      revision: null,
+      status: 'rejected',
+      activation: 'none',
+      desired_state_revision: engine.getRoot().revision,
+      receipt
+    };
+    lastResult = clone(result);
+    return result;
+  }
+
+  function accept(artifact, source = {}) {
+    if (artifact.type !== 'package-reference') return applyResolved({ artifact, input_mode: 'value', source });
+    return catalog.resolve(artifact.payload).then((resolved) => applyResolved(resolved)).catch((error) => rejectReference(artifact, source, error));
+  }
+
+  return {
+    accept,
+    applyResolved,
+    desiredState,
+    lastResult: () => clone(lastResult)
+  };
+}
+
+module.exports = { createCapabilityReconciler };
+
+},
 "src/host/chatgpt.js":function(module,exports,require){
 'use strict';
 
@@ -1583,13 +1701,15 @@ module.exports = { createChatGPTHost };
 "src/modules/standard-packages.js":function(module,exports,require){
 'use strict';
 
-const REQUIRED_PRODUCT_PACKAGES = ['dcf.standard.ammo'];
+const REQUIRED_PRODUCT_PACKAGES = ['dcf.standard.ammo', 'dcf.ui.package-management'];
 
 const STANDARD_PACKS = [
   {
     schema: 'dcf.module_pack.v1',
     pack_id: 'dcf.standard.ammo',
     revision: '1.0.0',
+    title: '语言弹药核心',
+    description: '提供语言弹药内容、主入口和低摩擦发射能力。',
     contributes: {
       content_types: [{ id: 'ammo', marker: 'DCF_AMMO', title: '语言弹药', body_field: 'body', actions: ['fire', 'copy', 'update', 'delete'] }],
       surfaces: [{ id: 'dcf.ammo', title: '弹药', area: 'primary', order: 10, kind: 'content-list', content_type: 'ammo' }],
@@ -1599,8 +1719,43 @@ const STANDARD_PACKS = [
   },
   {
     schema: 'dcf.module_pack.v1',
+    pack_id: 'dcf.ui.package-management',
+    revision: '1.0.0',
+    title: '包管理界面',
+    description: '提供可自更新的中文包总览、版本控制和安装入口。',
+    contributes: {
+      ui_views: [{
+        id: 'packages',
+        kind: 'package-management',
+        tab_label: '包管理',
+        title: '安装包管理',
+        description: '中文名称和功能说明用于日常识别；英文 ID 仅保留为技术标识。',
+        density: 'compact',
+        show_technical_id: true,
+        manual_install: 'folded',
+        control_order: ['revision', 'switch', 'toggle', 'uninstall'],
+        labels: {
+          check_updates: '检查更新',
+          manual_install: '手动安装包',
+          install_json: '安装 JSON',
+          package_json_placeholder: '粘贴 DCF_MODULE_PACK JSON',
+          switch_revision: '切换',
+          enable: '启用',
+          disable: '停用',
+          uninstall: '卸载'
+        },
+        state_labels: { required: '核心', enabled: '已启用', disabled: '已停用' }
+      }],
+      styles: [{ id: 'package-management-compact', css: '.package-list.density-compact .package-card{padding:7px 0}.package-list.density-compact .package-description{line-height:1.3}' }]
+    },
+    modules: []
+  },
+  {
+    schema: 'dcf.module_pack.v1',
     pack_id: 'dcf.standard.shell-adjuster',
     revision: '1.0.0',
+    title: '壳体调节',
+    description: '调整侧栏宽度、高度、边距和停靠方向。',
     modules: [{ id: 'dcf.standard.shell-adjuster', title: '壳体调节', version: '1.0.0', kind: 'shell-adjuster', blocks: [{ id: 'geometry', title: '壳体几何', commands: [
       { id: 'width_minus', label: '窄', steps: [{ call: 'appearance.adjust', with: { w: -20 } }] },
       { id: 'width_plus', label: '宽', steps: [{ call: 'appearance.adjust', with: { w: 20 } }] },
@@ -1669,6 +1824,8 @@ const { compareRevision, hash, nowIso } = require("src/core/utils.js");
 const { normalizePackage } = require("src/core/artifacts.js");
 
 function createCatalogTransport(storage, engine, api = globalThis) {
+  let applyResolved = (resolved) => engine.applyArtifact(resolved.artifact, resolved.source);
+
   function requestJson(url) {
     return new Promise((resolve, reject) => {
       if (typeof api.GM_xmlhttpRequest !== 'function') return reject(new Error('GM_xmlhttpRequest unavailable'));
@@ -1684,6 +1841,56 @@ function createCatalogTransport(storage, engine, api = globalThis) {
     });
   }
 
+  function validateCatalog(catalog) {
+    if (!catalog || catalog.schema !== 'dcf.catalog.v1' || !Array.isArray(catalog.packages)) throw new Error('invalid catalog');
+    return catalog;
+  }
+
+  async function loadCatalog(options = {}) {
+    const url = options.url || CATALOG_URL;
+    return { url, catalog: validateCatalog(await requestJson(url)) };
+  }
+
+  function selectEntry(catalog, reference) {
+    const packageId = String(reference.package_id || '');
+    const channel = String(reference.channel || 'stable');
+    const target = String(reference.target || 'latest');
+    const matches = catalog.packages.filter((entry) => String(entry.package_id) === packageId && String(entry.channel || 'stable') === channel);
+    if (!matches.length) throw new Error(`catalog package ${packageId} not found on ${channel}`);
+    if (target !== 'latest' && target !== 'stable') {
+      const exact = matches.find((entry) => String(entry.revision) === target);
+      if (!exact) throw new Error(`catalog package revision ${packageId}@${target} not found`);
+      return exact;
+    }
+    return matches.slice().sort((a, b) => compareRevision(b.revision, a.revision))[0];
+  }
+
+  async function resolveFromCatalog(catalogInfo, reference) {
+    const entry = selectEntry(catalogInfo.catalog, reference);
+    const pack = await requestJson(entry.url);
+    const expected = String(entry.hash || '');
+    const actual = hash(pack);
+    if (expected && expected !== actual) throw new Error(`catalog hash mismatch ${entry.package_id}@${entry.revision}`);
+    const artifact = normalizePackage(pack);
+    if (artifact.payload.pack_id !== String(entry.package_id) || artifact.payload.revision !== String(entry.revision)) {
+      throw new Error(`catalog identity mismatch ${entry.package_id}@${entry.revision}`);
+    }
+    return {
+      schema: 'dcf.resolved.artifact.v1',
+      input_mode: 'reference',
+      artifact,
+      reference: Object.assign({}, reference),
+      catalog_entry: { package_id: entry.package_id, revision: entry.revision, channel: entry.channel || 'stable', hash: expected },
+      source: { kind: 'github-catalog-reference', catalog_url: catalogInfo.url, package_url: entry.url }
+    };
+  }
+
+  async function resolve(reference, options = {}) {
+    if (reference.catalog_url && !options.url && reference.catalog_url !== CATALOG_URL) throw new Error('untrusted catalog_url');
+    const catalogInfo = await loadCatalog({ url: options.url || reference.catalog_url || CATALOG_URL });
+    return resolveFromCatalog(catalogInfo, reference);
+  }
+
   async function check(options = {}) {
     const currentState = storage.get(CATALOG_STATE_KEY, { last_checked_at: null, last_result: null });
     const minInterval = Number(options.minIntervalMs || 6 * 60 * 60 * 1000);
@@ -1691,21 +1898,21 @@ function createCatalogTransport(storage, engine, api = globalThis) {
       return { ok: true, skipped: true, reason: 'interval' };
     }
     try {
-      const catalog = await requestJson(options.url || CATALOG_URL);
-      if (!catalog || catalog.schema !== 'dcf.catalog.v1' || !Array.isArray(catalog.packages)) throw new Error('invalid catalog');
+      const catalogInfo = await loadCatalog({ url: options.url || CATALOG_URL });
       const installed = engine.getRoot().packages.packages;
       const applied = [];
-      for (const entry of catalog.packages) {
-        const local = installed[entry.package_id];
+      for (const local of Object.values(installed)) {
         if (!local || local.enabled === false) continue;
-        if (compareRevision(entry.revision, local.active_revision) <= 0) continue;
-        const pack = await requestJson(entry.url);
-        const expected = String(entry.hash || '');
-        const actual = hash(pack);
-        if (expected && expected !== actual) throw new Error(`catalog hash mismatch ${entry.package_id}@${entry.revision}`);
-        const artifact = normalizePackage(pack);
-        const receipt = engine.applyArtifact(artifact, { kind: 'github-catalog', url: entry.url });
-        applied.push({ package_id: entry.package_id, revision: entry.revision, status: receipt.status });
+        let resolved;
+        try {
+          resolved = await resolveFromCatalog(catalogInfo, { package_id: local.package_id, target: 'latest', channel: 'stable' });
+        } catch (error) {
+          if (/not found/.test(String(error && error.message || error))) continue;
+          throw error;
+        }
+        if (compareRevision(resolved.artifact.payload.revision, local.active_revision) <= 0) continue;
+        const result = await Promise.resolve(applyResolved(resolved));
+        applied.push({ package_id: local.package_id, revision: resolved.artifact.payload.revision, status: result && result.status || result && result.receipt && result.receipt.status || null });
       }
       const result = { ok: true, skipped: false, applied };
       storage.set(CATALOG_STATE_KEY, { last_checked_at: nowIso(), last_result: result });
@@ -1717,7 +1924,11 @@ function createCatalogTransport(storage, engine, api = globalThis) {
     }
   }
 
-  return { check };
+  function setApplyResolved(handler) {
+    if (typeof handler === 'function') applyResolved = handler;
+  }
+
+  return { check, resolve, loadCatalog, setApplyResolved };
 }
 
 module.exports = { createCatalogTransport };
@@ -1818,7 +2029,7 @@ function packagePresentation(entry) {
   return { title, description };
 }
 
-function createPackageManager(engine, catalog) {
+function createPackageManager(engine, catalog, reconciler) {
   function packages() {
     return Object.values(engine.getRoot().packages.packages || {}).sort((a, b) => {
       const left = packagePresentation(a).title;
@@ -1831,7 +2042,7 @@ function createPackageManager(engine, catalog) {
     const wrapper = `<<<DCF_MODULE_PACK\n${JSON.stringify(parsed)}\nDCF_MODULE_PACK>>>`;
     const decoded = decodeArtifacts(wrapper);
     if (decoded.errors.length || decoded.artifacts.length !== 1) throw new Error(decoded.errors[0] && decoded.errors[0].error || 'invalid package');
-    return engine.applyArtifact(decoded.artifacts[0], { kind: 'manual-json' });
+    return reconciler ? reconciler.accept(decoded.artifacts[0], { kind: 'manual-json' }) : engine.applyArtifact(decoded.artifacts[0], { kind: 'manual-json' });
   }
   function assertMutable(id) {
     if (REQUIRED_PRODUCT_PACKAGES.includes(String(id))) throw new Error(`${id} is required by the DCF product value loop`);
@@ -2289,10 +2500,12 @@ function createApp(options) {
   }
 
   function renderTop() {
+    const packageView = engine.getRegistry().uiViews && engine.getRegistry().uiViews.packages || {};
+    const packageTabLabel = packageView.tab_label || '包管理';
     top.innerHTML = `<b>DCF ${escapeHtml(version)}</b><div class="tabs">
       <button data-tab="ammo" class="${tab === 'ammo' ? 'on' : ''}">弹药</button>
       <button data-tab="functions" class="${tab === 'functions' ? 'on' : ''}">功能</button>
-      <button data-tab="packages" class="${tab === 'packages' ? 'on' : ''}">包管理</button>
+      <button data-tab="packages" class="${tab === 'packages' ? 'on' : ''}">${escapeHtml(packageTabLabel)}</button>
       <button data-tab="maintenance" class="${tab === 'maintenance' ? 'on' : ''}">维护</button>
     </div>`;
   }
@@ -2357,17 +2570,40 @@ function createApp(options) {
 
   function renderPackages() {
     const entries = packageManager.packages();
-    body.innerHTML = `<div class="card package-toolbar"><div class="row"><span class="grow"><span class="name">安装包管理</span><br><span class="mini">中文名称和功能说明用于日常识别；英文 ID 仅保留为技术标识。</span></span><button data-action="package-update">检查更新</button></div><details class="package-install"><summary>手动安装包</summary><div class="detail-body"><textarea data-role="package-json" placeholder="粘贴 DCF_MODULE_PACK JSON">${escapeHtml(packageDraft)}</textarea><div class="actions"><button data-action="package-install">安装 JSON</button></div></div></details></div><section class="card package-list" data-runtime-section="packages">` + entries.map((entry) => {
+    const view = engine.getRegistry().uiViews && engine.getRegistry().uiViews.packages || {};
+    const labels = Object.assign({
+      check_updates: '检查更新', manual_install: '手动安装包', install_json: '安装 JSON',
+      package_json_placeholder: '粘贴 DCF_MODULE_PACK JSON', switch_revision: '切换',
+      enable: '启用', disable: '停用', uninstall: '卸载'
+    }, view.labels || {});
+    const stateLabels = Object.assign({ required: '核心', enabled: '已启用', disabled: '已停用' }, view.state_labels || {});
+    const controlOrder = Array.isArray(view.control_order) && view.control_order.length ? view.control_order : ['revision', 'switch', 'toggle', 'uninstall'];
+    const density = view.density === 'comfortable' ? 'comfortable' : 'compact';
+    const manualInstall = view.manual_install !== false && view.manual_install !== 'hidden';
+    const manualOpen = view.manual_install === 'open' ? 'open' : '';
+    const installPanel = manualInstall ? `<details class="package-install" ${manualOpen}><summary>${escapeHtml(labels.manual_install)}</summary><div class="detail-body"><textarea data-role="package-json" placeholder="${escapeHtml(labels.package_json_placeholder)}">${escapeHtml(packageDraft)}</textarea><div class="actions"><button data-action="package-install">${escapeHtml(labels.install_json)}</button></div></div></details>` : '';
+    body.innerHTML = `<div class="card package-toolbar"><div class="row"><span class="grow"><span class="name">${escapeHtml(view.title || '安装包管理')}</span><br><span class="mini">${escapeHtml(view.description || '包与 revision 的期望状态控制面。')}</span></span><button data-action="package-update">${escapeHtml(labels.check_updates)}</button></div>${installPanel}</div><section class="card package-list density-${density}" data-runtime-section="packages">` + entries.map((entry) => {
       const revisions = Object.keys(entry.revisions || {}).sort();
       const required = packageManager.isRequired(entry.package_id);
       const presentation = packageManager.presentation(entry);
       const enabled = entry.enabled !== false;
       const stateClass = required ? 'required' : enabled ? 'enabled' : 'disabled';
-      const stateLabel = required ? '核心' : enabled ? '已启用' : '已停用';
-      const revisionControl = revisions.length > 1
-        ? `<select aria-label="选择版本" data-role="package-revision" data-id="${escapeHtml(entry.package_id)}">${revisions.map((revision) => `<option ${revision === entry.active_revision ? 'selected' : ''}>${escapeHtml(revision)}</option>`).join('')}</select><button data-action="package-switch" data-id="${escapeHtml(entry.package_id)}">切换</button>`
-        : `<span class="package-version">v${escapeHtml(entry.active_revision)}</span>`;
-      return `<div class="package-card" data-package-id="${escapeHtml(entry.package_id)}"><div class="package-title-row"><span class="name">${escapeHtml(presentation.title)}</span><span class="state-pill ${stateClass}">${stateLabel}</span></div><div class="package-description">${escapeHtml(presentation.description)}</div><div class="mini package-id">${escapeHtml(entry.package_id)}</div><div class="package-controls">${revisionControl}${required ? '' : `<button data-action="package-toggle" data-id="${escapeHtml(entry.package_id)}">${enabled ? '停用' : '启用'}</button><button data-action="package-uninstall" data-id="${escapeHtml(entry.package_id)}" class="danger">卸载</button>`}</div></div>`;
+      const stateLabel = required ? stateLabels.required : enabled ? stateLabels.enabled : stateLabels.disabled;
+      const controls = [];
+      for (const control of controlOrder) {
+        if (control === 'revision') {
+          controls.push(revisions.length > 1
+            ? `<select aria-label="选择版本" data-role="package-revision" data-id="${escapeHtml(entry.package_id)}">${revisions.map((revision) => `<option ${revision === entry.active_revision ? 'selected' : ''}>${escapeHtml(revision)}</option>`).join('')}</select>`
+            : `<span class="package-version">v${escapeHtml(entry.active_revision)}</span>`);
+        } else if (control === 'switch' && revisions.length > 1) {
+          controls.push(`<button data-action="package-switch" data-id="${escapeHtml(entry.package_id)}">${escapeHtml(labels.switch_revision)}</button>`);
+        } else if (control === 'toggle' && !required) {
+          controls.push(`<button data-action="package-toggle" data-id="${escapeHtml(entry.package_id)}">${escapeHtml(enabled ? labels.disable : labels.enable)}</button>`);
+        } else if (control === 'uninstall' && !required) {
+          controls.push(`<button data-action="package-uninstall" data-id="${escapeHtml(entry.package_id)}" class="danger">${escapeHtml(labels.uninstall)}</button>`);
+        }
+      }
+      return `<div class="package-card" data-package-id="${escapeHtml(entry.package_id)}"><div class="package-title-row"><span class="name">${escapeHtml(presentation.title)}</span><span class="state-pill ${stateClass}">${escapeHtml(stateLabel)}</span></div><div class="package-description">${escapeHtml(presentation.description)}</div>${view.show_technical_id === false ? '' : `<div class="mini package-id">${escapeHtml(entry.package_id)}</div>`}<div class="package-controls">${controls.join('')}</div></div>`;
     }).join('') + '</section>';
   }
 
@@ -2569,6 +2805,7 @@ const { createTransactionEngine } = require("src/core/transactions.js");
 const { createStorage } = require("src/runtime/storage.js");
 const { createEffectRunner } = require("src/runtime/effects.js");
 const { createCommandRunner } = require("src/runtime/commands.js");
+const { createCapabilityReconciler } = require("src/runtime/reconciler.js");
 const { createChatGPTHost } = require("src/host/chatgpt.js");
 const { STANDARD_PACKS, REQUIRED_PRODUCT_PACKAGES } = require("src/modules/standard-packages.js");
 const { createAmmoModule } = require("src/modules/ammo.js");
@@ -2580,18 +2817,25 @@ const { createApp } = require("src/ui/app.js");
 
 function ensureProductBaseline(root) {
   let current = root;
-  const ammoPack = STANDARD_PACKS.find((pack) => pack.pack_id === REQUIRED_PRODUCT_PACKAGES[0]);
-  const entry = current.packages.packages[ammoPack.pack_id];
   const projection = buildProjection(current);
-  const needsAmmo = !projection.ok || !projection.registry.contentTypes.ammo || !entry || entry.enabled === false;
-  if (!needsAmmo) return current;
   const candidate = clone(current);
-  if (!entry) addPackRevision(candidate, ammoPack, { kind: 'embedded-standard' });
-  else {
-    candidate.packages.packages[ammoPack.pack_id].enabled = true;
-    candidate.packages.revision += 1;
+  let changed = false;
+  for (const packageId of REQUIRED_PRODUCT_PACKAGES) {
+    const pack = STANDARD_PACKS.find((item) => item.pack_id === packageId);
+    if (!pack) throw new Error(`required embedded package ${packageId} missing`);
+    const entry = candidate.packages.packages[packageId];
+    const resourceMissing = packageId === 'dcf.standard.ammo' && (!projection.ok || !projection.registry.contentTypes.ammo);
+    const uiMissing = packageId === 'dcf.ui.package-management' && (!projection.ok || !projection.registry.uiViews || !projection.registry.uiViews.packages);
+    if (!entry) {
+      addPackRevision(candidate, pack, { kind: 'embedded-standard' });
+      changed = true;
+    } else if (entry.enabled === false || resourceMissing || uiMissing) {
+      entry.enabled = true;
+      candidate.packages.revision += 1;
+      changed = true;
+    }
   }
-  return finalizeCandidate(current, candidate);
+  return changed ? finalizeCandidate(current, candidate) : current;
 }
 
 function boot(api = globalThis) {
@@ -2606,8 +2850,12 @@ function boot(api = globalThis) {
   const effects = createEffectRunner(host, receiptStore);
   const catalog = createCatalogTransport(storage, engine, api);
   const ammo = createAmmoModule(engine, effects);
-  const packageManager = createPackageManager(engine, catalog);
   let app = null;
+  const reconciler = createCapabilityReconciler(engine, catalog, receiptStore, {
+    onCommitted: () => { if (app) app.render(); }
+  });
+  catalog.setApplyResolved((resolved) => reconciler.applyResolved(resolved));
+  const packageManager = createPackageManager(engine, catalog, reconciler);
   const health = createHealthReporter(engine, receiptStore, storage, host, REQUIRED_PRODUCT_PACKAGES, {
     windowObject,
     getApp: () => app,
@@ -2621,28 +2869,32 @@ function boot(api = globalThis) {
   });
   app = createApp({ engine, ammo, packageManager, maintenance, commandRunner, storage, version: VERSION });
 
-  function processReply(reply) {
+  async function processReply(reply) {
     const decoded = decodeArtifacts(reply.text);
     let changed = false;
+    let referenced = false;
     for (const artifact of decoded.artifacts) {
-      const receipt = engine.applyArtifact(artifact, { kind: 'chatgpt-reply', completed_at: reply.completed_at });
-      if (receipt.status === 'committed') changed = true;
+      const result = await Promise.resolve(reconciler.accept(artifact, { kind: 'chatgpt-reply', completed_at: reply.completed_at }));
+      if (result.status === 'committed') changed = true;
+      if (result.input_mode === 'reference') referenced = true;
     }
     for (const error of decoded.errors) receiptStore.append({ schema: 'dcf.receipt.v1', intent: { type: 'artifact.decode', source: reply.source }, status: 'rejected', error: error.error, marker: error.marker, preview: error.preview });
-    if (changed) app.setNotice('DCF 工件已自动应用');
+    if (changed) app.setNotice(referenced ? 'DCF 已拉取并协调指定能力包' : 'DCF 工件已协调到当前 Runtime');
     if (changed || decoded.errors.length) app.render();
   }
 
-  host.startReplyObserver(processReply);
-  api.setTimeout(() => catalog.check().then((result) => { if (result && result.applied && result.applied.length) { app.setNotice('DCF 模块已自动更新'); app.render(); } }), 1600);
+  host.startReplyObserver((reply) => {
+    processReply(reply).catch((error) => receiptStore.append({ schema: 'dcf.receipt.v1', intent: { type: 'reply.reconcile' }, status: 'rejected', stage: 'runtime', error: String(error && error.message || error) }));
+  });
+  api.setTimeout(() => catalog.check().then((result) => { if (result && result.applied && result.applied.length) { app.setNotice('DCF 能力包已自动协调到最新版本'); app.render(); } }), 1600);
 
   if (typeof api.GM_registerMenuCommand === 'function') {
-    api.GM_registerMenuCommand('DCF：检查模块更新', () => catalog.check({ force: true }).then(() => app.render()));
+    api.GM_registerMenuCommand('DCF：检查能力包更新', () => catalog.check({ force: true }).then(() => app.render()));
     api.GM_registerMenuCommand('DCF：一键 Runtime 体检并复制', () => maintenance.copyHealthReport());
     api.GM_registerMenuCommand('DCF：复制简要诊断', () => maintenance.copySummary());
   }
 
-  api.__DCF_RUNTIME__ = { version: VERSION, engine, host, app, catalog, receiptStore, health, maintenance };
+  api.__DCF_RUNTIME__ = { version: VERSION, engine, host, app, catalog, reconciler, receiptStore, health, maintenance };
   return api.__DCF_RUNTIME__;
 }
 

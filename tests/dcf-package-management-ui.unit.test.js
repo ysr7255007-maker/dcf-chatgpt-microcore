@@ -45,10 +45,10 @@ assert(view.description.includes('界面入口'));
 
 const appSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'ui', 'app.js'), 'utf8');
 assert(appSource.includes('packageManager.presentation(entry)'), 'package cards do not use the presentation model');
-assert(appSource.includes('class="card package-list"'), 'packages are not rendered as one compact list');
+assert(appSource.includes('package-list density-${density}'), 'packages are not rendered as one density-controlled compact list');
 assert(appSource.includes('class="package-controls"'), 'package operations do not share one compact control band');
 assert(appSource.includes('.package-controls select{width:auto'), 'package revision selector still consumes the full card width');
-assert(appSource.includes('<details class="package-install">'), 'low-frequency manual installation input is not folded');
+assert(appSource.includes('class="package-install"'), 'low-frequency manual installation input is not package-view controlled');
 assert(!appSource.includes('<div class="name">${escapeHtml(entry.package_id)}'), 'technical package ID is still used as the primary title');
 
 console.log(JSON.stringify({ ok: true, localized_package_titles: true, derived_descriptions: true, compact_controls: true, folded_manual_install: true }, null, 2));

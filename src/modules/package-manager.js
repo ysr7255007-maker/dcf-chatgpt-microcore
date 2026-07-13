@@ -92,7 +92,7 @@ function packagePresentation(entry) {
   return { title, description };
 }
 
-function createPackageManager(engine, catalog) {
+function createPackageManager(engine, catalog, reconciler) {
   function packages() {
     return Object.values(engine.getRoot().packages.packages || {}).sort((a, b) => {
       const left = packagePresentation(a).title;
@@ -105,7 +105,7 @@ function createPackageManager(engine, catalog) {
     const wrapper = `<<<DCF_MODULE_PACK\n${JSON.stringify(parsed)}\nDCF_MODULE_PACK>>>`;
     const decoded = decodeArtifacts(wrapper);
     if (decoded.errors.length || decoded.artifacts.length !== 1) throw new Error(decoded.errors[0] && decoded.errors[0].error || 'invalid package');
-    return engine.applyArtifact(decoded.artifacts[0], { kind: 'manual-json' });
+    return reconciler ? reconciler.accept(decoded.artifacts[0], { kind: 'manual-json' }) : engine.applyArtifact(decoded.artifacts[0], { kind: 'manual-json' });
   }
   function assertMutable(id) {
     if (REQUIRED_PRODUCT_PACKAGES.includes(String(id))) throw new Error(`${id} is required by the DCF product value loop`);

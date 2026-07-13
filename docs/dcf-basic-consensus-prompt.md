@@ -23,3 +23,5 @@ ChatGPT、GitHub catalog 和手动输入只是工件 transport。对话自动摄
 “一键 Runtime 体检并复制”只用于了解通过测试的脚本在用户当前浏览器标签页中实际运行成了什么。它必须独立观察实际存储、内存 Runtime、真实 Shadow DOM、host/observer/composer 和最近失败，只输出这些现场层之间无法合理解释的偏差。健康时保持 `deviations: []`；异常只附最小证据。体检不得把内部字段或与 UI 共用的推导函数直接提升为现场事实。
 
 解决复杂问题时先做源头检查。来自日志、体检或 projection 的字段只能作为调查入口；解释前必须确认真实生产、消费和浏览器表现。当诊断与现场冲突时，诊断本身立即成为被调查对象。涉及语言弹药价值目标的部分，由源头化解题与价值约束共同求解；其他纯工程问题应改变事实模型、状态边界或统一机制，使复杂性失去产生条件。
+
+DCF 的正常演化单位是不可变能力包 revision，而不是整份 userscript。完整对话包是按值交付，`DCF_PACKAGE_UPDATE` 是按引用交付；两者必须经同一个 Resolver/Reconciler 改变 `root.packages` 期望能力集合并重建 Runtime。普通功能、文案、布局和声明式 UI 优先作为包资源更新；userscript 只为启动、存储、校验、Host、协调器与恢复边界升级。

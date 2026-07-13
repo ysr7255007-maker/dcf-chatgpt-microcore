@@ -12,6 +12,7 @@ function buildProjection(root) {
   const contentTypes = {};
   const packageContent = {};
   const surfaces = {};
+  const uiViews = {};
   const modules = [];
   const moduleDisplayDefaults = {};
   const settingDefaults = {};
@@ -21,6 +22,7 @@ function buildProjection(root) {
     if (address.startsWith('appearance-var:')) appearanceVars[address.slice(15)] = clone(claim.value);
     else if (address.startsWith('content-type:')) contentTypes[address.slice(13)] = clone(claim.value);
     else if (address.startsWith('surface:')) surfaces[address.slice(8)] = clone(claim.value);
+    else if (address.startsWith('ui-view:')) uiViews[address.slice(8)] = clone(claim.value);
     else if (address.startsWith('module:')) modules.push(clone(claim.value));
     else if (address.startsWith('module-display:')) moduleDisplayDefaults[address.slice(15)] = clone(claim.value);
     else if (address.startsWith('setting-default:')) settingDefaults[address.slice(16)] = clone(claim.value);
@@ -64,6 +66,7 @@ function buildProjection(root) {
     contentTypes,
     content,
     surfaces,
+    uiViews,
     modules,
     moduleDisplay: deepMerge(moduleDisplayDefaults, user.moduleDisplay || {}),
     settings: Object.assign({}, settingDefaults, clone(user.settings || {})),

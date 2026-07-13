@@ -4,7 +4,7 @@ DCF is a personally maintained ChatGPT Tampermonkey system whose value goal is a
 
 ## Current architecture
 
-DCF `0.11.6` keeps a generic modular kernel under the first-party language-ammunition product goal. Source is modular, while Tampermonkey still installs one complete userscript.
+DCF `0.12.0` keeps a generic modular kernel under the first-party language-ammunition product goal. Source is modular, while Tampermonkey still installs one complete userscript.
 
 One authoritative state root changes only through the unified transaction path:
 
@@ -17,7 +17,7 @@ intent or artifact
 → receipt / host effect
 ```
 
-ChatGPT replies, manual package JSON, and the fixed GitHub catalog are transports into the same artifact and transaction path. Reply intake observes only newly added/current assistant replies.
+ChatGPT replies can carry complete `DCF_MODULE_PACK` values or `DCF_PACKAGE_UPDATE` references. Manual JSON and the fixed GitHub catalog are additional transports. All inputs resolve to one typed artifact and one capability-reconciliation transaction path. Reply intake observes only newly added/current assistant replies.
 
 The UI distinguishes:
 
@@ -39,3 +39,7 @@ npm run verify
 ```
 
 This builds the complete `.user.js`, generates the catalog, and verifies transactions, resource conflicts, migration, legacy commands, role/fold separation, Runtime health privacy and deviation detection, bounded reply intake, catalog updates, viewport containment, release integrity, and deterministic output.
+
+## Unified capability reconciliation
+
+`root.packages` is the authoritative desired capability set. A complete package is a by-value input; `DCF_PACKAGE_UPDATE` is a by-reference input resolved through the trusted catalog. Both enter the same resolver, immutable revision validation, atomic commit, Runtime reprojection and receipt path. The first package-owned declarative view is `dcf.ui.package-management`, so package-management text, control order and style can update as a package revision without changing the userscript bootstrap.

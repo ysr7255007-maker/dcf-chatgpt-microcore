@@ -67,6 +67,9 @@ function normalizePack(pack, fallbackId, fallbackRevision) {
   for (const surface of Array.isArray(contributions.surfaces) ? contributions.surfaces : []) {
     if (surface && surface.id) claims.push(normalizeClaim(`surface:${surface.id}`, surface, provider, 'exclusive', replaces));
   }
+  for (const view of Array.isArray(contributions.ui_views) ? contributions.ui_views : []) {
+    if (view && view.id) claims.push(normalizeClaim(`ui-view:${view.id}`, view, provider, 'exclusive', replaces));
+  }
   for (const module of Array.isArray(source.modules) ? source.modules : []) {
     if (module && module.id) claims.push(normalizeClaim(`module:${module.id}`, module, provider, 'exclusive', replaces));
   }

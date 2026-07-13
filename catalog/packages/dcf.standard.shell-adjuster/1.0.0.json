@@ -2,6 +2,8 @@
   "schema": "dcf.module_pack.v1",
   "pack_id": "dcf.standard.shell-adjuster",
   "revision": "1.0.0",
+  "title": "壳体调节",
+  "description": "调整侧栏宽度、高度、边距和停靠方向。",
   "modules": [
     {
       "id": "dcf.standard.shell-adjuster",

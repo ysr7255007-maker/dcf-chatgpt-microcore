@@ -10,6 +10,7 @@ const { createTransactionEngine } = require('./core/transactions');
 const { createStorage } = require('./runtime/storage');
 const { createEffectRunner } = require('./runtime/effects');
 const { createCommandRunner } = require('./runtime/commands');
+const { createCapabilityReconciler } = require('./runtime/reconciler');
 const { createChatGPTHost } = require('./host/chatgpt');
 const { STANDARD_PACKS, REQUIRED_PRODUCT_PACKAGES } = require('./modules/standard-packages');
 const { createAmmoModule } = require('./modules/ammo');
@@ -21,18 +22,25 @@ const { createApp } = require('./ui/app');
 
 function ensureProductBaseline(root) {
   let current = root;
-  const ammoPack = STANDARD_PACKS.find((pack) => pack.pack_id === REQUIRED_PRODUCT_PACKAGES[0]);
-  const entry = current.packages.packages[ammoPack.pack_id];
   const projection = buildProjection(current);
-  const needsAmmo = !projection.ok || !projection.registry.contentTypes.ammo || !entry || entry.enabled === false;
-  if (!needsAmmo) return current;
   const candidate = clone(current);
-  if (!entry) addPackRevision(candidate, ammoPack, { kind: 'embedded-standard' });
-  else {
-    candidate.packages.packages[ammoPack.pack_id].enabled = true;
-    candidate.packages.revision += 1;
+  let changed = false;
+  for (const packageId of REQUIRED_PRODUCT_PACKAGES) {
+    const pack = STANDARD_PACKS.find((item) => item.pack_id === packageId);
+    if (!pack) throw new Error(`required embedded package ${packageId} missing`);
+    const entry = candidate.packages.packages[packageId];
+    const resourceMissing = packageId === 'dcf.standard.ammo' && (!projection.ok || !projection.registry.contentTypes.ammo);
+    const uiMissing = packageId === 'dcf.ui.package-management' && (!projection.ok || !projection.registry.uiViews || !projection.registry.uiViews.packages);
+    if (!entry) {
+      addPackRevision(candidate, pack, { kind: 'embedded-standard' });
+      changed = true;
+    } else if (entry.enabled === false || resourceMissing || uiMissing) {
+      entry.enabled = true;
+      candidate.packages.revision += 1;
+      changed = true;
+    }
   }
-  return finalizeCandidate(current, candidate);
+  return changed ? finalizeCandidate(current, candidate) : current;
 }
 
 function boot(api = globalThis) {
@@ -47,8 +55,12 @@ function boot(api = globalThis) {
   const effects = createEffectRunner(host, receiptStore);
   const catalog = createCatalogTransport(storage, engine, api);
   const ammo = createAmmoModule(engine, effects);
-  const packageManager = createPackageManager(engine, catalog);
   let app = null;
+  const reconciler = createCapabilityReconciler(engine, catalog, receiptStore, {
+    onCommitted: () => { if (app) app.render(); }
+  });
+  catalog.setApplyResolved((resolved) => reconciler.applyResolved(resolved));
+  const packageManager = createPackageManager(engine, catalog, reconciler);
   const health = createHealthReporter(engine, receiptStore, storage, host, REQUIRED_PRODUCT_PACKAGES, {
     windowObject,
     getApp: () => app,
@@ -62,28 +74,32 @@ function boot(api = globalThis) {
   });
   app = createApp({ engine, ammo, packageManager, maintenance, commandRunner, storage, version: VERSION });
 
-  function processReply(reply) {
+  async function processReply(reply) {
     const decoded = decodeArtifacts(reply.text);
     let changed = false;
+    let referenced = false;
     for (const artifact of decoded.artifacts) {
-      const receipt = engine.applyArtifact(artifact, { kind: 'chatgpt-reply', completed_at: reply.completed_at });
-      if (receipt.status === 'committed') changed = true;
+      const result = await Promise.resolve(reconciler.accept(artifact, { kind: 'chatgpt-reply', completed_at: reply.completed_at }));
+      if (result.status === 'committed') changed = true;
+      if (result.input_mode === 'reference') referenced = true;
     }
     for (const error of decoded.errors) receiptStore.append({ schema: 'dcf.receipt.v1', intent: { type: 'artifact.decode', source: reply.source }, status: 'rejected', error: error.error, marker: error.marker, preview: error.preview });
-    if (changed) app.setNotice('DCF 工件已自动应用');
+    if (changed) app.setNotice(referenced ? 'DCF 已拉取并协调指定能力包' : 'DCF 工件已协调到当前 Runtime');
     if (changed || decoded.errors.length) app.render();
   }
 
-  host.startReplyObserver(processReply);
-  api.setTimeout(() => catalog.check().then((result) => { if (result && result.applied && result.applied.length) { app.setNotice('DCF 模块已自动更新'); app.render(); } }), 1600);
+  host.startReplyObserver((reply) => {
+    processReply(reply).catch((error) => receiptStore.append({ schema: 'dcf.receipt.v1', intent: { type: 'reply.reconcile' }, status: 'rejected', stage: 'runtime', error: String(error && error.message || error) }));
+  });
+  api.setTimeout(() => catalog.check().then((result) => { if (result && result.applied && result.applied.length) { app.setNotice('DCF 能力包已自动协调到最新版本'); app.render(); } }), 1600);
 
   if (typeof api.GM_registerMenuCommand === 'function') {
-    api.GM_registerMenuCommand('DCF：检查模块更新', () => catalog.check({ force: true }).then(() => app.render()));
+    api.GM_registerMenuCommand('DCF：检查能力包更新', () => catalog.check({ force: true }).then(() => app.render()));
     api.GM_registerMenuCommand('DCF：一键 Runtime 体检并复制', () => maintenance.copyHealthReport());
     api.GM_registerMenuCommand('DCF：复制简要诊断', () => maintenance.copySummary());
   }
 
-  api.__DCF_RUNTIME__ = { version: VERSION, engine, host, app, catalog, receiptStore, health, maintenance };
+  api.__DCF_RUNTIME__ = { version: VERSION, engine, host, app, catalog, reconciler, receiptStore, health, maintenance };
   return api.__DCF_RUNTIME__;
 }
 

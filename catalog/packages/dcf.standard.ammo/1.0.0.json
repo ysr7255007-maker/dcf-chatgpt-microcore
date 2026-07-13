@@ -2,6 +2,8 @@
   "schema": "dcf.module_pack.v1",
   "pack_id": "dcf.standard.ammo",
   "revision": "1.0.0",
+  "title": "语言弹药核心",
+  "description": "提供语言弹药内容、主入口和低摩擦发射能力。",
   "contributes": {
     "content_types": [
       {
