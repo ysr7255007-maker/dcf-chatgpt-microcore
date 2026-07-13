@@ -4,17 +4,9 @@ DCF is a personally maintained ChatGPT Tampermonkey system whose value goal is a
 
 ## Current architecture
 
-DCF `0.11.3` separates the product goal from the engineering dependency:
+DCF `0.11.4` keeps a generic modular kernel under the first-party language-ammunition product goal. Source is modular, while Tampermonkey still installs one complete userscript.
 
-```text
-language-ammunition loop
-        ↓ product constraints
-first-party ammo module
-        ↓ uses
-generic DCF kernel
-```
-
-The kernel is developed as modular source and released as one complete userscript. One authoritative state root is changed only through a unified transaction path:
+One authoritative state root changes only through the unified transaction path:
 
 ```text
 intent or artifact
@@ -25,21 +17,20 @@ intent or artifact
 → receipt / host effect
 ```
 
-ChatGPT replies and the private GitHub catalog are transports. They decode typed artifacts and enter the same transaction engine. DCF observes only newly added/current assistant replies; it does not rescan the whole conversation history.
+ChatGPT replies, manual package JSON, and the fixed GitHub catalog are transports into the same artifact and transaction path. Reply intake observes only newly added/current assistant replies.
 
-When GM storage is available it is the authoritative backend. A boot-time bridge inspects legacy page `localStorage` and safely recovers missing pre-`0.11.1` packages, runtime modules, ammunition, settings, display data, and appearance values.
-
-The UI and health report distinguish:
+The UI distinguishes:
 
 - installed packages in **包管理**;
 - runtime modules in the registry;
 - daily functions in **功能**;
-- probes, diagnostics, authoring, layout and recovery tools in **维护**;
-- runtime modules intentionally hidden from both entry points.
+- probes, diagnostics, layout, authoring, acceptance, and recovery tools in **维护**.
 
-Both UI and `dcf.health.report.v2` use the same module-role resolver, so package presence and function placement cannot be confused. User placement changes are stored as `moduleDisplay` overrides and never rewrite immutable package revisions.
+`hidden` is not a product role. All non-ammo runtime modules remain discoverable in either daily or maintenance. Module cards use expand/collapse to control density; fold state lives only in disposable `dcf.ui.session.v1` and never rewrites package or authoritative user state.
 
-See `docs/architecture-current.md` for the current structure and `docs/adr/status-index.md` for the canonical ADR status.
+**一键 Runtime 体检并复制** observes the actual browser instance rather than dumping internal state. It compares persisted storage, in-memory Runtime, real Shadow DOM entries, host count and geometry, ChatGPT observer/composer connection, and recent failed operations. A healthy report contains `deviations: []`; abnormal reports include only the minimum evidence for each Runtime mismatch.
+
+See `docs/architecture-current.md` for the current structure and `docs/adr/status-index.md` for canonical decision status.
 
 ## Build and verification
 
@@ -47,4 +38,4 @@ See `docs/architecture-current.md` for the current structure and `docs/adr/statu
 npm run verify
 ```
 
-This builds the complete `.user.js`, generates the catalog, and verifies state transactions, resource conflicts, dual-backend migration, package/runtime/function separation, legacy daily/maintenance classification, health-report privacy, bounded reply intake, automatic artifact application, catalog updates, viewport containment, release integrity, and deterministic output.
+This builds the complete `.user.js`, generates the catalog, and verifies transactions, resource conflicts, migration, legacy commands, role/fold separation, Runtime health privacy and deviation detection, bounded reply intake, catalog updates, viewport containment, release integrity, and deterministic output.
