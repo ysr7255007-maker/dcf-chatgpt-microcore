@@ -16,11 +16,11 @@ Updated: 2026-07-13
 
 ## 当前版本
 
-当前候选版本：`0.11.5`
+当前候选版本：`0.11.6`
 
-此次采用增量修正，而不是回滚 0.11.3。0.11.3 已经正确分离安装包、运行模块、日常功能和维护工具；回滚会连同这部分正确结构一起撤销。0.11.5 只移除错误的 hidden 产品语义，并重建 Runtime 体检。
+此次采用增量修正，而不是回滚 0.11.3。0.11.3 已经正确分离安装包、运行模块、日常功能和维护工具；回滚会连同这部分正确结构一起撤销。0.11.6 只移除错误的 hidden 产品语义，并重建 Runtime 体检。
 
-## 0.11.5 修正
+## 0.11.6 修正
 
 - 运行模块只属于 `ammo / daily / maintenance`；
 - 旧包和旧用户状态中的 `hidden:true` 不再让模块失去入口；
@@ -61,7 +61,7 @@ Updated: 2026-07-13
 
 ## User checkpoint after release
 
-1. update Tampermonkey to `0.11.5` and refresh ChatGPT;
+1. update Tampermonkey to `0.11.6` and refresh ChatGPT;
 2. confirm tabs are `弹药 / 功能 / 包管理 / 维护`;
 3. confirm every module title remains discoverable under either `功能` or `维护`;
 4. expand and collapse several daily and maintenance cards, then refresh and confirm fold state persists without moving modules;
@@ -71,8 +71,16 @@ Updated: 2026-07-13
 
 ChatGPT historical-message virtualization, turn-window rendering, DOM/memory dashboard, and other attempts to reduce ChatGPT's own long-thread rendering cost.
 
-## 0.11.5 Runtime entry sampling fix
+## 0.11.6 Runtime entry sampling fix
 
 - Runtime DOM sampling counts only top-level `details.module-card` entries.
 - Command buttons carrying `data-module-id` are excluded from duplicate-entry detection.
 - This fixes the 0.11.4 false `runtime_duplicate_entries` warning without changing module roles or Runtime state.
+
+## 0.11.6 包管理可读性与紧凑布局
+
+- 包卡片以中文名称和一句功能说明为主，英文 package ID 降为次要技术标识。
+- 现有旧包优先从包元数据、模块标题、Surface、内容类型和兼容展示表生成中文说明。
+- 单版本包只显示紧凑版本标签；多版本包才显示版本选择与切换。
+- 版本、切换、启停和卸载集中在同一操作带，版本选择器不再独占整行。
+- 手动安装 JSON 折叠为低频入口，包总览成为页面主体。
