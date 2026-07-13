@@ -1,11 +1,12 @@
 # DCF ADR canonical status index
 
-Updated: 2026-07-12
+Updated: 2026-07-13
 
 The status in this file is authoritative. A status line inside an older ADR records its status when written and is historical after a later ADR supersedes it. Centralizing current status prevents every later architecture change from rewriting all historical decision records.
 
 ## Current
 
+- `2026-07-13-dcf-module-visibility-observability.md` — **accepted**
 - `2026-07-12-dcf-storage-backend-bridge-and-health-report.md` — **accepted**
 - `2026-07-12-dcf-phase-one-whole-project-rebuild.md` — **accepted**
 - `2026-07-12-dcf-shell-geometry-source-of-truth.md` — **accepted**, retained by phase one
