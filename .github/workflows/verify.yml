@@ -21,6 +21,15 @@ jobs:
         with:
           node-version: '22'
       - run: python scripts/apply-conversation-environment-architecture.py
+      - name: Preserve reconciler result compatibility
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/runtime/reconciler.js')
+          text = path.read_text()
+          text = text.replace("schema: 'dcf.environment.reconcile.result.v1',", "schema: 'dcf.reconcile.result.v1',\n      environment_schema: 'dcf.environment.reconcile.result.v1',")
+          path.write_text(text)
+          PY
       - name: Verify upgraded source
         shell: bash
         run: |
