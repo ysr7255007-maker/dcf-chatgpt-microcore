@@ -3,7 +3,7 @@
 const { CATALOG_STATE_KEY } = require('../core/constants');
 const { safeId } = require('../core/utils');
 
-function createMaintenanceModule(engine, receiptStore, effectRunner, storage, healthReporter) {
+function createMaintenanceModule(engine, receiptStore, effectRunner, storage, healthReporter, reconciler) {
   let lastHealth = null;
   function summary() {
     const root = engine.getRoot();
@@ -38,6 +38,14 @@ function createMaintenanceModule(engine, receiptStore, effectRunner, storage, he
     const text = `<<<DCF_RUNTIME_HEALTH\n${JSON.stringify(report, null, 2)}\nDCF_RUNTIME_HEALTH>>>`;
     return effectRunner.run({ type: 'clipboard.write', text }, { module: 'maintenance', report: 'runtime-health' });
   }
+  function environmentIntent(intent, material) { return reconciler ? reconciler.acceptIntent(intent, material) : engine.applyEnvironmentIntent(intent, material); }
+
+  function restoreRevision(revision) {
+    const record = engine.snapshots().slice().reverse().find((item) => Number(item.revision) === Number(revision));
+    if (!record) return engine.rollbackTo(revision);
+    return environmentIntent({ type: 'environment.restore', revision }, { root: record.root });
+  }
+
   return {
     summary,
     copySummary,
@@ -47,11 +55,11 @@ function createMaintenanceModule(engine, receiptStore, effectRunner, storage, he
     receipts: () => receiptStore.list(),
     clearReceipts: () => receiptStore.clear(),
     snapshots: () => engine.snapshots(),
-    rollbackTo: (revision) => engine.rollbackTo(revision),
+    rollbackTo: restoreRevision,
     profiles: () => engine.getEnvironment().profiles,
-    saveProfile: (title) => engine.saveEnvironmentProfile(String(title || '当前环境'), safeId(String(title || '当前环境')) || undefined),
-    activateProfile: (id) => engine.activateEnvironmentProfile(id),
-    removeProfile: (id) => engine.removeEnvironmentProfile(id)
+    saveProfile: (title) => environmentIntent({ type: 'environment.profile.save', title: String(title || '当前环境'), profile_id: safeId(String(title || '当前环境')) || undefined }),
+    activateProfile: (id) => environmentIntent({ type: 'environment.profile.activate', profile_id: id }),
+    removeProfile: (id) => environmentIntent({ type: 'environment.profile.remove', profile_id: id })
   };
 }
 

@@ -1,6 +1,8 @@
 'use strict';
 
 const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
 const { createStorage } = require('../src/runtime/storage');
 const { createReceiptStore } = require('../src/core/receipts');
 const { createTransactionEngine } = require('../src/core/transactions');
@@ -49,6 +51,14 @@ const snapshotRevision = engine.snapshots()[0].revision;
 const rollback = engine.rollbackTo(snapshotRevision);
 assert.strictEqual(rollback.status, 'committed');
 assert.strictEqual(rollback.intent.type, 'environment.restore');
+
+const appSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'ui', 'app.js'), 'utf8');
+const commandSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'runtime', 'commands.js'), 'utf8');
+const maintenanceSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'modules', 'maintenance.js'), 'utf8');
+assert(!appSource.includes('engine.applyEnvironmentIntent({ type:'), 'UI persistent controls bypass Environment Reconciler');
+assert(!commandSource.includes("engine.transact({ type: 'capability."), 'command persistence bypasses Environment Intent');
+assert(commandSource.includes('reconciler.acceptIntent'), 'command runner does not use Environment Reconciler');
+assert(maintenanceSource.includes('reconciler.acceptIntent'), 'Profile/restore controls bypass Environment Reconciler');
 
 console.log(JSON.stringify({
   ok: true,

@@ -66,12 +66,12 @@ function boot(api = globalThis) {
     getApp: () => app,
     getRuntime: () => api.__DCF_RUNTIME__ || null
   });
-  const maintenance = createMaintenanceModule(engine, receiptStore, effects, storage, health);
+  const maintenance = createMaintenanceModule(engine, receiptStore, effects, storage, health, reconciler);
   const commandRunner = createCommandRunner(engine, effects, receiptStore, () => {
     if (!app || !app.shell) return null;
     const rect = app.shell.getBoundingClientRect();
     return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height };
-  });
+  }, reconciler);
   app = createApp({ engine, ammo, packageManager, maintenance, commandRunner, reconciler, storage, version: VERSION });
 
   async function processReply(reply) {
@@ -99,8 +99,10 @@ function boot(api = globalThis) {
     api.GM_registerMenuCommand('DCF：复制简要诊断', () => maintenance.copySummary());
   }
 
-  api.__DCF_RUNTIME__ = { version: VERSION, engine, environment: engine.getEnvironment(), getEnvironment: () => engine.getEnvironment(), host, app, catalog, reconciler, receiptStore, health, maintenance };
-  return api.__DCF_RUNTIME__;
+  const runtime = { version: VERSION, engine, getEnvironment: () => engine.getEnvironment(), host, app, catalog, reconciler, receiptStore, health, maintenance };
+  Object.defineProperty(runtime, 'environment', { enumerable: true, get: () => engine.getEnvironment() });
+  api.__DCF_RUNTIME__ = runtime;
+  return runtime;
 }
 
 if (typeof window !== 'undefined' && typeof document !== 'undefined') boot(globalThis);

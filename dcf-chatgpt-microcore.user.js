@@ -1550,49 +1550,52 @@ function commandList(module) {
   return out;
 }
 
-function createCommandRunner(engine, effectRunner, receiptStore, shellObserver) {
+function createCommandRunner(engine, effectRunner, receiptStore, shellObserver, reconciler) {
+  function environmentIntent(intent, material) {
+    return reconciler ? reconciler.acceptIntent(intent, material) : engine.applyEnvironmentIntent(intent, material);
+  }
+
+  function adjustedAppearance(args) {
+    const next = clone(engine.getRoot().user.appearance || { side: null, vars: {}, css: '', safe_mode: false });
+    const vars = next.vars || (next.vars = {});
+    for (const key of ['w', 'h', 'top', 'bottom']) {
+      if (args[key] == null) continue;
+      const current = Number.parseInt(String(vars[key] || engine.getRegistry().appearance.vars[key] || '0'), 10) || 0;
+      const minimum = key === 'w' ? 240 : key === 'h' ? 300 : 0;
+      vars[key] = `${Math.max(minimum, current + Number(args[key]))}px`;
+    }
+    if (args.offset != null) {
+      const anchor = vars.anchor || engine.getRegistry().appearance.vars.anchor || 'bottom';
+      const key = anchor === 'top' ? 'top' : 'bottom';
+      const current = Number.parseInt(String(vars[key] || engine.getRegistry().appearance.vars[key] || (key === 'top' ? '12px' : '112px')), 10) || 0;
+      vars[key] = `${Math.max(0, current + Number(args.offset))}px`;
+    }
+    if (args.anchor) vars.anchor = args.anchor === 'top' ? 'top' : 'bottom';
+    if (args.side === 'toggle') next.side = engine.getRegistry().appearance.side === 'left' ? 'right' : 'left';
+    else if (args.side) next.side = args.side === 'left' ? 'left' : 'right';
+    return next;
+  }
+
   async function runStep(step, context) {
     const call = String(step.call || '');
     const args = clone(step.with || step.args || {});
-    const before = {
-      state_hash: engine.getRoot().state_hash,
-      revision: engine.getRoot().revision,
-      appearance: clone(engine.getRegistry().appearance.vars)
-    };
+    const before = { state_hash: engine.getRoot().state_hash, revision: engine.getRoot().revision, appearance: clone(engine.getRegistry().appearance.vars) };
     let result;
     if (call === 'appearance.adjust') {
-      result = engine.transact({ type: 'capability.appearance.adjust', module_id: context.module_id, command_id: context.command_id }, (candidate) => {
-        const vars = candidate.user.appearance.vars || (candidate.user.appearance.vars = {});
-        for (const key of ['w', 'h', 'top', 'bottom']) {
-          if (args[key] == null) continue;
-          const current = Number.parseInt(String(vars[key] || engine.getRegistry().appearance.vars[key] || '0'), 10) || 0;
-          const minimum = key === 'w' ? 240 : key === 'h' ? 300 : 0;
-          vars[key] = `${Math.max(minimum, current + Number(args[key]))}px`;
-        }
-        if (args.offset != null) {
-          const anchor = vars.anchor || engine.getRegistry().appearance.vars.anchor || 'bottom';
-          const key = anchor === 'top' ? 'top' : 'bottom';
-          const current = Number.parseInt(String(vars[key] || engine.getRegistry().appearance.vars[key] || (key === 'top' ? '12px' : '112px')), 10) || 0;
-          vars[key] = `${Math.max(0, current + Number(args.offset))}px`;
-        }
-        if (args.anchor) vars.anchor = args.anchor === 'top' ? 'top' : 'bottom';
-        if (args.side === 'toggle') candidate.user.appearance.side = engine.getRegistry().appearance.side === 'left' ? 'right' : 'left';
-        else if (args.side) candidate.user.appearance.side = args.side === 'left' ? 'left' : 'right';
-        candidate.user.revision += 1;
-      });
+      result = environmentIntent({ type: 'environment.user.set', path: ['appearance'], source: { module_id: context.module_id, command_id: context.command_id } }, { value: adjustedAppearance(args) });
     } else if (call === 'appearance.set') {
-      result = engine.transact({ type: 'capability.appearance.set', module_id: context.module_id, command_id: context.command_id }, (candidate) => {
-        if (args.side) candidate.user.appearance.side = args.side === 'left' ? 'left' : 'right';
-        for (const [key, value] of Object.entries(args.vars || {})) candidate.user.appearance.vars[key] = value;
-        candidate.user.revision += 1;
-      });
+      const next = clone(engine.getRoot().user.appearance || { side: null, vars: {}, css: '', safe_mode: false });
+      if (args.side) next.side = args.side === 'left' ? 'left' : 'right';
+      next.vars = Object.assign({}, next.vars || {}, args.vars || {});
+      result = environmentIntent({ type: 'environment.user.set', path: ['appearance'], source: { module_id: context.module_id, command_id: context.command_id } }, { value: next });
     } else if (call === 'settings.set') {
       if (!args.key) throw new Error('settings.set requires key');
-      result = engine.setUserPath(['settings', String(args.key)], args.value);
+      result = environmentIntent({ type: 'environment.user.set', path: ['settings', String(args.key)], source: { module_id: context.module_id, command_id: context.command_id } }, { value: args.value });
     } else if (call === 'content.upsert') {
-      result = engine.upsertContent(String(args.type || 'ammo'), args.item || {}, null);
+      const item = args.item || {};
+      result = environmentIntent({ type: 'environment.resource.upsert', resource_type: String(args.type || 'ammo'), resource_id: String(item.id || ''), source: { module_id: context.module_id, command_id: context.command_id } }, { value: item });
     } else if (call === 'content.remove') {
-      result = engine.removeContent(String(args.type || 'ammo'), String(args.id || ''));
+      result = environmentIntent({ type: 'environment.resource.remove', resource_type: String(args.type || 'ammo'), resource_id: String(args.id || ''), source: { module_id: context.module_id, command_id: context.command_id } });
     } else if (call === 'composer.replace' || call === 'composer.insert') {
       result = await effectRunner.run({ type: 'composer.insert', text: String(args.text || '') }, context);
     } else if (call === 'composer.send') {
@@ -1604,24 +1607,13 @@ function createCommandRunner(engine, effectRunner, receiptStore, shellObserver) 
     } else {
       throw new Error(`unknown capability ${call}`);
     }
-    const after = {
-      state_hash: engine.getRoot().state_hash,
-      revision: engine.getRoot().revision,
-      appearance: clone(engine.getRegistry().appearance.vars),
-      shell: typeof shellObserver === 'function' ? shellObserver() : null
-    };
+    const after = { state_hash: engine.getRoot().state_hash, revision: engine.getRoot().revision, appearance: clone(engine.getRegistry().appearance.vars), shell: typeof shellObserver === 'function' ? shellObserver() : null };
     return { call, input: sanitizeValue(args), before, after, result: sanitizeValue(result, 'result') };
   }
 
   async function execute(module, command, block) {
     const context = { module_id: module.id, module_version: module.version || null, block_id: block && block.id || null, command_id: command.id };
-    const trace = {
-      schema: 'dcf.command.receipt.v3',
-      trace_id: `cmd-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-      context,
-      status: 'running',
-      steps: []
-    };
+    const trace = { schema: 'dcf.command.receipt.v3', trace_id: `cmd-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`, context, status: 'running', steps: [] };
     try {
       for (const step of Array.isArray(command.steps) ? command.steps : []) trace.steps.push(await runStep(step, context));
       trace.status = 'ok';
@@ -2674,7 +2666,7 @@ module.exports = { createHealthReporter, legacyInventory, activePackModules, dif
 const { CATALOG_STATE_KEY } = require("src/core/constants.js");
 const { safeId } = require("src/core/utils.js");
 
-function createMaintenanceModule(engine, receiptStore, effectRunner, storage, healthReporter) {
+function createMaintenanceModule(engine, receiptStore, effectRunner, storage, healthReporter, reconciler) {
   let lastHealth = null;
   function summary() {
     const root = engine.getRoot();
@@ -2709,6 +2701,14 @@ function createMaintenanceModule(engine, receiptStore, effectRunner, storage, he
     const text = `<<<DCF_RUNTIME_HEALTH\n${JSON.stringify(report, null, 2)}\nDCF_RUNTIME_HEALTH>>>`;
     return effectRunner.run({ type: 'clipboard.write', text }, { module: 'maintenance', report: 'runtime-health' });
   }
+  function environmentIntent(intent, material) { return reconciler ? reconciler.acceptIntent(intent, material) : engine.applyEnvironmentIntent(intent, material); }
+
+  function restoreRevision(revision) {
+    const record = engine.snapshots().slice().reverse().find((item) => Number(item.revision) === Number(revision));
+    if (!record) return engine.rollbackTo(revision);
+    return environmentIntent({ type: 'environment.restore', revision }, { root: record.root });
+  }
+
   return {
     summary,
     copySummary,
@@ -2718,11 +2718,11 @@ function createMaintenanceModule(engine, receiptStore, effectRunner, storage, he
     receipts: () => receiptStore.list(),
     clearReceipts: () => receiptStore.clear(),
     snapshots: () => engine.snapshots(),
-    rollbackTo: (revision) => engine.rollbackTo(revision),
+    rollbackTo: restoreRevision,
     profiles: () => engine.getEnvironment().profiles,
-    saveProfile: (title) => engine.saveEnvironmentProfile(String(title || '当前环境'), safeId(String(title || '当前环境')) || undefined),
-    activateProfile: (id) => engine.activateEnvironmentProfile(id),
-    removeProfile: (id) => engine.removeEnvironmentProfile(id)
+    saveProfile: (title) => environmentIntent({ type: 'environment.profile.save', title: String(title || '当前环境'), profile_id: safeId(String(title || '当前环境')) || undefined }),
+    activateProfile: (id) => environmentIntent({ type: 'environment.profile.activate', profile_id: id }),
+    removeProfile: (id) => environmentIntent({ type: 'environment.profile.remove', profile_id: id })
   };
 }
 
@@ -2997,7 +2997,7 @@ function createApp(options) {
       area: role === 'maintenance' ? 'maintenance' : 'work'
     });
     delete next.hidden;
-    return engine.applyEnvironmentIntent({ type: 'environment.user.set', path: ['moduleDisplay', moduleId] }, { value: next });
+    return reconciler.acceptIntent({ type: 'environment.user.set', path: ['moduleDisplay', moduleId] }, { value: next });
   }
 
   function collectIds(selector, attribute) {
@@ -3075,11 +3075,11 @@ function createApp(options) {
     if (action === 'ammo-extract') runAndRender(() => ammo.requestExtract(), '提取请求已发送');
     else if (action === 'ammo-mode') {
       const current = engine.getRoot().user.preferences && engine.getRoot().user.preferences.ammo_fire_mode || 'insert';
-      runAndRender(() => engine.applyEnvironmentIntent({ type: 'environment.user.set', path: ['preferences', 'ammo_fire_mode'] }, { value: current === 'send' ? 'insert' : 'send' }), '发射方式已更新');
+      runAndRender(() => reconciler.acceptIntent({ type: 'environment.user.set', path: ['preferences', 'ammo_fire_mode'] }, { value: current === 'send' ? 'insert' : 'send' }), '发射方式已更新');
     } else if (action === 'ammo-fire' && item) runAndRender(() => ammo.fire(item), '弹药已发射');
     else if (action === 'ammo-copy' && item) runAndRender(() => ammo.copy(item), '已复制');
     else if (action === 'ammo-update' && item) runAndRender(() => ammo.requestUpdate(item), '更新请求已发送');
-    else if (action === 'ammo-delete' && item) runAndRender(() => engine.applyEnvironmentIntent({ type: 'environment.resource.remove', resource_type: 'ammo', resource_id: item.id }), '已删除');
+    else if (action === 'ammo-delete' && item) runAndRender(() => reconciler.acceptIntent({ type: 'environment.resource.remove', resource_type: 'ammo', resource_id: item.id }), '已删除');
     else if (action === 'package-install') runAndRender(() => packageManager.installJson(packageDraft), '安装包已安装');
     else if (action === 'package-update') runAndRender(() => packageManager.checkUpdates(true), '更新检查完成');
     else if (action === 'package-toggle') {
@@ -3185,12 +3185,12 @@ function boot(api = globalThis) {
     getApp: () => app,
     getRuntime: () => api.__DCF_RUNTIME__ || null
   });
-  const maintenance = createMaintenanceModule(engine, receiptStore, effects, storage, health);
+  const maintenance = createMaintenanceModule(engine, receiptStore, effects, storage, health, reconciler);
   const commandRunner = createCommandRunner(engine, effects, receiptStore, () => {
     if (!app || !app.shell) return null;
     const rect = app.shell.getBoundingClientRect();
     return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height };
-  });
+  }, reconciler);
   app = createApp({ engine, ammo, packageManager, maintenance, commandRunner, reconciler, storage, version: VERSION });
 
   async function processReply(reply) {
@@ -3218,8 +3218,10 @@ function boot(api = globalThis) {
     api.GM_registerMenuCommand('DCF：复制简要诊断', () => maintenance.copySummary());
   }
 
-  api.__DCF_RUNTIME__ = { version: VERSION, engine, environment: engine.getEnvironment(), getEnvironment: () => engine.getEnvironment(), host, app, catalog, reconciler, receiptStore, health, maintenance };
-  return api.__DCF_RUNTIME__;
+  const runtime = { version: VERSION, engine, getEnvironment: () => engine.getEnvironment(), host, app, catalog, reconciler, receiptStore, health, maintenance };
+  Object.defineProperty(runtime, 'environment', { enumerable: true, get: () => engine.getEnvironment() });
+  api.__DCF_RUNTIME__ = runtime;
+  return runtime;
 }
 
 if (typeof window !== 'undefined' && typeof document !== 'undefined') boot(globalThis);

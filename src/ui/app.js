@@ -265,7 +265,7 @@ function createApp(options) {
       area: role === 'maintenance' ? 'maintenance' : 'work'
     });
     delete next.hidden;
-    return engine.applyEnvironmentIntent({ type: 'environment.user.set', path: ['moduleDisplay', moduleId] }, { value: next });
+    return reconciler.acceptIntent({ type: 'environment.user.set', path: ['moduleDisplay', moduleId] }, { value: next });
   }
 
   function collectIds(selector, attribute) {
@@ -343,11 +343,11 @@ function createApp(options) {
     if (action === 'ammo-extract') runAndRender(() => ammo.requestExtract(), '提取请求已发送');
     else if (action === 'ammo-mode') {
       const current = engine.getRoot().user.preferences && engine.getRoot().user.preferences.ammo_fire_mode || 'insert';
-      runAndRender(() => engine.applyEnvironmentIntent({ type: 'environment.user.set', path: ['preferences', 'ammo_fire_mode'] }, { value: current === 'send' ? 'insert' : 'send' }), '发射方式已更新');
+      runAndRender(() => reconciler.acceptIntent({ type: 'environment.user.set', path: ['preferences', 'ammo_fire_mode'] }, { value: current === 'send' ? 'insert' : 'send' }), '发射方式已更新');
     } else if (action === 'ammo-fire' && item) runAndRender(() => ammo.fire(item), '弹药已发射');
     else if (action === 'ammo-copy' && item) runAndRender(() => ammo.copy(item), '已复制');
     else if (action === 'ammo-update' && item) runAndRender(() => ammo.requestUpdate(item), '更新请求已发送');
-    else if (action === 'ammo-delete' && item) runAndRender(() => engine.applyEnvironmentIntent({ type: 'environment.resource.remove', resource_type: 'ammo', resource_id: item.id }), '已删除');
+    else if (action === 'ammo-delete' && item) runAndRender(() => reconciler.acceptIntent({ type: 'environment.resource.remove', resource_type: 'ammo', resource_id: item.id }), '已删除');
     else if (action === 'package-install') runAndRender(() => packageManager.installJson(packageDraft), '安装包已安装');
     else if (action === 'package-update') runAndRender(() => packageManager.checkUpdates(true), '更新检查完成');
     else if (action === 'package-toggle') {
