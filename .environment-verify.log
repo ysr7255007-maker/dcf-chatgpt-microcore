@@ -10,7 +10,7 @@
   "ok": true,
   "version": "0.13.0",
   "modules": 24,
-  "bytes": 165429,
+  "bytes": 165468,
   "catalog_packages": 4
 }
 
@@ -26,5 +26,36 @@
   "package_owned_four_views": true,
   "profiles_and_restore_are_environment_transitions": true
 }
-TypeError: Cannot read properties of undefined (reading 'some')
-    at /home/runner/work/dcf-chatgpt-microcore/dcf-chatgpt-microcore/tests/dcf-capability-reconciliation.unit.test.js:44:44
+{
+  "ok": true,
+  "value_and_reference_inputs_unified": true,
+  "desired_state_derived_from_root": true,
+  "runtime_activation_callback": true
+}
+node:assert:150
+  throw new AssertionError(obj);
+  ^
+
+AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
++ actual - expected
+
++ 'composition'
+- 'package-management'
+
+    at Object.<anonymous> (/home/runner/work/dcf-chatgpt-microcore/dcf-chatgpt-microcore/tests/dcf-declarative-ui-package.unit.test.js:18:8)
+    at Module._compile (node:internal/modules/cjs/loader:1781:14)
+    at Object..js (node:internal/modules/cjs/loader:1913:10)
+    at Module.load (node:internal/modules/cjs/loader:1505:32)
+    at Function._load (node:internal/modules/cjs/loader:1309:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)
+    at node:internal/main/run_main_module:36:49 {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: 'composition',
+  expected: 'package-management',
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+
+Node.js v22.23.1
