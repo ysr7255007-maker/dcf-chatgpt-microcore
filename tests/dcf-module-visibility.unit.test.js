@@ -1,6 +1,8 @@
 'use strict';
 
 const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
 const { createStorage } = require('../src/runtime/storage');
 const { createReceiptStore } = require('../src/core/receipts');
 const { createTransactionEngine } = require('../src/core/transactions');
@@ -49,4 +51,9 @@ assert.strictEqual(report.projection.hidden_module_count, 0);
 assert(report.modules.some((item) => item.module_id === 'legacy.hidden-module' && item.hidden === false));
 assert(engine.getRoot().packages.packages['legacy.hidden-pack'], 'showing module removed its package');
 
-console.log(JSON.stringify({ ok: true, hidden_modules_observable: true, user_visibility_override: true, package_preserved: true }, null, 2));
+const appSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'ui', 'app.js'), 'utf8');
+assert(appSource.includes('module-visibility-toggle'), 'per-module visibility control missing');
+assert(appSource.includes('module-show-all-hidden'), 'show-all hidden control missing');
+assert(appSource.includes("engine.transact({ type: 'module-display.show-all'"), 'show-all visibility does not use the transaction engine');
+
+console.log(JSON.stringify({ ok: true, hidden_modules_observable: true, user_visibility_override: true, package_preserved: true, ui_controls_wired: true }, null, 2));
