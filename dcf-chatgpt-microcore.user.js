@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DCF ChatGPT Microcore
 // @namespace    https://chatgpt.com/
-// @version      0.11.5
+// @version      0.11.6
 // @description  DCF modular runtime with foldable daily and maintenance views, browser Runtime deviation health checks, bounded reply intake and unified transactions.
 // @updateURL    https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.meta.js
 // @downloadURL  https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.user.js
@@ -112,7 +112,7 @@ module.exports = {
 "src/core/constants.js":function(module,exports,require){
 'use strict';
 
-const VERSION = '0.11.5';
+const VERSION = '0.11.6';
 const ROOT_KEY = 'dcf.state.root.v1';
 const SNAPSHOT_KEY = 'dcf.state.snapshots.v1';
 const RUNTIME_KEY = 'dcf.runtime.registry.v3';
@@ -1729,9 +1729,102 @@ module.exports = { createCatalogTransport };
 const { decodeArtifacts } = require("src/core/artifacts.js");
 const { REQUIRED_PRODUCT_PACKAGES } = require("src/modules/standard-packages.js");
 
+const LEGACY_PRESENTATION = {
+  'dcf.ammo.module': { title: '语言弹药核心', description: '提供语言弹药内容、主入口和低摩擦发射能力。' },
+  'dcf.ammo_workbench': { title: '弹药工作台', description: '提供语言弹药的创建、编辑和常用操作。' },
+  'dcf.ammo_workspace.unified': { title: '统一弹药工作区', description: '集中浏览、整理和使用语言弹药。' },
+  'dcf.language_ammo': { title: '语言弹药', description: '提供旧版语言弹药工作流的兼容能力。' },
+  'dcf.ammo_library.dcf_kernel_maintenance': { title: 'DCF 内核维护', description: '提供语言弹药库与内核维护相关操作。' },
+  'dcf.block_scanner': { title: '对话块扫描', description: '扫描并识别对话中的 DCF 工件块。' },
+  'dcf.capability_gap_probe': { title: '能力缺口探针', description: '检查当前运行能力与预期能力之间的差异。' },
+  'dcf.command_runtime_probe': { title: '命令运行探针', description: '检查模块命令在当前 Runtime 中的执行情况。' },
+  'dcf.feedback_safety_probe': { title: '草稿保护探针', description: '检查反馈操作与输入框草稿保护是否可靠。' },
+  'dcf.kernel_acceptance': { title: '内核验收', description: '执行 DCF 内核关键能力的验收检查。' },
+  'dcf.maintenance_feedback': { title: '维护回馈', description: '生成维护流程需要的反馈信息。' },
+  'dcf.module_authoring': { title: '模块作者工具', description: '辅助创建、检查和维护 DCF 模块包。' },
+  'dcf.runtime_inspector': { title: '运行检查', description: '查看当前 DCF Runtime 的实际运行状态。' },
+  'dcf.shell_adjuster': { title: '壳体调节（旧版）', description: '调整 DCF 侧栏的位置和尺寸。' },
+  'dcf.standard.shell-adjuster': { title: '壳体调节', description: '调整侧栏宽度、高度、边距和停靠方向。' },
+  'dcf.store_probe': { title: '存储探针', description: '检查 DCF 存储读写与状态恢复。' },
+  'dcf.ui_siderail_control': { title: '侧栏控制', description: '调整 DCF 侧栏布局与停靠方式。' },
+  'dcf.ui_visual_control': { title: '视觉布局控制', description: '调整 DCF 界面的视觉与布局表现。' }
+};
+
+function firstText(...values) {
+  for (const value of values) {
+    const text = String(value == null ? '' : value).trim();
+    if (text) return text;
+  }
+  return '';
+}
+
+function unique(values) {
+  return Array.from(new Set((values || []).map((value) => String(value || '').trim()).filter(Boolean)));
+}
+
+function hasCjk(value) {
+  return /[\u3400-\u9fff]/.test(String(value || ''));
+}
+
+function activePack(entry) {
+  const revision = entry && entry.active_revision;
+  return entry && entry.revisions && entry.revisions[revision] && entry.revisions[revision].pack || null;
+}
+
+function packagePresentation(entry) {
+  const pack = activePack(entry) || {};
+  const modules = Array.isArray(pack.modules) ? pack.modules : [];
+  const contributes = pack.contributes && typeof pack.contributes === 'object' ? pack.contributes : {};
+  const surfaces = Array.isArray(contributes.surfaces) ? contributes.surfaces : [];
+  const contentTypes = Array.isArray(contributes.content_types) ? contributes.content_types : [];
+  const known = modules.map((module) => LEGACY_PRESENTATION[String(module && module.id || '')]).find(Boolean) || LEGACY_PRESENTATION[String(entry && entry.package_id || '')] || null;
+  const explicitTitle = firstText(pack.title, pack.display_name, pack.name, pack.label);
+  const moduleTitles = unique(modules.map((module) => module && module.title));
+  const surfaceTitles = unique(surfaces.map((surface) => surface && surface.title));
+  const contentTitles = unique(contentTypes.map((type) => type && type.title));
+
+  let title = '';
+  if (hasCjk(explicitTitle)) title = explicitTitle;
+  else if (known) title = known.title;
+  else if (moduleTitles.some(hasCjk)) title = moduleTitles.find(hasCjk);
+  else if (surfaceTitles.some(hasCjk)) title = surfaceTitles.find(hasCjk);
+  else if (contentTitles.some(hasCjk)) title = contentTitles.find(hasCjk);
+  else if (modules.length) title = modules.some((module) => module && module.kind === 'ammo') ? '语言弹药功能包' : 'DCF 功能模块包';
+  else if (surfaces.length) title = '界面入口扩展包';
+  else if (contentTypes.length) title = '内容类型扩展包';
+  else if (contributes.appearance) title = '界面外观扩展包';
+  else title = 'DCF 扩展包';
+
+  const explicitDescription = firstText(pack.description, pack.summary, pack.purpose);
+  const moduleDescriptions = unique(modules.map((module) => firstText(module && module.description, module && module.summary, module && module.purpose)));
+  const blockTitles = unique(modules.flatMap((module) => Array.isArray(module && module.blocks) ? module.blocks.map((block) => block && block.title) : []));
+  const commandLabels = unique(modules.flatMap((module) => {
+    const direct = Array.isArray(module && module.commands) ? module.commands : [];
+    const blocked = Array.isArray(module && module.blocks) ? module.blocks.flatMap((block) => Array.isArray(block && block.commands) ? block.commands : []) : [];
+    return direct.concat(blocked).map((command) => command && (command.label || command.title));
+  }));
+
+  let description = '';
+  if (hasCjk(explicitDescription)) description = explicitDescription;
+  else if (known) description = known.description;
+  else if (moduleDescriptions.some(hasCjk)) description = moduleDescriptions.find(hasCjk);
+  else if (blockTitles.some(hasCjk)) description = `功能包括：${blockTitles.filter(hasCjk).slice(0, 4).join('、')}。`;
+  else if (commandLabels.some(hasCjk)) description = `提供：${commandLabels.filter(hasCjk).slice(0, 4).join('、')}${commandLabels.filter(hasCjk).length > 4 ? '等' : ''}。`;
+  else if (moduleTitles.some(hasCjk)) description = `包含：${moduleTitles.filter(hasCjk).slice(0, 3).join('、')}。`;
+  else if (surfaceTitles.some(hasCjk)) description = `提供「${surfaceTitles.filter(hasCjk).slice(0, 2).join('、')}」界面入口。`;
+  else if (contentTitles.some(hasCjk)) description = `提供「${contentTitles.filter(hasCjk).slice(0, 2).join('、')}」内容类型。`;
+  else description = '提供 DCF 的扩展功能；英文 ID 保留为技术标识。';
+
+  return { title, description };
+}
+
 function createPackageManager(engine, catalog) {
   function packages() {
-    return Object.values(engine.getRoot().packages.packages || {}).sort((a, b) => String(a.package_id).localeCompare(String(b.package_id)));
+    return Object.values(engine.getRoot().packages.packages || {}).sort((a, b) => {
+      const left = packagePresentation(a).title;
+      const right = packagePresentation(b).title;
+      return left.localeCompare(right, 'zh-CN') || String(a.package_id).localeCompare(String(b.package_id));
+    });
   }
   function installJson(text) {
     const parsed = JSON.parse(String(text || '{}'));
@@ -1745,6 +1838,7 @@ function createPackageManager(engine, catalog) {
   }
   return {
     packages,
+    presentation: packagePresentation,
     installJson,
     setEnabled: (id, enabled) => { if (!enabled) assertMutable(id); return engine.setPackageEnabled(id, enabled); },
     uninstall: (id) => { assertMutable(id); return engine.uninstallPackage(id); },
@@ -1754,7 +1848,7 @@ function createPackageManager(engine, catalog) {
   };
 }
 
-module.exports = { createPackageManager };
+module.exports = { createPackageManager, packagePresentation, activePack, LEGACY_PRESENTATION };
 
 },
 "src/modules/module-roles.js":function(module,exports,require){
@@ -2152,8 +2246,8 @@ function createApp(options) {
       :host{all:initial}.sh{position:fixed;right:12px;bottom:var(--bottom,112px);top:auto;width:var(--w,340px);height:min(var(--h,800px),calc(100vh - 24px));z-index:2147483646;background:#fffffff2;color:#111;border:1px solid #9996;border-radius:14px;box-shadow:0 18px 44px #0002;font:13px system-ui;overflow:hidden;box-sizing:border-box;display:flex;flex-direction:column}
       .sh[data-side=left]{left:12px;right:auto}.sh[data-anchor=top]{top:var(--top,12px);bottom:auto}.sh[data-anchor=bottom]{bottom:var(--bottom,112px);top:auto}
       @media(prefers-color-scheme:dark){.sh{background:#171717ee;color:#eee}}
-      button{border:1px solid #9995;border-radius:9px;background:transparent;color:inherit;padding:6px 8px;cursor:pointer}button:hover{background:#8882}button.danger{border-color:#dc262666}.top{height:42px;flex:0 0 42px;display:flex;align-items:center;gap:6px;padding:6px;border-bottom:1px solid #9993;box-sizing:border-box}.top b{margin-right:auto}.tabs{display:flex;gap:5px}.tabs button.on{background:#2563eb22;border-color:#2563eb66}.body{flex:1;min-height:0;overflow:auto;padding:9px;box-sizing:border-box}.card{border:1px solid #9994;border-radius:12px;background:#8881;padding:9px;margin-bottom:9px;box-sizing:border-box}.name{font-weight:700}.mini{font-size:11px;opacity:.7;word-break:break-all}.section-title{font-size:12px;font-weight:700;opacity:.8;margin:12px 2px 7px}.actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}textarea,input,select{width:100%;box-sizing:border-box;border:1px solid #9995;border-radius:9px;background:#fff8;color:inherit;padding:7px}textarea{min-height:120px}.notice{padding:6px 9px;border-bottom:1px solid #9993;font-size:12px}.notice:empty{display:none}.row{display:flex;gap:6px;align-items:center}.row>*{min-width:0}.grow{flex:1}.pkg{padding-top:8px;margin-top:8px;border-top:1px solid #9993}.receipt{font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;word-break:break-word;max-height:180px;overflow:auto}.health-healthy{border-color:#16a34a66}.health-warning{border-color:#d9770666}.health-error{border-color:#dc262666}.state-pill{font-size:10px;padding:2px 6px;border:1px solid #9995;border-radius:999px}.state-pill.daily{border-color:#16a34a66}.state-pill.maintenance{border-color:#2563eb66}
-      details.card{padding:0}details.card>summary{list-style:none;cursor:pointer;padding:9px}details.card>summary::-webkit-details-marker{display:none}details.card>summary:before{content:'▸';display:inline-block;width:16px;opacity:.7}details.card[open]>summary:before{content:'▾'}details.card>.module-body,details.card>.detail-body{padding:0 9px 9px}.module-summary{display:flex;align-items:flex-start;gap:5px}.module-summary .grow{display:block}.module-summary .fold-hint{font-size:10px;opacity:.55;margin-left:auto}.health-count{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;margin-top:6px}
+      button{border:1px solid #9995;border-radius:9px;background:transparent;color:inherit;padding:6px 8px;cursor:pointer}button:hover{background:#8882}button.danger{border-color:#dc262666}.top{height:42px;flex:0 0 42px;display:flex;align-items:center;gap:6px;padding:6px;border-bottom:1px solid #9993;box-sizing:border-box}.top b{margin-right:auto}.tabs{display:flex;gap:5px}.tabs button.on{background:#2563eb22;border-color:#2563eb66}.body{flex:1;min-height:0;overflow:auto;padding:9px;box-sizing:border-box}.card{border:1px solid #9994;border-radius:12px;background:#8881;padding:9px;margin-bottom:9px;box-sizing:border-box}.name{font-weight:700}.mini{font-size:11px;opacity:.7;word-break:break-all}.section-title{font-size:12px;font-weight:700;opacity:.8;margin:12px 2px 7px}.actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}textarea,input{width:100%;box-sizing:border-box;border:1px solid #9995;border-radius:9px;background:#fff8;color:inherit;padding:7px}select{box-sizing:border-box;border:1px solid #9995;border-radius:9px;background:#fff8;color:inherit;padding:6px}textarea{min-height:120px}.notice{padding:6px 9px;border-bottom:1px solid #9993;font-size:12px}.notice:empty{display:none}.row{display:flex;gap:6px;align-items:center}.row>*{min-width:0}.grow{flex:1}.pkg{padding-top:8px;margin-top:8px;border-top:1px solid #9993}.receipt{font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;word-break:break-word;max-height:180px;overflow:auto}.health-healthy{border-color:#16a34a66}.health-warning{border-color:#d9770666}.health-error{border-color:#dc262666}.state-pill{font-size:10px;padding:2px 6px;border:1px solid #9995;border-radius:999px}.state-pill.daily{border-color:#16a34a66}.state-pill.maintenance{border-color:#2563eb66}
+      details.card{padding:0}details.card>summary{list-style:none;cursor:pointer;padding:9px}details.card>summary::-webkit-details-marker{display:none}details.card>summary:before{content:'▸';display:inline-block;width:16px;opacity:.7}details.card[open]>summary:before{content:'▾'}details.card>.module-body,details.card>.detail-body{padding:0 9px 9px}.module-summary{display:flex;align-items:flex-start;gap:5px}.module-summary .grow{display:block}.module-summary .fold-hint{font-size:10px;opacity:.55;margin-left:auto}.health-count{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;margin-top:6px}.package-toolbar{padding:8px}.package-toolbar>.row{align-items:flex-start}.package-toolbar>.row>button{white-space:nowrap}.package-install{margin-top:7px;border-top:1px solid #9993}.package-install>summary{cursor:pointer;padding-top:7px;font-size:11px;opacity:.75}.package-install>.detail-body{padding-top:7px}.package-list{padding:0 9px}.package-card{padding:8px 0;border-bottom:1px solid #9993}.package-card:last-child{border-bottom:0}.package-title-row{display:flex;align-items:center;gap:6px}.package-title-row .name{flex:1;min-width:0}.package-description{font-size:11px;line-height:1.35;opacity:.78;margin-top:2px}.package-id{margin-top:2px}.package-controls{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:6px}.package-controls select{width:auto;min-width:72px;max-width:118px;padding:4px 22px 4px 6px}.package-controls button{padding:4px 7px}.package-version{font:11px ui-monospace,SFMono-Regular,Menlo,monospace;padding:4px 6px;border:1px solid #9994;border-radius:8px}.state-pill.enabled{border-color:#16a34a66}.state-pill.disabled{border-color:#d9770666}.state-pill.required{border-color:#7c3aed66}
     </style><style id="package-style"></style><aside class="sh"><div class="top"></div><div class="notice"></div><div class="body"></div></aside>`;
   doc.documentElement.appendChild(hostElement);
   const shell = root.querySelector('.sh');
@@ -2263,10 +2357,17 @@ function createApp(options) {
 
   function renderPackages() {
     const entries = packageManager.packages();
-    body.innerHTML = `<div class="card"><div class="name">安装包管理</div><div class="mini">这里显示已安装包与版本；它和运行模块、日常功能、维护工具是不同层次。</div><textarea data-role="package-json">${escapeHtml(packageDraft)}</textarea><div class="actions"><button data-action="package-install">安装包</button><button data-action="package-update">检查 GitHub 更新</button></div></div><section data-runtime-section="packages">` + entries.map((entry) => {
+    body.innerHTML = `<div class="card package-toolbar"><div class="row"><span class="grow"><span class="name">安装包管理</span><br><span class="mini">中文名称和功能说明用于日常识别；英文 ID 仅保留为技术标识。</span></span><button data-action="package-update">检查更新</button></div><details class="package-install"><summary>手动安装包</summary><div class="detail-body"><textarea data-role="package-json" placeholder="粘贴 DCF_MODULE_PACK JSON">${escapeHtml(packageDraft)}</textarea><div class="actions"><button data-action="package-install">安装 JSON</button></div></div></details></div><section class="card package-list" data-runtime-section="packages">` + entries.map((entry) => {
       const revisions = Object.keys(entry.revisions || {}).sort();
       const required = packageManager.isRequired(entry.package_id);
-      return `<div class="card" data-package-id="${escapeHtml(entry.package_id)}"><div class="name">${escapeHtml(entry.package_id)}${required ? ' · 核心' : ''}</div><div class="mini">active ${escapeHtml(entry.active_revision)} · ${entry.enabled === false ? 'disabled' : 'enabled'}</div><div class="actions">${required ? '' : `<button data-action="package-toggle" data-id="${escapeHtml(entry.package_id)}">${entry.enabled === false ? '启用' : '停用'}</button>`}<select data-role="package-revision" data-id="${escapeHtml(entry.package_id)}">${revisions.map((revision) => `<option ${revision === entry.active_revision ? 'selected' : ''}>${escapeHtml(revision)}</option>`).join('')}</select><button data-action="package-switch" data-id="${escapeHtml(entry.package_id)}">切换</button>${required ? '' : `<button data-action="package-uninstall" data-id="${escapeHtml(entry.package_id)}" class="danger">卸载</button>`}</div></div>`;
+      const presentation = packageManager.presentation(entry);
+      const enabled = entry.enabled !== false;
+      const stateClass = required ? 'required' : enabled ? 'enabled' : 'disabled';
+      const stateLabel = required ? '核心' : enabled ? '已启用' : '已停用';
+      const revisionControl = revisions.length > 1
+        ? `<select aria-label="选择版本" data-role="package-revision" data-id="${escapeHtml(entry.package_id)}">${revisions.map((revision) => `<option ${revision === entry.active_revision ? 'selected' : ''}>${escapeHtml(revision)}</option>`).join('')}</select><button data-action="package-switch" data-id="${escapeHtml(entry.package_id)}">切换</button>`
+        : `<span class="package-version">v${escapeHtml(entry.active_revision)}</span>`;
+      return `<div class="package-card" data-package-id="${escapeHtml(entry.package_id)}"><div class="package-title-row"><span class="name">${escapeHtml(presentation.title)}</span><span class="state-pill ${stateClass}">${stateLabel}</span></div><div class="package-description">${escapeHtml(presentation.description)}</div><div class="mini package-id">${escapeHtml(entry.package_id)}</div><div class="package-controls">${revisionControl}${required ? '' : `<button data-action="package-toggle" data-id="${escapeHtml(entry.package_id)}">${enabled ? '停用' : '启用'}</button><button data-action="package-uninstall" data-id="${escapeHtml(entry.package_id)}" class="danger">卸载</button>`}</div></div>`;
     }).join('') + '</section>';
   }
 

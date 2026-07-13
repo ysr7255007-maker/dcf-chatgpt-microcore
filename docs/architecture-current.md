@@ -1,7 +1,7 @@
 # DCF 当前架构
 
 Updated: 2026-07-13  
-Current release: `0.11.5`
+Current release: `0.11.6`
 
 ## 1. 价值与工程关系
 
