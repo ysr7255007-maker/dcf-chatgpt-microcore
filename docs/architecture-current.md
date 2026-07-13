@@ -103,3 +103,7 @@ ChatGPT 历史消息虚拟化仍属于二期。
 两者获得完整工件后进入同一个 `dcf.reconcile.result.v1` 路径。成功提交立即重建 registry，并触发当前 UI 重新渲染；失败不改变旧根。
 
 正常产品 UI 逐步由包声明的 `ui-view:*` 资源拥有。`dcf.ui.package-management` 是首个必需的声明式 UI 包，当前负责包管理页标题、文案、操作顺序、密度与样式。Core 只保留安全转义、稳定操作协议和最低恢复渲染器，不执行远程 JavaScript。
+
+## 10. 期望对话环境架构（0.13.0）
+
+`dcf.environment.snapshot.v1` 从唯一权威根和 registry 推导能力构成、用户认知资源、环境政策、产品组织、Profile 与来源，不另建第二状态。所有持久变化先成为 `dcf.intent.v1`，Artifact 只是 Intent 所需材料。Environment Reconciler 统一包、用户资源、政策、Profile 与历史恢复。registry 发布 content/action/view/style/policy 资源图及观察契约。弹药、功能、构成、维护四页均是包拥有的环境投影。Environment Profile 不复制弹药正文；激活 Profile 和恢复快照都属于环境迁移。

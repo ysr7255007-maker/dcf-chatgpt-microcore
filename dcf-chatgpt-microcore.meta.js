@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         DCF ChatGPT Microcore
 // @namespace    https://chatgpt.com/
-// @version      0.12.0
-// @description  DCF capability reconciler with value/reference artifacts, self-updating declarative views, Runtime health checks and bounded reply intake.
+// @version      0.13.0
+// @description  DCF conversation-environment runtime with unified intents, resources, profiles, reconciliation and independent Runtime observation.
 // @updateURL    https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.meta.js
 // @downloadURL  https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.user.js
 // @supportURL   https://github.com/ysr7255007-maker/dcf-chatgpt-microcore

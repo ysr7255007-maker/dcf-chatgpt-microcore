@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         DCF ChatGPT Microcore
 // @namespace    https://chatgpt.com/
-// @version      0.12.0
-// @description  DCF capability reconciler with value/reference artifacts, self-updating declarative views, Runtime health checks and bounded reply intake.
+// @version      0.13.0
+// @description  DCF conversation-environment runtime with unified intents, resources, profiles, reconciliation and independent Runtime observation.
 // @updateURL    https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.meta.js
 // @downloadURL  https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.user.js
 // @supportURL   https://github.com/ysr7255007-maker/dcf-chatgpt-microcore
@@ -112,7 +112,7 @@ module.exports = {
 "src/core/constants.js":function(module,exports,require){
 'use strict';
 
-const VERSION = '0.12.0';
+const VERSION = '0.13.0';
 const ROOT_KEY = 'dcf.state.root.v1';
 const SNAPSHOT_KEY = 'dcf.state.snapshots.v1';
 const RUNTIME_KEY = 'dcf.runtime.registry.v3';
@@ -148,13 +148,35 @@ module.exports = {
 
 const { clone, isObject, safeId } = require("src/core/utils.js");
 
+const RESOURCE_FAMILIES = { content: 'content', action: 'action', view: 'view', style: 'style', policy: 'policy' };
+
+function resourceFamily(address) {
+  const value = String(address || '');
+  if (value.startsWith('content:') || value.startsWith('content-type:')) return RESOURCE_FAMILIES.content;
+  if (value.startsWith('module:')) return RESOURCE_FAMILIES.action;
+  if (value.startsWith('surface:') || value.startsWith('ui-view:') || value.startsWith('module-display:')) return RESOURCE_FAMILIES.view;
+  if (value.startsWith('appearance-') || value.startsWith('appearance-var:') || value.startsWith('style:')) return RESOURCE_FAMILIES.style;
+  return RESOURCE_FAMILIES.policy;
+}
+
+function observationContract(address) {
+  const family = resourceFamily(address);
+  if (family === 'action') return { registry: 'modules', runtime: 'module-entry' };
+  if (family === 'view') return { registry: 'uiViews/surfaces/moduleDisplay', runtime: 'view-entry' };
+  if (family === 'content') return { registry: 'content/contentTypes', runtime: 'content-entry' };
+  if (family === 'style') return { registry: 'appearance', runtime: 'computed-style' };
+  return { registry: 'settings/policies', runtime: 'state-only' };
+}
+
 function normalizeClaim(address, value, provider, mode = 'exclusive', replaces = []) {
   return {
     address: String(address),
     value: clone(value),
     provider: String(provider),
     mode: mode === 'extend' ? 'extend' : 'exclusive',
-    replaces: Array.isArray(replaces) ? replaces.map(String) : []
+    replaces: Array.isArray(replaces) ? replaces.map(String) : [],
+    family: resourceFamily(address),
+    observation: observationContract(address)
   };
 }
 
@@ -224,6 +246,9 @@ function normalizePack(pack, fallbackId, fallbackRevision) {
   }
   for (const [key, value] of Object.entries(isObject(contributions.settings) ? contributions.settings : {})) {
     claims.push(normalizeClaim(`setting-default:${key}`, value, provider, 'exclusive', replaces));
+  }
+  for (const [key, value] of Object.entries(isObject(contributions.policies) ? contributions.policies : {})) {
+    claims.push(normalizeClaim(`policy-default:${key}`, value, provider, 'exclusive', replaces));
   }
   for (const [type, items] of Object.entries(isObject(contributions.content) ? contributions.content : {})) {
     const list = Array.isArray(items) ? items : Object.values(isObject(items) ? items : {});
@@ -315,10 +340,302 @@ function compilePackageSet(packageState) {
     };
   }
   const claims = resolveClaims(allClaims, ownership, errors);
-  return { ok: errors.length === 0, errors, claims, ownership, styles, activePackages };
+  const resources = Array.from(claims.entries()).map(([address, claim]) => ({ address, family: claim.family || resourceFamily(address), provider: claim.provider, observation: clone(claim.observation || observationContract(address)) }));
+  return { ok: errors.length === 0, errors, claims, ownership, styles, activePackages, resourceGraph: { schema: 'dcf.environment.resource-graph.v1', resources } };
 }
 
-module.exports = { normalizePack, compilePackageSet, styleViolations, resolveClaims };
+module.exports = { RESOURCE_FAMILIES, resourceFamily, observationContract, normalizePack, compilePackageSet, styleViolations, resolveClaims };
+
+},
+"src/core/environment.js":function(module,exports,require){
+'use strict';
+
+const { clone, isObject, nowIso } = require("src/core/utils.js");
+
+function packageSelections(root) {
+  const packages = root && root.packages && root.packages.packages || {};
+  return Object.values(packages).map((entry) => ({
+    package_id: String(entry.package_id),
+    active_revision: String(entry.active_revision || ''),
+    enabled: entry.enabled !== false
+  })).sort((a, b) => a.package_id.localeCompare(b.package_id));
+}
+
+function contentIndex(root) {
+  const result = {};
+  const content = root && root.user && root.user.content || {};
+  for (const [type, items] of Object.entries(isObject(content) ? content : {})) {
+    result[type] = Object.values(isObject(items) ? items : {}).map((item) => ({
+      id: String(item && item.id || ''),
+      title: String(item && (item.title || item.id) || '')
+    })).filter((item) => item.id).sort((a, b) => a.id.localeCompare(b.id));
+  }
+  return result;
+}
+
+function profileItems(root) {
+  const profiles = root && root.user && root.user.environmentProfiles || {};
+  return Object.values(isObject(profiles) ? profiles : {}).map((profile) => ({
+    id: String(profile.id),
+    title: String(profile.title || profile.id),
+    saved_at: profile.saved_at || null,
+    package_count: Object.keys(profile.package_selection || {}).length
+  })).sort((a, b) => a.title.localeCompare(b.title, 'zh-CN') || a.id.localeCompare(b.id));
+}
+
+function environmentSnapshot(root, registry) {
+  const user = root && root.user || {};
+  const build = registry && registry.build || {};
+  return {
+    schema: 'dcf.environment.snapshot.v1',
+    state: {
+      revision: Number(root && root.revision || 0),
+      state_hash: String(root && root.state_hash || ''),
+      kernel_version: String(root && root.kernel_version || '')
+    },
+    packages: packageSelections(root),
+    capabilities: {
+      packages: packageSelections(root)
+    },
+    user_resources: {
+      content: contentIndex(root)
+    },
+    policies: {
+      settings: clone(user.settings || {}),
+      preferences: clone(user.preferences || {})
+    },
+    presentation: {
+      appearance: clone(user.appearance || {}),
+      module_display: clone(user.moduleDisplay || {}),
+      views: clone(registry && registry.uiViews || {})
+    },
+    profiles: {
+      active_id: user.active_environment_profile || null,
+      items: profileItems(root)
+    },
+    provenance: {
+      active_packages: clone(registry && registry.installedPacks || {}),
+      resource_ownership: clone(build.resource_ownership || {})
+    },
+    runtime: {
+      registry_schema: registry && registry.schema || null,
+      build_id: build.build_id || null,
+      resource_graph_schema: registry && registry.resources && registry.resources.schema || null
+    }
+  };
+}
+
+function captureEnvironmentProfile(root, id, title) {
+  const packageSelection = {};
+  for (const entry of packageSelections(root)) {
+    packageSelection[entry.package_id] = {
+      active_revision: entry.active_revision,
+      enabled: entry.enabled
+    };
+  }
+  const user = root.user || {};
+  return {
+    schema: 'dcf.environment.profile.v1',
+    id: String(id),
+    title: String(title || id),
+    saved_at: nowIso(),
+    package_selection: packageSelection,
+    policies: {
+      settings: clone(user.settings || {}),
+      preferences: clone(user.preferences || {})
+    },
+    presentation: {
+      appearance: clone(user.appearance || {}),
+      moduleDisplay: clone(user.moduleDisplay || {})
+    }
+  };
+}
+
+function applyEnvironmentProfile(candidate, profile) {
+  if (!profile || profile.schema !== 'dcf.environment.profile.v1') throw new Error('invalid environment profile');
+  let packageChanged = false;
+  for (const [packageId, selection] of Object.entries(profile.package_selection || {})) {
+    const entry = candidate.packages.packages[packageId];
+    if (!entry) throw new Error(`profile package ${packageId} is not installed`);
+    const revision = String(selection.active_revision || '');
+    if (!entry.revisions || !entry.revisions[revision]) throw new Error(`profile package revision ${packageId}@${revision} is not installed`);
+    if (entry.active_revision !== revision || entry.enabled !== (selection.enabled !== false)) packageChanged = true;
+    entry.active_revision = revision;
+    entry.enabled = selection.enabled !== false;
+  }
+  if (packageChanged) candidate.packages.revision += 1;
+  candidate.user.settings = clone(profile.policies && profile.policies.settings || {});
+  candidate.user.preferences = clone(profile.policies && profile.policies.preferences || {});
+  candidate.user.appearance = clone(profile.presentation && profile.presentation.appearance || candidate.user.appearance || {});
+  candidate.user.moduleDisplay = clone(profile.presentation && profile.presentation.moduleDisplay || {});
+  candidate.user.active_environment_profile = String(profile.id);
+  candidate.user.revision += 1;
+}
+
+module.exports = {
+  environmentSnapshot,
+  packageSelections,
+  captureEnvironmentProfile,
+  applyEnvironmentProfile
+};
+
+},
+"src/core/intents.js":function(module,exports,require){
+'use strict';
+
+const { clone, isObject, nowIso, safeId } = require("src/core/utils.js");
+const { captureEnvironmentProfile, applyEnvironmentProfile } = require("src/core/environment.js");
+
+const ENVIRONMENT_INTENT_TYPES = new Set([
+  'environment.package.install',
+  'environment.package.enable',
+  'environment.package.remove',
+  'environment.package.select',
+  'environment.resource.upsert',
+  'environment.resource.remove',
+  'environment.user.set',
+  'environment.profile.save',
+  'environment.profile.activate',
+  'environment.profile.remove',
+  'environment.restore'
+]);
+
+function normalizeEnvironmentIntent(intent) {
+  if (!isObject(intent) || !ENVIRONMENT_INTENT_TYPES.has(String(intent.type || ''))) {
+    throw new Error(`unsupported environment intent ${intent && intent.type || '<missing>'}`);
+  }
+  return Object.assign({ schema: 'dcf.intent.v1', intent_id: `i-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}` }, clone(intent));
+}
+
+function normalizeActionIntent(intent) {
+  if (!isObject(intent) || !String(intent.type || '').startsWith('action.')) throw new Error('invalid action intent');
+  return Object.assign({ schema: 'dcf.intent.v1', intent_id: `a-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}` }, clone(intent));
+}
+
+function artifactToEnvironmentInput(artifact, source) {
+  if (!artifact || !artifact.type) throw new Error('artifact missing');
+  if (artifact.type === 'ammo') {
+    return {
+      intent: normalizeEnvironmentIntent({
+        type: 'environment.resource.upsert',
+        resource_type: 'ammo',
+        resource_id: artifact.payload.id,
+        source: clone(source || {})
+      }),
+      material: { value: clone(artifact.payload), artifact_identity: artifact.identity, logical_id: artifact.logical_id }
+    };
+  }
+  if (artifact.type === 'package') {
+    return {
+      intent: normalizeEnvironmentIntent({
+        type: 'environment.package.install',
+        package_id: artifact.payload.pack_id,
+        revision: artifact.payload.revision,
+        source: clone(source || {})
+      }),
+      material: { pack: clone(artifact.payload), source: clone(source || {}), artifact_identity: artifact.identity, logical_id: artifact.logical_id }
+    };
+  }
+  if (artifact.type === 'package-reference') {
+    return {
+      intent: { schema: 'dcf.intent.v1', type: 'environment.package.resolve', package_id: artifact.payload.package_id, target: artifact.payload.target, channel: artifact.payload.channel, source: clone(source || {}) },
+      material: { reference: clone(artifact.payload), artifact_identity: artifact.identity, logical_id: artifact.logical_id }
+    };
+  }
+  throw new Error(`unsupported artifact type ${artifact.type}`);
+}
+
+function setPath(target, path, value) {
+  let cursor = target;
+  for (let index = 0; index < path.length - 1; index += 1) {
+    const key = path[index];
+    cursor[key] = isObject(cursor[key]) ? cursor[key] : {};
+    cursor = cursor[key];
+  }
+  cursor[path[path.length - 1]] = clone(value);
+}
+
+function markProfileDrift(candidate, type) {
+  if (!type.startsWith('environment.profile.') && type !== 'environment.restore') candidate.user.active_environment_profile = null;
+}
+
+function applyEnvironmentTransition(candidate, intent, material, helpers) {
+  const normalized = normalizeEnvironmentIntent(intent);
+  const payload = material || {};
+  markProfileDrift(candidate, normalized.type);
+
+  if (normalized.type === 'environment.package.install') {
+    helpers.addPackRevision(candidate, payload.pack, payload.source || normalized.source || {});
+  } else if (normalized.type === 'environment.package.enable') {
+    const entry = candidate.packages.packages[normalized.package_id];
+    if (!entry) throw new Error(`package ${normalized.package_id} not installed`);
+    entry.enabled = normalized.enabled !== false;
+    candidate.packages.revision += 1;
+  } else if (normalized.type === 'environment.package.remove') {
+    if (!candidate.packages.packages[normalized.package_id]) throw new Error(`package ${normalized.package_id} not installed`);
+    delete candidate.packages.packages[normalized.package_id];
+    candidate.packages.revision += 1;
+  } else if (normalized.type === 'environment.package.select') {
+    const entry = candidate.packages.packages[normalized.package_id];
+    const revision = String(normalized.revision || '');
+    if (!entry || !entry.revisions || !entry.revisions[revision]) throw new Error(`package revision ${normalized.package_id}@${revision} missing`);
+    entry.active_revision = revision;
+    entry.enabled = true;
+    candidate.packages.revision += 1;
+  } else if (normalized.type === 'environment.resource.upsert') {
+    const type = String(normalized.resource_type);
+    const id = String(normalized.resource_id);
+    candidate.user.content[type] = candidate.user.content[type] || {};
+    candidate.user.content[type][id] = clone(payload.value);
+    candidate.user.revision += 1;
+  } else if (normalized.type === 'environment.resource.remove') {
+    const type = String(normalized.resource_type);
+    const id = String(normalized.resource_id);
+    if (candidate.user.content[type]) delete candidate.user.content[type][id];
+    candidate.user.revision += 1;
+  } else if (normalized.type === 'environment.user.set') {
+    const path = Array.isArray(normalized.path) ? normalized.path.map(String) : String(normalized.path || '').split('.').filter(Boolean);
+    if (!path.length) throw new Error('environment.user.set path missing');
+    setPath(candidate.user, path, payload.value);
+    candidate.user.revision += 1;
+  } else if (normalized.type === 'environment.profile.save') {
+    const title = String(normalized.title || '当前环境');
+    const id = String(normalized.profile_id || safeId(title) || `profile-${Date.now().toString(36)}`);
+    const profile = captureEnvironmentProfile(candidate, id, title);
+    candidate.user.environmentProfiles[id] = profile;
+    candidate.user.active_environment_profile = id;
+    candidate.user.revision += 1;
+  } else if (normalized.type === 'environment.profile.activate') {
+    const profile = candidate.user.environmentProfiles[normalized.profile_id];
+    if (!profile) throw new Error(`environment profile ${normalized.profile_id} missing`);
+    applyEnvironmentProfile(candidate, profile);
+  } else if (normalized.type === 'environment.profile.remove') {
+    if (!candidate.user.environmentProfiles[normalized.profile_id]) throw new Error(`environment profile ${normalized.profile_id} missing`);
+    delete candidate.user.environmentProfiles[normalized.profile_id];
+    if (candidate.user.active_environment_profile === normalized.profile_id) candidate.user.active_environment_profile = null;
+    candidate.user.revision += 1;
+  } else if (normalized.type === 'environment.restore') {
+    const restored = clone(payload.root);
+    for (const key of Object.keys(candidate)) delete candidate[key];
+    Object.assign(candidate, restored);
+  }
+
+  return {
+    observations: [{
+      schema: 'dcf.environment.transition.v1',
+      intent_type: normalized.type,
+      planned_at: nowIso()
+    }]
+  };
+}
+
+module.exports = {
+  ENVIRONMENT_INTENT_TYPES,
+  normalizeEnvironmentIntent,
+  normalizeActionIntent,
+  artifactToEnvironmentInput,
+  applyEnvironmentTransition
+};
 
 },
 "src/core/projection.js":function(module,exports,require){
@@ -340,6 +657,7 @@ function buildProjection(root) {
   const modules = [];
   const moduleDisplayDefaults = {};
   const settingDefaults = {};
+  const policyDefaults = {};
 
   for (const [address, claim] of claims.entries()) {
     if (address === 'appearance-side') continue;
@@ -350,6 +668,7 @@ function buildProjection(root) {
     else if (address.startsWith('module:')) modules.push(clone(claim.value));
     else if (address.startsWith('module-display:')) moduleDisplayDefaults[address.slice(15)] = clone(claim.value);
     else if (address.startsWith('setting-default:')) settingDefaults[address.slice(16)] = clone(claim.value);
+    else if (address.startsWith('policy-default:')) policyDefaults[address.slice(15)] = clone(claim.value);
     else if (address.startsWith('content:')) {
       const rest = address.slice(8);
       const split = rest.indexOf(':');
@@ -394,10 +713,12 @@ function buildProjection(root) {
     modules,
     moduleDisplay: deepMerge(moduleDisplayDefaults, user.moduleDisplay || {}),
     settings: Object.assign({}, settingDefaults, clone(user.settings || {})),
+    policies: Object.assign({}, policyDefaults, clone(user.preferences || {})),
+    resources: clone(compiled.resourceGraph),
     installedPacks: compiled.activePackages,
     build: {
       schema: 'dcf.build.result.v2',
-      build_id: hash({ state_hash: root.state_hash, active: compiled.activePackages, ownership: compiled.ownership }),
+      build_id: hash({ state_hash: root.state_hash, active: compiled.activePackages, ownership: compiled.ownership, resources: compiled.resourceGraph }),
       resource_ownership: compiled.ownership,
       conflicts: []
     }
@@ -432,7 +753,9 @@ const EMPTY_ROOT = {
     settings: {},
     content: { ammo: {} },
     moduleDisplay: {},
-    preferences: { ammo_fire_mode: 'insert' }
+    preferences: { ammo_fire_mode: 'insert' },
+    environmentProfiles: {},
+    active_environment_profile: null
   },
   system: {
     schema: 'dcf.system.state.v1',
@@ -454,6 +777,8 @@ function normalizeRoot(value) {
   root.user.content.ammo = isObject(root.user.content.ammo) ? root.user.content.ammo : {};
   root.user.settings = isObject(root.user.settings) ? root.user.settings : {};
   root.user.moduleDisplay = isObject(root.user.moduleDisplay) ? root.user.moduleDisplay : {};
+  root.user.environmentProfiles = isObject(root.user.environmentProfiles) ? root.user.environmentProfiles : {};
+  root.user.active_environment_profile = root.user.active_environment_profile || null;
   root.system = deepMerge(EMPTY_ROOT.system, root.system || {});
   root.system.artifact_index = isObject(root.system.artifact_index) ? root.system.artifact_index : {};
   root.state_hash = computeStateHash(root);
@@ -580,7 +905,7 @@ function hasMeaningfulRoot(root) {
   const packageCount = Object.keys(root.packages && root.packages.packages || {}).length;
   const user = root.user || {};
   const contentCount = Object.values(user.content || {}).reduce((sum, items) => sum + Object.keys(isObject(items) ? items : {}).length, 0);
-  return packageCount > 0 || contentCount > 0 || Object.keys(user.settings || {}).length > 0 || Object.keys(user.moduleDisplay || {}).length > 0 || Object.keys(user.appearance && user.appearance.vars || {}).length > 0 || !!(user.appearance && (user.appearance.side || user.appearance.css));
+  return packageCount > 0 || contentCount > 0 || Object.keys(user.settings || {}).length > 0 || Object.keys(user.moduleDisplay || {}).length > 0 || Object.keys(user.environmentProfiles || {}).length > 0 || Object.keys(user.appearance && user.appearance.vars || {}).length > 0 || !!(user.appearance && (user.appearance.side || user.appearance.css));
 }
 
 function readLegacyRootFromBackend(storage, backend) {
@@ -866,6 +1191,8 @@ const { ROOT_KEY, SNAPSHOT_KEY, RUNTIME_KEY } = require("src/core/constants.js")
 const { clone, nowIso, boundedPush } = require("src/core/utils.js");
 const { finalizeCandidate, validateRoot, addPackRevision } = require("src/core/state.js");
 const { buildProjection } = require("src/core/projection.js");
+const { environmentSnapshot } = require("src/core/environment.js");
+const { normalizeEnvironmentIntent, artifactToEnvironmentInput, applyEnvironmentTransition } = require("src/core/intents.js");
 
 function createTransactionEngine(storage, receiptStore, options = {}) {
   const snapshotLimit = Number(options.snapshotLimit || 20);
@@ -940,110 +1267,94 @@ function createTransactionEngine(storage, receiptStore, options = {}) {
     storage.set(ROOT_KEY, finalized);
     root = finalized;
     persistProjection(built.registry);
-    const receipt = receiptStore.append({
+    return receiptStore.append({
       schema: 'dcf.receipt.v1', receipt_id: `r-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
       intent: clone(intent), status: 'committed', previous_revision: previous.revision, revision: finalized.revision,
       previous_state_hash: previous.state_hash, state_hash: finalized.state_hash, build_id: built.registry.build.build_id,
       effects: clone(reduction.effects || []), observations: clone(reduction.observations || []), duration_ms: Date.now() - started
     });
-    return receipt;
+  }
+
+  function applyEnvironmentIntent(intent, material = {}) {
+    const normalized = normalizeEnvironmentIntent(intent);
+    if (material.artifact_identity && root.system.artifact_index[material.artifact_identity]) {
+      return receiptStore.append({
+        schema: 'dcf.receipt.v1',
+        intent: clone(normalized),
+        status: 'ignored',
+        reason: 'already-applied',
+        artifact_identity: material.artifact_identity
+      });
+    }
+    return transact(normalized, (candidate) => {
+      const reduction = applyEnvironmentTransition(candidate, normalized, material, { addPackRevision });
+      if (material.artifact_identity) recordArtifact(candidate, material.artifact_identity, material.logical_id);
+      return reduction;
+    });
   }
 
   function installPackage(pack, source) {
-    return transact({ type: 'package.install', package_id: pack.pack_id, revision: pack.revision, source }, (candidate) => {
-      addPackRevision(candidate, pack, source);
-      return {};
-    });
+    return applyEnvironmentIntent({ type: 'environment.package.install', package_id: pack.pack_id, revision: pack.revision, source }, { pack, source });
   }
 
   function setPackageEnabled(packageId, enabled) {
-    return transact({ type: enabled ? 'package.enable' : 'package.disable', package_id: packageId }, (candidate) => {
-      const entry = candidate.packages.packages[packageId];
-      if (!entry) throw new Error(`package ${packageId} not installed`);
-      entry.enabled = !!enabled;
-      candidate.packages.revision += 1;
-    });
+    return applyEnvironmentIntent({ type: 'environment.package.enable', package_id: packageId, enabled: !!enabled });
   }
 
   function uninstallPackage(packageId) {
-    return transact({ type: 'package.uninstall', package_id: packageId }, (candidate) => {
-      if (!candidate.packages.packages[packageId]) throw new Error(`package ${packageId} not installed`);
-      delete candidate.packages.packages[packageId];
-      candidate.packages.revision += 1;
-    });
+    return applyEnvironmentIntent({ type: 'environment.package.remove', package_id: packageId });
   }
 
   function switchPackageRevision(packageId, revision) {
-    return transact({ type: 'package.switch-revision', package_id: packageId, revision }, (candidate) => {
-      const entry = candidate.packages.packages[packageId];
-      if (!entry || !entry.revisions || !entry.revisions[revision]) throw new Error(`package revision ${packageId}@${revision} missing`);
-      entry.active_revision = revision;
-      entry.enabled = true;
-      candidate.packages.revision += 1;
-    });
+    return applyEnvironmentIntent({ type: 'environment.package.select', package_id: packageId, revision });
   }
 
   function upsertContent(type, item, artifactIdentity) {
-    return transact({ type: 'content.upsert', content_type: type, content_id: item.id, artifact_identity: artifactIdentity }, (candidate) => {
-      candidate.user.content[type] = candidate.user.content[type] || {};
-      candidate.user.content[type][item.id] = clone(item);
-      candidate.user.revision += 1;
-      if (artifactIdentity) recordArtifact(candidate, artifactIdentity, `${type}:${item.id}`);
-    });
+    return applyEnvironmentIntent({ type: 'environment.resource.upsert', resource_type: type, resource_id: item.id }, { value: item, artifact_identity: artifactIdentity, logical_id: `${type}:${item.id}` });
   }
 
   function removeContent(type, id) {
-    return transact({ type: 'content.remove', content_type: type, content_id: id }, (candidate) => {
-      if (candidate.user.content[type]) delete candidate.user.content[type][id];
-      candidate.user.revision += 1;
-    });
+    return applyEnvironmentIntent({ type: 'environment.resource.remove', resource_type: type, resource_id: id });
   }
 
   function setUserPath(path, value) {
-    return transact({ type: 'user.set', path: path.join('.') }, (candidate) => {
-      let cursor = candidate.user;
-      for (let i = 0; i < path.length - 1; i += 1) {
-        cursor[path[i]] = cursor[path[i]] && typeof cursor[path[i]] === 'object' ? cursor[path[i]] : {};
-        cursor = cursor[path[i]];
-      }
-      cursor[path[path.length - 1]] = clone(value);
-      candidate.user.revision += 1;
-    });
+    return applyEnvironmentIntent({ type: 'environment.user.set', path: path.slice() }, { value });
   }
 
   function applyArtifact(artifact, source) {
-    if (root.system.artifact_index[artifact.identity]) {
-      return receiptStore.append({
-        schema: 'dcf.receipt.v1', receipt_id: `r-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
-        intent: { type: 'artifact.apply', artifact_identity: artifact.identity, source }, status: 'ignored', reason: 'already-applied'
-      });
+    if (artifact.type === 'package-reference') {
+      return receiptStore.append({ schema: 'dcf.receipt.v1', intent: { type: 'environment.package.resolve' }, status: 'rejected', error: 'package reference requires resolver' });
     }
-    if (artifact.type === 'ammo') return upsertContent('ammo', artifact.payload, artifact.identity);
-    if (artifact.type === 'package') {
-      return transact({ type: 'artifact.apply', artifact_type: 'package', artifact_identity: artifact.identity, source }, (candidate) => {
-        addPackRevision(candidate, artifact.payload, source);
-        recordArtifact(candidate, artifact.identity, artifact.logical_id);
-      });
-    }
-    return receiptStore.append({ schema: 'dcf.receipt.v1', intent: { type: 'artifact.apply' }, status: 'rejected', error: `unsupported artifact type ${artifact.type}` });
+    const input = artifactToEnvironmentInput(artifact, source);
+    return applyEnvironmentIntent(input.intent, input.material);
   }
 
   function rollbackTo(snapshotRevision) {
     const record = snapshots().slice().reverse().find((item) => Number(item.revision) === Number(snapshotRevision));
-    if (!record) return receiptStore.append({ schema: 'dcf.receipt.v1', intent: { type: 'state.rollback', revision: snapshotRevision }, status: 'rejected', error: 'snapshot not found' });
-    return transact({ type: 'state.rollback', revision: snapshotRevision }, (candidate) => {
-      const restored = clone(record.root);
-      for (const key of Object.keys(candidate)) delete candidate[key];
-      Object.assign(candidate, restored);
-    });
+    if (!record) return receiptStore.append({ schema: 'dcf.receipt.v1', intent: { type: 'environment.restore', revision: snapshotRevision }, status: 'rejected', error: 'snapshot not found' });
+    return applyEnvironmentIntent({ type: 'environment.restore', revision: snapshotRevision }, { root: record.root });
+  }
+
+  function saveEnvironmentProfile(title, profileId) {
+    return applyEnvironmentIntent({ type: 'environment.profile.save', title, profile_id: profileId });
+  }
+
+  function activateEnvironmentProfile(profileId) {
+    return applyEnvironmentIntent({ type: 'environment.profile.activate', profile_id: profileId });
+  }
+
+  function removeEnvironmentProfile(profileId) {
+    return applyEnvironmentIntent({ type: 'environment.profile.remove', profile_id: profileId });
   }
 
   function getRoot() { return root; }
   function getRegistry() { return registry; }
+  function getEnvironment() { return environmentSnapshot(root, registry); }
 
   return {
     initialize,
     transact,
+    applyEnvironmentIntent,
     installPackage,
     setPackageEnabled,
     uninstallPackage,
@@ -1053,9 +1364,13 @@ function createTransactionEngine(storage, receiptStore, options = {}) {
     setUserPath,
     applyArtifact,
     rollbackTo,
+    saveEnvironmentProfile,
+    activateEnvironmentProfile,
+    removeEnvironmentProfile,
     snapshots,
     getRoot,
-    getRegistry
+    getRegistry,
+    getEnvironment
   };
 }
 
@@ -1328,45 +1643,33 @@ module.exports = { createCommandRunner, commandList, sanitizeValue };
 'use strict';
 
 const { clone, nowIso } = require("src/core/utils.js");
+const { artifactToEnvironmentInput, normalizeEnvironmentIntent } = require("src/core/intents.js");
 
 function createCapabilityReconciler(engine, catalog, receiptStore, options = {}) {
   let lastResult = null;
 
   function desiredState() {
-    const packages = engine.getRoot().packages && engine.getRoot().packages.packages || {};
-    return {
-      schema: 'dcf.desired.capabilities.v1',
-      state_revision: engine.getRoot().revision,
-      packages: Object.values(packages).map((entry) => ({
-        package_id: entry.package_id,
-        active_revision: entry.active_revision,
-        enabled: entry.enabled !== false
-      })).sort((a, b) => String(a.package_id).localeCompare(String(b.package_id)))
-    };
+    return engine.getEnvironment();
   }
 
-  function activationFor(artifact, status) {
+  function activationFor(intent, status) {
     if (status !== 'committed') return 'none';
-    if (artifact.type === 'package') return 'runtime-reprojected';
-    if (artifact.type === 'ammo') return 'content-projected';
-    return 'none';
+    if (String(intent.type).startsWith('environment.resource.')) return 'content-projected';
+    return 'runtime-reprojected';
   }
 
-  function applyResolved(resolved, sourceOverride) {
-    const artifact = resolved && resolved.artifact || resolved;
-    if (!artifact || artifact.type === 'package-reference') throw new Error('resolved artifact must contain value payload');
-    const source = sourceOverride || resolved && resolved.source || { kind: 'resolved-artifact' };
-    const receipt = engine.applyArtifact(artifact, source);
+  function resultFor(intent, receipt, metadata = {}) {
     const result = {
       schema: 'dcf.reconcile.result.v1',
+      environment_schema: 'dcf.environment.reconcile.result.v1',
       at: nowIso(),
-      input_mode: resolved && resolved.input_mode || 'value',
-      artifact_type: artifact.type,
-      package_id: artifact.type === 'package' ? artifact.payload.pack_id : null,
-      revision: artifact.type === 'package' ? artifact.payload.revision : null,
+      input_mode: metadata.input_mode || 'intent',
+      intent_type: intent.type,
+      package_id: intent.package_id || null,
+      revision: intent.revision || metadata.revision || null,
       status: receipt.status,
-      activation: activationFor(artifact, receipt.status),
-      desired_state_revision: engine.getRoot().revision,
+      activation: activationFor(intent, receipt.status),
+      environment_revision: engine.getRoot().revision,
       receipt
     };
     lastResult = clone(result);
@@ -1374,29 +1677,32 @@ function createCapabilityReconciler(engine, catalog, receiptStore, options = {})
     return result;
   }
 
+  function acceptIntent(intent, material = {}, metadata = {}) {
+    const normalized = normalizeEnvironmentIntent(intent);
+    const receipt = engine.applyEnvironmentIntent(normalized, material);
+    return resultFor(normalized, receipt, metadata);
+  }
+
+  function applyResolved(resolved) {
+    const artifact = resolved && resolved.artifact || resolved;
+    if (!artifact || artifact.type === 'package-reference') throw new Error('resolved artifact must contain value payload');
+    const input = artifactToEnvironmentInput(artifact, resolved && resolved.source || { kind: 'resolved-artifact' });
+    return acceptIntent(input.intent, input.material, {
+      input_mode: resolved && resolved.input_mode || 'value',
+      revision: artifact.type === 'package' ? artifact.payload.revision : null
+    });
+  }
+
   function rejectReference(artifact, source, error) {
     const message = String(error && error.message || error);
     const receipt = receiptStore.append({
       schema: 'dcf.receipt.v1',
-      intent: { type: 'capability.reconcile', input_mode: 'reference', package_id: artifact.payload.package_id, target: artifact.payload.target, source: clone(source || {}) },
+      intent: { type: 'environment.package.resolve', input_mode: 'reference', package_id: artifact.payload.package_id, target: artifact.payload.target, source: clone(source || {}) },
       status: 'rejected',
       stage: 'resolve',
       error: message
     });
-    const result = {
-      schema: 'dcf.reconcile.result.v1',
-      at: nowIso(),
-      input_mode: 'reference',
-      artifact_type: 'package-reference',
-      package_id: artifact.payload.package_id,
-      revision: null,
-      status: 'rejected',
-      activation: 'none',
-      desired_state_revision: engine.getRoot().revision,
-      receipt
-    };
-    lastResult = clone(result);
-    return result;
+    return resultFor({ type: 'environment.package.resolve', package_id: artifact.payload.package_id }, receipt, { input_mode: 'reference' });
   }
 
   function accept(artifact, source = {}) {
@@ -1406,6 +1712,7 @@ function createCapabilityReconciler(engine, catalog, receiptStore, options = {})
 
   return {
     accept,
+    acceptIntent,
     applyResolved,
     desiredState,
     lastResult: () => clone(lastResult)
@@ -1701,21 +2008,37 @@ module.exports = { createChatGPTHost };
 "src/modules/standard-packages.js":function(module,exports,require){
 'use strict';
 
-const REQUIRED_PRODUCT_PACKAGES = ['dcf.standard.ammo', 'dcf.ui.package-management'];
+const REQUIRED_PRODUCT_PACKAGES = ['dcf.standard.ammo', 'dcf.ui.package-management', 'dcf.ui.runtime-workspace'];
 
 const STANDARD_PACKS = [
   {
     schema: 'dcf.module_pack.v1',
     pack_id: 'dcf.standard.ammo',
-    revision: '1.0.0',
+    revision: '1.1.0',
     title: '语言弹药核心',
     description: '提供语言弹药内容、主入口和低摩擦发射能力。',
     contributes: {
       content_types: [{ id: 'ammo', marker: 'DCF_AMMO', title: '语言弹药', body_field: 'body', actions: ['fire', 'copy', 'update', 'delete'] }],
       surfaces: [{ id: 'dcf.ammo', title: '弹药', area: 'primary', order: 10, kind: 'content-list', content_type: 'ammo' }],
+      ui_views: [{ id: 'ammo', kind: 'content', projection: 'content:ammo', tab_label: '弹药', title: '语言弹药', description: '自动提取、自动装填、更新与发射。', order: 10 }],
       appearance: { side: 'right', vars: { w: '340px', h: '800px', top: '12px', bottom: '112px', anchor: 'bottom' } }
     },
-    modules: [{ id: 'dcf.ammo.module', title: '语言弹药', version: '1.0.0', kind: 'ammo' }]
+    modules: [{ id: 'dcf.ammo.module', title: '语言弹药', version: '1.1.0', kind: 'ammo' }]
+  },
+  {
+    schema: 'dcf.module_pack.v1',
+    pack_id: 'dcf.ui.runtime-workspace',
+    revision: '1.0.0',
+    title: '对话环境工作区',
+    description: '把日常功能和维护观察呈现为同一期望对话环境的行动与观察视图。',
+    contributes: {
+      ui_views: [
+        { id: 'functions', kind: 'actions', projection: 'actions:daily', tab_label: '功能', title: '日常功能', description: '主力能力始终保留入口；点击模块标题展开或收起具体操作。', order: 20 },
+        { id: 'maintenance', kind: 'observation', projection: 'runtime:observation', tab_label: '维护', title: '环境观察与恢复', description: '观察期望环境在真实浏览器 Runtime 中是否成立，并提供恢复入口。', order: 40 }
+      ],
+      policies: { activation_mode: 'live-when-safe' }
+    },
+    modules: []
   },
   {
     schema: 'dcf.module_pack.v1',
@@ -1727,23 +2050,16 @@ const STANDARD_PACKS = [
       ui_views: [{
         id: 'packages',
         kind: 'package-management',
+        projection: 'environment:capabilities',
         tab_label: '包管理',
         title: '安装包管理',
         description: '中文名称和功能说明用于日常识别；英文 ID 仅保留为技术标识。',
+        order: 30,
         density: 'compact',
         show_technical_id: true,
         manual_install: 'folded',
         control_order: ['revision', 'switch', 'toggle', 'uninstall'],
-        labels: {
-          check_updates: '检查更新',
-          manual_install: '手动安装包',
-          install_json: '安装 JSON',
-          package_json_placeholder: '粘贴 DCF_MODULE_PACK JSON',
-          switch_revision: '切换',
-          enable: '启用',
-          disable: '停用',
-          uninstall: '卸载'
-        },
+        labels: { check_updates: '检查更新', manual_install: '手动安装能力包', install_json: '安装 JSON', package_json_placeholder: '粘贴 DCF_MODULE_PACK JSON', switch_revision: '切换', enable: '启用', disable: '停用', uninstall: '卸载' },
         state_labels: { required: '核心', enabled: '已启用', disabled: '已停用' }
       }],
       styles: [{ id: 'package-management-compact', css: '.package-list.density-compact .package-card{padding:7px 0}.package-list.density-compact .package-description{line-height:1.3}' }]
@@ -1958,7 +2274,8 @@ const LEGACY_PRESENTATION = {
   'dcf.standard.shell-adjuster': { title: '壳体调节', description: '调整侧栏宽度、高度、边距和停靠方向。' },
   'dcf.store_probe': { title: '存储探针', description: '检查 DCF 存储读写与状态恢复。' },
   'dcf.ui_siderail_control': { title: '侧栏控制', description: '调整 DCF 侧栏布局与停靠方式。' },
-  'dcf.ui_visual_control': { title: '视觉布局控制', description: '调整 DCF 界面的视觉与布局表现。' }
+  'dcf.ui_visual_control': { title: '视觉布局控制', description: '调整 DCF 界面的视觉与布局表现。' },
+  'dcf.ui.runtime-workspace': { title: '对话环境工作区', description: '提供功能与维护两种期望环境投影视图。' }
 };
 
 function firstText(...values) {
@@ -1969,43 +2286,35 @@ function firstText(...values) {
   return '';
 }
 
-function unique(values) {
-  return Array.from(new Set((values || []).map((value) => String(value || '').trim()).filter(Boolean)));
-}
-
-function hasCjk(value) {
-  return /[\u3400-\u9fff]/.test(String(value || ''));
-}
-
-function activePack(entry) {
-  const revision = entry && entry.active_revision;
-  return entry && entry.revisions && entry.revisions[revision] && entry.revisions[revision].pack || null;
-}
+function unique(values) { return Array.from(new Set((values || []).map((value) => String(value || '').trim()).filter(Boolean))); }
+function hasCjk(value) { return /[\u3400-\u9fff]/.test(String(value || '')); }
+function activePack(entry) { const revision = entry && entry.active_revision; return entry && entry.revisions && entry.revisions[revision] && entry.revisions[revision].pack || null; }
 
 function packagePresentation(entry) {
   const pack = activePack(entry) || {};
   const modules = Array.isArray(pack.modules) ? pack.modules : [];
   const contributes = pack.contributes && typeof pack.contributes === 'object' ? pack.contributes : {};
   const surfaces = Array.isArray(contributes.surfaces) ? contributes.surfaces : [];
+  const views = Array.isArray(contributes.ui_views) ? contributes.ui_views : [];
   const contentTypes = Array.isArray(contributes.content_types) ? contributes.content_types : [];
   const known = modules.map((module) => LEGACY_PRESENTATION[String(module && module.id || '')]).find(Boolean) || LEGACY_PRESENTATION[String(entry && entry.package_id || '')] || null;
   const explicitTitle = firstText(pack.title, pack.display_name, pack.name, pack.label);
   const moduleTitles = unique(modules.map((module) => module && module.title));
   const surfaceTitles = unique(surfaces.map((surface) => surface && surface.title));
+  const viewTitles = unique(views.map((view) => view && (view.title || view.tab_label)));
   const contentTitles = unique(contentTypes.map((type) => type && type.title));
-
   let title = '';
   if (hasCjk(explicitTitle)) title = explicitTitle;
   else if (known) title = known.title;
   else if (moduleTitles.some(hasCjk)) title = moduleTitles.find(hasCjk);
+  else if (viewTitles.some(hasCjk)) title = viewTitles.find(hasCjk);
   else if (surfaceTitles.some(hasCjk)) title = surfaceTitles.find(hasCjk);
   else if (contentTitles.some(hasCjk)) title = contentTitles.find(hasCjk);
   else if (modules.length) title = modules.some((module) => module && module.kind === 'ammo') ? '语言弹药功能包' : 'DCF 功能模块包';
-  else if (surfaces.length) title = '界面入口扩展包';
+  else if (views.length || surfaces.length) title = '界面入口扩展包';
   else if (contentTypes.length) title = '内容类型扩展包';
   else if (contributes.appearance) title = '界面外观扩展包';
   else title = 'DCF 扩展包';
-
   const explicitDescription = firstText(pack.description, pack.summary, pack.purpose);
   const moduleDescriptions = unique(modules.map((module) => firstText(module && module.description, module && module.summary, module && module.purpose)));
   const blockTitles = unique(modules.flatMap((module) => Array.isArray(module && module.blocks) ? module.blocks.map((block) => block && block.title) : []));
@@ -2014,28 +2323,23 @@ function packagePresentation(entry) {
     const blocked = Array.isArray(module && module.blocks) ? module.blocks.flatMap((block) => Array.isArray(block && block.commands) ? block.commands : []) : [];
     return direct.concat(blocked).map((command) => command && (command.label || command.title));
   }));
-
   let description = '';
   if (hasCjk(explicitDescription)) description = explicitDescription;
   else if (known) description = known.description;
   else if (moduleDescriptions.some(hasCjk)) description = moduleDescriptions.find(hasCjk);
   else if (blockTitles.some(hasCjk)) description = `功能包括：${blockTitles.filter(hasCjk).slice(0, 4).join('、')}。`;
   else if (commandLabels.some(hasCjk)) description = `提供：${commandLabels.filter(hasCjk).slice(0, 4).join('、')}${commandLabels.filter(hasCjk).length > 4 ? '等' : ''}。`;
-  else if (moduleTitles.some(hasCjk)) description = `包含：${moduleTitles.filter(hasCjk).slice(0, 3).join('、')}。`;
+  else if (viewTitles.some(hasCjk)) description = `提供「${viewTitles.filter(hasCjk).slice(0, 2).join('、')}」环境视图。`;
   else if (surfaceTitles.some(hasCjk)) description = `提供「${surfaceTitles.filter(hasCjk).slice(0, 2).join('、')}」界面入口。`;
   else if (contentTitles.some(hasCjk)) description = `提供「${contentTitles.filter(hasCjk).slice(0, 2).join('、')}」内容类型。`;
+  else if (moduleTitles.some(hasCjk)) description = `包含：${moduleTitles.filter(hasCjk).slice(0, 3).join('、')}。`;
   else description = '提供 DCF 的扩展功能；英文 ID 保留为技术标识。';
-
   return { title, description };
 }
 
 function createPackageManager(engine, catalog, reconciler) {
   function packages() {
-    return Object.values(engine.getRoot().packages.packages || {}).sort((a, b) => {
-      const left = packagePresentation(a).title;
-      const right = packagePresentation(b).title;
-      return left.localeCompare(right, 'zh-CN') || String(a.package_id).localeCompare(String(b.package_id));
-    });
+    return Object.values(engine.getRoot().packages.packages || {}).sort((a, b) => packagePresentation(a).title.localeCompare(packagePresentation(b).title, 'zh-CN') || String(a.package_id).localeCompare(String(b.package_id)));
   }
   function installJson(text) {
     const parsed = JSON.parse(String(text || '{}'));
@@ -2044,16 +2348,16 @@ function createPackageManager(engine, catalog, reconciler) {
     if (decoded.errors.length || decoded.artifacts.length !== 1) throw new Error(decoded.errors[0] && decoded.errors[0].error || 'invalid package');
     return reconciler ? reconciler.accept(decoded.artifacts[0], { kind: 'manual-json' }) : engine.applyArtifact(decoded.artifacts[0], { kind: 'manual-json' });
   }
-  function assertMutable(id) {
-    if (REQUIRED_PRODUCT_PACKAGES.includes(String(id))) throw new Error(`${id} is required by the DCF product value loop`);
-  }
+  function assertMutable(id) { if (REQUIRED_PRODUCT_PACKAGES.includes(String(id))) throw new Error(`${id} is required by the DCF product value loop`); }
+  function intent(value, material) { return reconciler ? reconciler.acceptIntent(value, material) : engine.applyEnvironmentIntent(value, material); }
   return {
     packages,
+    environment: () => engine.getEnvironment(),
     presentation: packagePresentation,
     installJson,
-    setEnabled: (id, enabled) => { if (!enabled) assertMutable(id); return engine.setPackageEnabled(id, enabled); },
-    uninstall: (id) => { assertMutable(id); return engine.uninstallPackage(id); },
-    switchRevision: (id, revision) => engine.switchPackageRevision(id, revision),
+    setEnabled: (id, enabled) => { if (!enabled) assertMutable(id); return intent({ type: 'environment.package.enable', package_id: id, enabled: !!enabled }); },
+    uninstall: (id) => { assertMutable(id); return intent({ type: 'environment.package.remove', package_id: id }); },
+    switchRevision: (id, revision) => intent({ type: 'environment.package.select', package_id: id, revision }),
     checkUpdates: (force) => catalog.check({ force: !!force }),
     isRequired: (id) => REQUIRED_PRODUCT_PACKAGES.includes(String(id))
   };
@@ -2368,46 +2672,43 @@ module.exports = { createHealthReporter, legacyInventory, activePackModules, dif
 'use strict';
 
 const { CATALOG_STATE_KEY } = require("src/core/constants.js");
+const { safeId } = require("src/core/utils.js");
 
 function createMaintenanceModule(engine, receiptStore, effectRunner, storage, healthReporter) {
   let lastHealth = null;
-
   function summary() {
     const root = engine.getRoot();
     const registry = engine.getRegistry();
+    const environment = engine.getEnvironment();
     const receipts = receiptStore.list();
     return {
-      schema: 'dcf.maintenance.summary.v1',
+      schema: 'dcf.maintenance.summary.v2',
       kernel_version: root.kernel_version,
       revision: root.revision,
       state_hash: root.state_hash,
       build_id: registry && registry.build && registry.build.build_id,
+      environment: {
+        active_profile: environment.profiles.active_id,
+        profile_count: environment.profiles.items.length,
+        package_count: environment.capabilities.packages.length,
+        resource_count: registry.resources && registry.resources.resources && registry.resources.resources.length || 0
+      },
       active_packages: Object.keys(registry && registry.installedPacks || {}),
       recent_failures: receipts.filter((item) => item.status === 'rejected' || item.status === 'error').slice(-10),
       receipt_count: receipts.length,
       catalog: storage ? storage.get(CATALOG_STATE_KEY, { last_checked_at: null, last_result: null }) : null
     };
   }
-
-  function copySummary() {
-    return effectRunner.run({ type: 'clipboard.write', text: JSON.stringify(summary(), null, 2) }, { module: 'maintenance', report: 'summary' });
-  }
-
+  function copySummary() { return effectRunner.run({ type: 'clipboard.write', text: JSON.stringify(summary(), null, 2) }, { module: 'maintenance', report: 'summary' }); }
   function healthReport() {
-    lastHealth = healthReporter ? healthReporter.report() : {
-      schema: 'dcf.runtime.health.diff.v1',
-      status: 'error',
-      deviations: [{ code: 'runtime_health_reporter_missing', severity: 'error', expected: 'reporter initialized', actual: 'missing', explanation: 'Boot did not create the Runtime health reporter.' }]
-    };
+    lastHealth = healthReporter ? healthReporter.report() : { schema: 'dcf.runtime.health.diff.v1', status: 'error', deviations: [{ code: 'runtime_health_reporter_missing', severity: 'error', expected: 'reporter initialized', actual: 'missing', explanation: 'Boot did not create the Runtime health reporter.' }] };
     return lastHealth;
   }
-
   function copyHealthReport() {
     const report = healthReport();
     const text = `<<<DCF_RUNTIME_HEALTH\n${JSON.stringify(report, null, 2)}\nDCF_RUNTIME_HEALTH>>>`;
     return effectRunner.run({ type: 'clipboard.write', text }, { module: 'maintenance', report: 'runtime-health' });
   }
-
   return {
     summary,
     copySummary,
@@ -2417,7 +2718,11 @@ function createMaintenanceModule(engine, receiptStore, effectRunner, storage, he
     receipts: () => receiptStore.list(),
     clearReceipts: () => receiptStore.clear(),
     snapshots: () => engine.snapshots(),
-    rollbackTo: (revision) => engine.rollbackTo(revision)
+    rollbackTo: (revision) => engine.rollbackTo(revision),
+    profiles: () => engine.getEnvironment().profiles,
+    saveProfile: (title) => engine.saveEnvironmentProfile(String(title || '当前环境'), safeId(String(title || '当前环境')) || undefined),
+    activateProfile: (id) => engine.activateEnvironmentProfile(id),
+    removeProfile: (id) => engine.removeEnvironmentProfile(id)
   };
 }
 
@@ -2446,7 +2751,7 @@ function computeFenceStyle(rect, viewport, margin = 12) {
 }
 
 function createApp(options) {
-  const { engine, ammo, packageManager, maintenance, commandRunner, storage, version } = options;
+  const { engine, ammo, packageManager, maintenance, commandRunner, reconciler, storage, version } = options;
   const doc = options.document || document;
   const windowObject = doc.defaultView || window;
   const hostElement = doc.createElement('div');
@@ -2470,6 +2775,7 @@ function createApp(options) {
   let tab = initialSession.tab || 'ammo';
   let collapsedModules = initialSession.collapsed_modules && typeof initialSession.collapsed_modules === 'object' ? Object.assign({}, initialSession.collapsed_modules) : {};
   let packageDraft = '';
+  let profileDraft = '';
   let fenceFrame = 0;
 
   function saveSession() {
@@ -2499,21 +2805,30 @@ function createApp(options) {
     }
   }
 
+  function environmentViews() {
+    const defaults = {
+      ammo: { id: 'ammo', kind: 'content', tab_label: '弹药', title: '语言弹药', order: 10 },
+      functions: { id: 'functions', kind: 'actions', tab_label: '功能', title: '日常功能', order: 20 },
+      packages: { id: 'packages', kind: 'composition', tab_label: '构成', title: '期望环境构成', order: 30 },
+      maintenance: { id: 'maintenance', kind: 'observation', tab_label: '维护', title: '环境观察与恢复', order: 40 }
+    };
+    const supplied = engine.getRegistry().uiViews || {};
+    return Object.values(Object.assign({}, defaults, supplied)).filter((view) => ['ammo', 'functions', 'packages', 'maintenance'].includes(String(view.id))).sort((a, b) => Number(a.order || 1000) - Number(b.order || 1000));
+  }
+
+  function currentView() { return environmentViews().find((view) => String(view.id) === String(tab)) || environmentViews()[0]; }
+
   function renderTop() {
-    const packageView = engine.getRegistry().uiViews && engine.getRegistry().uiViews.packages || {};
-    const packageTabLabel = packageView.tab_label || '包管理';
-    top.innerHTML = `<b>DCF ${escapeHtml(version)}</b><div class="tabs">
-      <button data-tab="ammo" class="${tab === 'ammo' ? 'on' : ''}">弹药</button>
-      <button data-tab="functions" class="${tab === 'functions' ? 'on' : ''}">功能</button>
-      <button data-tab="packages" class="${tab === 'packages' ? 'on' : ''}">${escapeHtml(packageTabLabel)}</button>
-      <button data-tab="maintenance" class="${tab === 'maintenance' ? 'on' : ''}">维护</button>
-    </div>`;
+    const views = environmentViews();
+    if (!views.some((view) => String(view.id) === String(tab))) tab = views[0] && views[0].id || 'ammo';
+    top.innerHTML = `<b>DCF ${escapeHtml(version)}</b><div class="tabs">${views.map((view) => `<button data-tab="${escapeHtml(view.id)}" class="${tab === view.id ? 'on' : ''}">${escapeHtml(view.tab_label || view.title || view.id)}</button>`).join('')}</div>`;
   }
 
   function renderAmmo() {
+    const view = engine.getRegistry().uiViews && engine.getRegistry().uiViews.ammo || {};
     const items = ammo.items();
     const mode = engine.getRoot().user.preferences && engine.getRoot().user.preferences.ammo_fire_mode || 'insert';
-    body.innerHTML = `<div class="card"><div class="name">语言弹药</div><div class="mini">自动提取、自动装填、更新与发射</div><div class="actions"><button data-action="ammo-extract">从当前对话提取</button><button data-action="ammo-mode">发射：${mode === 'send' ? '直接发送' : '填入输入框'}</button></div></div>` +
+    body.innerHTML = `<div class="card"><div class="name">${escapeHtml(view.title || '语言弹药')}</div><div class="mini">${escapeHtml(view.description || '自动提取、自动装填、更新与发射')}</div><div class="actions"><button data-action="ammo-extract">从当前对话提取</button><button data-action="ammo-mode">发射：${mode === 'send' ? '直接发送' : '填入输入框'}</button></div></div>` +
       (items.length ? items.map((item) => `<div class="card" data-ammo-id="${escapeHtml(item.id)}"><div class="name">${escapeHtml(item.title || item.id)}</div><div class="mini">${escapeHtml(item.purpose || item.id)}</div><div class="actions"><button data-action="ammo-fire">发射</button><button data-action="ammo-copy">复制</button><button data-action="ammo-update">更新</button><button data-action="ammo-delete" class="danger">删除</button></div></div>`).join('') : '<div class="card mini">弹药库为空。完成一次提取后，回复中的 DCF_AMMO 会自动装填。</div>');
   }
 
@@ -2564,8 +2879,9 @@ function createApp(options) {
   }
 
   function renderFunctions() {
+    const view = engine.getRegistry().uiViews && engine.getRegistry().uiViews.functions || {};
     const groups = modulesByRole(engine.getRoot(), engine.getRegistry());
-    body.innerHTML = `<section data-runtime-section="daily"><div class="card"><div class="name">日常功能</div><div class="mini">主力能力始终保留入口；点击模块标题展开或收起具体操作。</div></div>${renderModuleCards(groups.daily, 'daily', '暂无日常功能')}</section>`;
+    body.innerHTML = `<section data-runtime-section="daily"><div class="card"><div class="name">${escapeHtml(view.title || '日常功能')}</div><div class="mini">${escapeHtml(view.description || '主力能力始终保留入口；点击模块标题展开或收起具体操作。')}</div></div>${renderModuleCards(groups.daily, 'daily', '暂无日常功能')}</section>`;
   }
 
   function renderPackages() {
@@ -2608,16 +2924,19 @@ function createApp(options) {
   }
 
   function renderMaintenance() {
+    const view = engine.getRegistry().uiViews && engine.getRegistry().uiViews.maintenance || {};
     const summary = maintenance.summary();
     const lastHealth = maintenance.lastHealthReport();
     const receipts = maintenance.receipts().slice(-8).reverse();
     const snapshots = maintenance.snapshots().slice().reverse();
     const groups = modulesByRole(engine.getRoot(), engine.getRegistry());
+    const profileState = maintenance.profiles();
     const healthStatus = lastHealth ? lastHealth.status : 'healthy';
     const deviationCount = lastHealth && Array.isArray(lastHealth.deviations) ? lastHealth.deviations.length : 0;
-    body.innerHTML = `<div class="card health-${escapeHtml(healthStatus)}"><div class="name">一键 Runtime 体检</div><div class="mini">从真实浏览器现场核对脚本实例、存储、内存运行态、实际 DOM、ChatGPT 宿主连接和最近失败。正常项保持安静，只复制无法合理解释的 Runtime 偏差。</div>${lastHealth ? `<div class="health-count">上次结果：${escapeHtml(healthStatus)} · ${deviationCount} deviations</div>` : ''}<div class="actions"><button data-action="maintenance-health-copy">体检并复制</button></div></div>
+    body.innerHTML = `<div class="card"><div class="name">${escapeHtml(view.title || '环境观察与恢复')}</div><div class="mini">${escapeHtml(view.description || '观察期望环境在真实浏览器 Runtime 中是否成立，并提供恢复入口。')}</div></div><div class="card health-${escapeHtml(healthStatus)}"><div class="name">一键 Runtime 体检</div><div class="mini">从真实浏览器现场核对脚本实例、存储、内存运行态、实际 DOM、ChatGPT 宿主连接和最近失败。正常项保持安静，只复制无法合理解释的 Runtime 偏差。</div>${lastHealth ? `<div class="health-count">上次结果：${escapeHtml(healthStatus)} · ${deviationCount} deviations</div>` : ''}<div class="actions"><button data-action="maintenance-health-copy">体检并复制</button></div></div>
       <section data-runtime-section="maintenance-tools"><div class="section-title">维护工具</div>${renderModuleCards(groups.maintenance, 'maintenance', '暂无维护工具')}</section>
       ${renderRoleManager()}
+      <details class="card"><summary><span class="name">环境 Profile</span></summary><div class="detail-body"><div class="mini">Profile 保存包选择、政策和界面组织，不复制用户弹药正文。</div><div class="row"><input data-role="profile-title" placeholder="环境名称" value="${escapeHtml(profileDraft)}"><button data-action="profile-save">保存当前环境</button></div>${profileState.items.length ? profileState.items.map((profile) => `<div class="pkg row"><span class="grow mini">${escapeHtml(profile.title)} · ${profile.package_count} packages${profileState.active_id === profile.id ? ' · 当前' : ''}</span><button data-action="profile-activate" data-profile-id="${escapeHtml(profile.id)}">激活</button><button data-action="profile-remove" data-profile-id="${escapeHtml(profile.id)}" class="danger">删除</button></div>`).join('') : '<div class="mini">暂无环境 Profile</div>'}</div></details>
       <details class="card"><summary><span class="name">运行摘要</span></summary><div class="detail-body"><div class="receipt">${escapeHtml(JSON.stringify(summary, null, 2))}</div><div class="actions"><button data-action="maintenance-copy">复制简要诊断</button><button data-action="receipts-clear">清空回执</button></div></div></details>
       <details class="card"><summary><span class="name">最近回执</span></summary><div class="detail-body">${receipts.length ? receipts.map((item) => `<div class="receipt pkg">${escapeHtml(JSON.stringify(item, null, 2))}</div>`).join('') : '<div class="mini">暂无回执</div>'}</div></details>
       <details class="card"><summary><span class="name">状态快照</span></summary><div class="detail-body">${snapshots.length ? snapshots.map((item) => `<div class="pkg row"><span class="grow mini">r${item.revision} · ${escapeHtml(item.reason)}</span><button data-action="rollback" data-revision="${item.revision}">恢复</button></div>`).join('') : '<div class="mini">暂无快照</div>'}</div></details>`;
@@ -2663,9 +2982,10 @@ function createApp(options) {
 
   function render() {
     renderTop();
-    if (tab === 'functions') renderFunctions();
-    else if (tab === 'packages') renderPackages();
-    else if (tab === 'maintenance') renderMaintenance();
+    const view = currentView();
+    if (view.kind === 'actions' || view.id === 'functions') renderFunctions();
+    else if (view.kind === 'composition' || view.id === 'packages') renderPackages();
+    else if (view.kind === 'observation' || view.id === 'maintenance') renderMaintenance();
     else renderAmmo();
     applyAppearance();
   }
@@ -2677,7 +2997,7 @@ function createApp(options) {
       area: role === 'maintenance' ? 'maintenance' : 'work'
     });
     delete next.hidden;
-    return engine.setUserPath(['moduleDisplay', moduleId], next);
+    return engine.applyEnvironmentIntent({ type: 'environment.user.set', path: ['moduleDisplay', moduleId] }, { value: next });
   }
 
   function collectIds(selector, attribute) {
@@ -2729,6 +3049,7 @@ function createApp(options) {
 
   root.addEventListener('input', (event) => {
     if (event.target && event.target.dataset.role === 'package-json') packageDraft = event.target.value;
+    if (event.target && event.target.dataset.role === 'profile-title') profileDraft = event.target.value;
   });
 
   root.addEventListener('click', (event) => {
@@ -2754,11 +3075,11 @@ function createApp(options) {
     if (action === 'ammo-extract') runAndRender(() => ammo.requestExtract(), '提取请求已发送');
     else if (action === 'ammo-mode') {
       const current = engine.getRoot().user.preferences && engine.getRoot().user.preferences.ammo_fire_mode || 'insert';
-      runAndRender(() => engine.setUserPath(['preferences', 'ammo_fire_mode'], current === 'send' ? 'insert' : 'send'), '发射方式已更新');
+      runAndRender(() => engine.applyEnvironmentIntent({ type: 'environment.user.set', path: ['preferences', 'ammo_fire_mode'] }, { value: current === 'send' ? 'insert' : 'send' }), '发射方式已更新');
     } else if (action === 'ammo-fire' && item) runAndRender(() => ammo.fire(item), '弹药已发射');
     else if (action === 'ammo-copy' && item) runAndRender(() => ammo.copy(item), '已复制');
     else if (action === 'ammo-update' && item) runAndRender(() => ammo.requestUpdate(item), '更新请求已发送');
-    else if (action === 'ammo-delete' && item) runAndRender(() => engine.removeContent('ammo', item.id), '已删除');
+    else if (action === 'ammo-delete' && item) runAndRender(() => engine.applyEnvironmentIntent({ type: 'environment.resource.remove', resource_type: 'ammo', resource_id: item.id }), '已删除');
     else if (action === 'package-install') runAndRender(() => packageManager.installJson(packageDraft), '安装包已安装');
     else if (action === 'package-update') runAndRender(() => packageManager.checkUpdates(true), '更新检查完成');
     else if (action === 'package-toggle') {
@@ -2777,6 +3098,9 @@ function createApp(options) {
     } else if (action === 'maintenance-health-copy') runAndRender(() => maintenance.copyHealthReport(), 'Runtime 体检报告已复制');
     else if (action === 'maintenance-copy') runAndRender(() => maintenance.copySummary(), '简要诊断已复制');
     else if (action === 'receipts-clear') runAndRender(() => maintenance.clearReceipts(), '回执已清空');
+    else if (action === 'profile-save') runAndRender(() => maintenance.saveProfile(profileDraft || '当前环境'), '环境 Profile 已保存');
+    else if (action === 'profile-activate') runAndRender(() => maintenance.activateProfile(button.dataset.profileId), '环境 Profile 已激活');
+    else if (action === 'profile-remove') runAndRender(() => maintenance.removeProfile(button.dataset.profileId), '环境 Profile 已删除');
     else if (action === 'rollback') runAndRender(() => maintenance.rollbackTo(Number(button.dataset.revision)), '状态已恢复');
   });
 
@@ -2867,7 +3191,7 @@ function boot(api = globalThis) {
     const rect = app.shell.getBoundingClientRect();
     return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height };
   });
-  app = createApp({ engine, ammo, packageManager, maintenance, commandRunner, storage, version: VERSION });
+  app = createApp({ engine, ammo, packageManager, maintenance, commandRunner, reconciler, storage, version: VERSION });
 
   async function processReply(reply) {
     const decoded = decodeArtifacts(reply.text);
@@ -2894,7 +3218,7 @@ function boot(api = globalThis) {
     api.GM_registerMenuCommand('DCF：复制简要诊断', () => maintenance.copySummary());
   }
 
-  api.__DCF_RUNTIME__ = { version: VERSION, engine, host, app, catalog, reconciler, receiptStore, health, maintenance };
+  api.__DCF_RUNTIME__ = { version: VERSION, engine, environment: engine.getEnvironment(), getEnvironment: () => engine.getEnvironment(), host, app, catalog, reconciler, receiptStore, health, maintenance };
   return api.__DCF_RUNTIME__;
 }
 

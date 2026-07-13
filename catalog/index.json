@@ -1,19 +1,26 @@
 {
   "schema": "dcf.catalog.v1",
-  "generated_by_version": "0.12.0",
+  "generated_by_version": "0.13.0",
   "packages": [
     {
       "package_id": "dcf.standard.ammo",
+      "revision": "1.1.0",
+      "channel": "stable",
+      "hash": "fnv1a-35e7130a",
+      "url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/catalog/packages/dcf.standard.ammo/1.1.0.json"
+    },
+    {
+      "package_id": "dcf.ui.runtime-workspace",
       "revision": "1.0.0",
       "channel": "stable",
-      "hash": "fnv1a-fb30b1ea",
-      "url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/catalog/packages/dcf.standard.ammo/1.0.0.json"
+      "hash": "fnv1a-187ab5cd",
+      "url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/catalog/packages/dcf.ui.runtime-workspace/1.0.0.json"
     },
     {
       "package_id": "dcf.ui.package-management",
       "revision": "1.0.0",
       "channel": "stable",
-      "hash": "fnv1a-05fed7f0",
+      "hash": "fnv1a-b95e04b5",
       "url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/catalog/packages/dcf.ui.package-management/1.0.0.json"
     },
     {

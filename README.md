@@ -43,3 +43,7 @@ This builds the complete `.user.js`, generates the catalog, and verifies transac
 ## Unified capability reconciliation
 
 `root.packages` is the authoritative desired capability set. A complete package is a by-value input; `DCF_PACKAGE_UPDATE` is a by-reference input resolved through the trusted catalog. Both enter the same resolver, immutable revision validation, atomic commit, Runtime reprojection and receipt path. The first package-owned declarative view is `dcf.ui.package-management`, so package-management text, control order and style can update as a package revision without changing the userscript bootstrap.
+
+## Conversation environment architecture
+
+DCF `0.13.0` treats the authoritative root as one desired conversation environment. A read-only Environment Snapshot exposes capabilities, user resources, policies, presentation, profiles and provenance. Persistent changes compile to typed environment intents and pass through one candidate/validate/commit/reproject path. Content, actions, views, styles and policies are finite resource families. Ammo, functions, composition and maintenance are package-owned views of the same environment. Profiles save package selection, policies and presentation without copying user ammo bodies.

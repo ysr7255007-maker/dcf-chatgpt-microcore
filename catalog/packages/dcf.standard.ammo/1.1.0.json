@@ -1,0 +1,62 @@
+{
+  "schema": "dcf.module_pack.v1",
+  "pack_id": "dcf.standard.ammo",
+  "revision": "1.1.0",
+  "title": "语言弹药核心",
+  "description": "提供语言弹药内容、主入口和低摩擦发射能力。",
+  "contributes": {
+    "content_types": [
+      {
+        "id": "ammo",
+        "marker": "DCF_AMMO",
+        "title": "语言弹药",
+        "body_field": "body",
+        "actions": [
+          "fire",
+          "copy",
+          "update",
+          "delete"
+        ]
+      }
+    ],
+    "surfaces": [
+      {
+        "id": "dcf.ammo",
+        "title": "弹药",
+        "area": "primary",
+        "order": 10,
+        "kind": "content-list",
+        "content_type": "ammo"
+      }
+    ],
+    "ui_views": [
+      {
+        "id": "ammo",
+        "kind": "content",
+        "projection": "content:ammo",
+        "tab_label": "弹药",
+        "title": "语言弹药",
+        "description": "自动提取、自动装填、更新与发射。",
+        "order": 10
+      }
+    ],
+    "appearance": {
+      "side": "right",
+      "vars": {
+        "w": "340px",
+        "h": "800px",
+        "top": "12px",
+        "bottom": "112px",
+        "anchor": "bottom"
+      }
+    }
+  },
+  "modules": [
+    {
+      "id": "dcf.ammo.module",
+      "title": "语言弹药",
+      "version": "1.1.0",
+      "kind": "ammo"
+    }
+  ]
+}

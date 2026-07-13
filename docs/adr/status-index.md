@@ -6,6 +6,8 @@ The status in this file is authoritative. A status line inside an older ADR reco
 
 ## Current
 
+- `2026-07-13-dcf-conversation-environment-architecture.md` — **accepted**
+
 - `2026-07-13-dcf-unified-capability-reconciliation.md` — **accepted**
 - `2026-07-13-dcf-runtime-health-and-folding.md` — **accepted**
 - `2026-07-12-dcf-phase-one-whole-project-rebuild.md` — **accepted**

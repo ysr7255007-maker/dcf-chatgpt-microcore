@@ -9,9 +9,11 @@
       {
         "id": "packages",
         "kind": "package-management",
+        "projection": "environment:capabilities",
         "tab_label": "包管理",
         "title": "安装包管理",
         "description": "中文名称和功能说明用于日常识别；英文 ID 仅保留为技术标识。",
+        "order": 30,
         "density": "compact",
         "show_technical_id": true,
         "manual_install": "folded",
@@ -23,7 +25,7 @@
         ],
         "labels": {
           "check_updates": "检查更新",
-          "manual_install": "手动安装包",
+          "manual_install": "手动安装能力包",
           "install_json": "安装 JSON",
           "package_json_placeholder": "粘贴 DCF_MODULE_PACK JSON",
           "switch_revision": "切换",

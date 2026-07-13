@@ -21,7 +21,9 @@ const EMPTY_ROOT = {
     settings: {},
     content: { ammo: {} },
     moduleDisplay: {},
-    preferences: { ammo_fire_mode: 'insert' }
+    preferences: { ammo_fire_mode: 'insert' },
+    environmentProfiles: {},
+    active_environment_profile: null
   },
   system: {
     schema: 'dcf.system.state.v1',
@@ -43,6 +45,8 @@ function normalizeRoot(value) {
   root.user.content.ammo = isObject(root.user.content.ammo) ? root.user.content.ammo : {};
   root.user.settings = isObject(root.user.settings) ? root.user.settings : {};
   root.user.moduleDisplay = isObject(root.user.moduleDisplay) ? root.user.moduleDisplay : {};
+  root.user.environmentProfiles = isObject(root.user.environmentProfiles) ? root.user.environmentProfiles : {};
+  root.user.active_environment_profile = root.user.active_environment_profile || null;
   root.system = deepMerge(EMPTY_ROOT.system, root.system || {});
   root.system.artifact_index = isObject(root.system.artifact_index) ? root.system.artifact_index : {};
   root.state_hash = computeStateHash(root);
@@ -169,7 +173,7 @@ function hasMeaningfulRoot(root) {
   const packageCount = Object.keys(root.packages && root.packages.packages || {}).length;
   const user = root.user || {};
   const contentCount = Object.values(user.content || {}).reduce((sum, items) => sum + Object.keys(isObject(items) ? items : {}).length, 0);
-  return packageCount > 0 || contentCount > 0 || Object.keys(user.settings || {}).length > 0 || Object.keys(user.moduleDisplay || {}).length > 0 || Object.keys(user.appearance && user.appearance.vars || {}).length > 0 || !!(user.appearance && (user.appearance.side || user.appearance.css));
+  return packageCount > 0 || contentCount > 0 || Object.keys(user.settings || {}).length > 0 || Object.keys(user.moduleDisplay || {}).length > 0 || Object.keys(user.environmentProfiles || {}).length > 0 || Object.keys(user.appearance && user.appearance.vars || {}).length > 0 || !!(user.appearance && (user.appearance.side || user.appearance.css));
 }
 
 function readLegacyRootFromBackend(storage, backend) {

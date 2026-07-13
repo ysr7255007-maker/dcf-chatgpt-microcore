@@ -98,3 +98,12 @@ ChatGPT historical-message virtualization, turn-window rendering, DOM/memory das
 - `dcf.ui.package-management` 成为必需的声明式 UI 包，拥有包管理页文案、密度、控制顺序和可覆盖样式。
 - 普通 UI/功能调整以后应升级对应包，不再默认发布 Tampermonkey userscript。
 - Core 继续禁止远程 JavaScript，只提供可信解析、事务、协调、Host 与恢复渲染边界。
+
+## 0.13.0 期望对话环境
+
+- 新增只读 `dcf.environment.snapshot.v1`，不改变单一权威根。
+- 持久变化统一为 `dcf.intent.v1` Environment Intent。
+- Package Reconciler 提升为 Environment Reconciler；包、内容、偏好、界面组织、Profile 和恢复共享迁移链路。
+- registry 输出 content/action/view/style/policy 资源图与观察契约。
+- 弹药、功能、构成、维护成为包拥有的四种环境投影。
+- Environment Profile 保存包选择、政策和产品组织，不复制用户弹药正文。

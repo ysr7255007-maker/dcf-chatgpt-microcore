@@ -72,7 +72,7 @@ function boot(api = globalThis) {
     const rect = app.shell.getBoundingClientRect();
     return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height };
   });
-  app = createApp({ engine, ammo, packageManager, maintenance, commandRunner, storage, version: VERSION });
+  app = createApp({ engine, ammo, packageManager, maintenance, commandRunner, reconciler, storage, version: VERSION });
 
   async function processReply(reply) {
     const decoded = decodeArtifacts(reply.text);
@@ -99,7 +99,7 @@ function boot(api = globalThis) {
     api.GM_registerMenuCommand('DCF：复制简要诊断', () => maintenance.copySummary());
   }
 
-  api.__DCF_RUNTIME__ = { version: VERSION, engine, host, app, catalog, reconciler, receiptStore, health, maintenance };
+  api.__DCF_RUNTIME__ = { version: VERSION, engine, environment: engine.getEnvironment(), getEnvironment: () => engine.getEnvironment(), host, app, catalog, reconciler, receiptStore, health, maintenance };
   return api.__DCF_RUNTIME__;
 }
 

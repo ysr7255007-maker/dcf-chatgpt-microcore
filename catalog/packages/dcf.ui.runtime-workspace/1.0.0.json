@@ -1,0 +1,33 @@
+{
+  "schema": "dcf.module_pack.v1",
+  "pack_id": "dcf.ui.runtime-workspace",
+  "revision": "1.0.0",
+  "title": "对话环境工作区",
+  "description": "把日常功能和维护观察呈现为同一期望对话环境的行动与观察视图。",
+  "contributes": {
+    "ui_views": [
+      {
+        "id": "functions",
+        "kind": "actions",
+        "projection": "actions:daily",
+        "tab_label": "功能",
+        "title": "日常功能",
+        "description": "主力能力始终保留入口；点击模块标题展开或收起具体操作。",
+        "order": 20
+      },
+      {
+        "id": "maintenance",
+        "kind": "observation",
+        "projection": "runtime:observation",
+        "tab_label": "维护",
+        "title": "环境观察与恢复",
+        "description": "观察期望环境在真实浏览器 Runtime 中是否成立，并提供恢复入口。",
+        "order": 40
+      }
+    ],
+    "policies": {
+      "activation_mode": "live-when-safe"
+    }
+  },
+  "modules": []
+}
