@@ -31,41 +31,38 @@ function projectedDisplay(registry, moduleId) {
   return registry && registry.moduleDisplay && registry.moduleDisplay[moduleId] || {};
 }
 
-function declaredRole(module, display) {
-  const role = display.role || module.role || null;
-  if (role === 'daily' || role === 'maintenance') return role;
-  const area = display.area || module.area || null;
-  if (area === 'maintenance') return 'maintenance';
-  if (area === 'work' || area === 'primary') return 'daily';
+function roleFrom(value) {
+  if (!value) return null;
+  if (value.role === 'daily' || value.role === 'maintenance') return value.role;
+  if (value.area === 'maintenance') return 'maintenance';
+  if (value.area === 'work' || value.area === 'primary') return 'daily';
   return null;
 }
 
 function classifyModule(root, registry, module) {
   const id = String(module && module.id || '');
-  if (module && module.kind === 'ammo') return { placement: 'ammo', source: 'module-kind' };
+  if (module && module.kind === 'ammo') return { role: 'ammo', source: 'module-kind' };
 
-  const user = userDisplay(root, id);
-  if (user) {
-    if (user.hidden === true) return { placement: 'hidden', source: 'user' };
-    const userRole = declaredRole(module, user);
-    if (userRole) return { placement: userRole, source: 'user' };
-  }
+  const userRole = roleFrom(userDisplay(root, id));
+  if (userRole) return { role: userRole, source: 'user' };
 
-  if (LEGACY_MAINTENANCE_MODULE_IDS.has(id)) return { placement: 'maintenance', source: 'legacy-product-map' };
-  if (LEGACY_DAILY_MODULE_IDS.has(id)) return { placement: 'daily', source: 'legacy-product-map' };
+  if (LEGACY_MAINTENANCE_MODULE_IDS.has(id)) return { role: 'maintenance', source: 'legacy-product-map' };
+  if (LEGACY_DAILY_MODULE_IDS.has(id)) return { role: 'daily', source: 'legacy-product-map' };
 
-  const display = projectedDisplay(registry, id);
-  if (display.hidden === true) return { placement: 'hidden', source: 'declaration' };
-  const declared = declaredRole(module, display);
-  if (declared) return { placement: declared, source: 'declaration' };
-  return { placement: 'daily', source: 'default' };
+  const displayRole = roleFrom(projectedDisplay(registry, id));
+  if (displayRole) return { role: displayRole, source: 'declaration' };
+
+  const moduleRole = roleFrom(module);
+  if (moduleRole) return { role: moduleRole, source: 'module' };
+
+  return { role: 'daily', source: 'default' };
 }
 
-function modulesByPlacement(root, registry) {
-  const result = { ammo: [], daily: [], maintenance: [], hidden: [] };
+function modulesByRole(root, registry) {
+  const result = { ammo: [], daily: [], maintenance: [] };
   for (const module of registry && registry.modules || []) {
     const classification = classifyModule(root, registry, module);
-    result[classification.placement].push(module);
+    result[classification.role].push(module);
   }
   for (const modules of Object.values(result)) modules.sort((a, b) => String(a.id).localeCompare(String(b.id)));
   return result;
@@ -75,5 +72,5 @@ module.exports = {
   LEGACY_DAILY_MODULE_IDS,
   LEGACY_MAINTENANCE_MODULE_IDS,
   classifyModule,
-  modulesByPlacement
+  modulesByRole
 };
