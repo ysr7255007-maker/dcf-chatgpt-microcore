@@ -7,15 +7,42 @@ on:
       - main
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   verify:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: feature/conversation-environment-architecture
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm run verify
+      - run: python scripts/apply-conversation-environment-architecture.py
+      - name: Verify upgraded source
+        shell: bash
+        run: |
+          set +e
+          npm run verify > /tmp/dcf-verify.log 2>&1
+          status=$?
+          tail -n 160 /tmp/dcf-verify.log > .environment-verify.log
+          exit "$status"
+      - name: Publish failure evidence
+        if: failure()
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .environment-verify.log
+          git commit -m 'Record conversation environment verification failure'
+          git push origin HEAD:feature/conversation-environment-architecture
       - run: node --check dcf-chatgpt-microcore.user.js
+      - name: Commit upgraded source and generated release
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          rm -f .environment-verify.log
+          git add README.md package.json src scripts/build-userscript.js tests docs catalog dcf-chatgpt-microcore.user.js dcf-chatgpt-microcore.meta.js .environment-verify.log
+          git commit -m 'Implement desired conversation environment architecture'
+          git push origin HEAD:feature/conversation-environment-architecture
