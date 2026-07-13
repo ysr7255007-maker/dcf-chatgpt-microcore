@@ -6,20 +6,93 @@
 > dcf-chatgpt-microcore@0.12.0 build
 > node scripts/build-userscript.js
 
-/home/runner/work/dcf-chatgpt-microcore/dcf-chatgpt-microcore/src/modules/standard-packages.js:1
-\
-^
+{
+  "ok": true,
+  "version": "0.12.0",
+  "modules": 22,
+  "bytes": 145652,
+  "catalog_packages": 3
+}
 
-SyntaxError: Invalid or unexpected token
-    at wrapSafe (node:internal/modules/cjs/loader:1713:18)
-    at Module._compile (node:internal/modules/cjs/loader:1755:20)
+> dcf-chatgpt-microcore@0.12.0 test
+> node tests/dcf-capability-reconciliation.unit.test.js && node tests/dcf-declarative-ui-package.unit.test.js && node tests/dcf-core-architecture.unit.test.js && node tests/dcf-artifact-transaction.unit.test.js && node tests/dcf-command-runtime.unit.test.js && node tests/dcf-migration.unit.test.js && node tests/dcf-health-report.unit.test.js && node tests/dcf-module-visibility.unit.test.js && node tests/dcf-package-management-ui.unit.test.js && node tests/dcf-host-bounded-intake.unit.test.js && node tests/dcf-catalog.unit.test.js && node tests/dcf-viewport-fence.unit.test.js && node tests/dcf-release.integration.test.js && node tests/dcf-build-determinism.unit.test.js
+
+{
+  "ok": true,
+  "value_and_reference_inputs_unified": true,
+  "desired_state_derived_from_root": true,
+  "runtime_activation_callback": true
+}
+{
+  "ok": true,
+  "package_owned_ui_view": true,
+  "ui_updates_by_package_revision": true,
+  "bootstrap_renderer_remains_declarative": true
+}
+{
+  "ok": true,
+  "single_root": true,
+  "deterministic_projection": true,
+  "user_state_separated": true,
+  "first_party_package": true,
+  "order_independent_replacement": true
+}
+{
+  "ok": true,
+  "automatic_artifacts": true,
+  "idempotent_identity": true,
+  "atomic_package_artifact": true,
+  "failed_candidate_preserves_state": true,
+  "decode_error_redacted": true
+}
+{
+  "ok": true,
+  "legacy_commands_preserved": true,
+  "generic_capability_execution": true,
+  "privacy_redaction": true
+}
+{
+  "ok": true,
+  "v10_root_migration": true,
+  "gm_localstorage_bridge": true,
+  "user_data_preserved": true,
+  "legacy_modules_preserved": true,
+  "bridge_is_idempotent": true
+}
+{
+  "ok": true,
+  "healthy_report_is_diff_only": true,
+  "browser_dom_divergence_detected": true,
+  "duplicate_runtime_detected": true,
+  "stale_host_detected": true,
+  "privacy_redaction": true
+}
+{
+  "ok": true,
+  "hidden_semantics_removed": true,
+  "daily_maintenance_roles_preserved": true,
+  "fold_state_is_ui_session": true,
+  "package_preserved": true
+}
+node:internal/assert/utils:77
+    throw err;
+    ^
+
+AssertionError [ERR_ASSERTION]: packages are not rendered as one compact list
+    at Object.<anonymous> (/home/runner/work/dcf-chatgpt-microcore/dcf-chatgpt-microcore/tests/dcf-package-management-ui.unit.test.js:48:1)
+    at Module._compile (node:internal/modules/cjs/loader:1781:14)
     at Object..js (node:internal/modules/cjs/loader:1913:10)
     at Module.load (node:internal/modules/cjs/loader:1505:32)
     at Function._load (node:internal/modules/cjs/loader:1309:12)
     at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
-    at Module.require (node:internal/modules/cjs/loader:1527:12)
-    at require (node:internal/modules/helpers:147:16)
-    at Object.<anonymous> (/home/runner/work/dcf-chatgpt-microcore/dcf-chatgpt-microcore/scripts/build-userscript.js:6:28)
-    at Module._compile (node:internal/modules/cjs/loader:1781:14)
+    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)
+    at node:internal/main/run_main_module:36:49 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}
 
 Node.js v22.23.1
