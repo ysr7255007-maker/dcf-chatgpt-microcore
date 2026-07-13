@@ -6,14 +6,15 @@ The status in this file is authoritative. A status line inside an older ADR reco
 
 ## Current
 
-- `2026-07-13-dcf-module-visibility-observability.md` — **accepted**
+- `2026-07-13-dcf-package-module-function-role-separation.md` — **accepted**
 - `2026-07-12-dcf-storage-backend-bridge-and-health-report.md` — **accepted**
 - `2026-07-12-dcf-phase-one-whole-project-rebuild.md` — **accepted**
 - `2026-07-12-dcf-shell-geometry-source-of-truth.md` — **accepted**, retained by phase one
 - viewport-containment-fence ADR — **accepted**, retained by phase one
 
-## Partially superseded by phase one
+## Superseded or partially superseded
 
+- `2026-07-13-dcf-module-visibility-observability.md` — **superseded**; hidden-state observability is retained, but package presence, runtime modules, daily functions, maintenance tools, and hidden entries are now separate concepts
 - `2026-07-09-dcf-release-structure.md` — complete userscript release retained; modular source is now implemented
 - `2026-07-09-dcf-sidebar-ui.md` — persistent low-friction sidebar retained; UI is now a projection
 - `2026-07-09-dcf-ammo-daily-use-and-hot-update.md` — value requirements retained; implementation replaced
