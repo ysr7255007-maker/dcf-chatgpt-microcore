@@ -20,33 +20,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: python scripts/apply-conversation-environment-architecture.py
-      - name: Preserve compatibility, immutable identities, and presentation coverage
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          reconciler = Path('src/runtime/reconciler.js')
-          text = reconciler.read_text()
-          text = text.replace("schema: 'dcf.environment.reconcile.result.v1',", "schema: 'dcf.reconcile.result.v1',\n      environment_schema: 'dcf.environment.reconcile.result.v1',")
-          reconciler.write_text(text)
-
-          environment = Path('src/core/environment.js')
-          text = environment.read_text()
-          text = text.replace("    capabilities: {\n      packages: packageSelections(root)\n    },", "    packages: packageSelections(root),\n    capabilities: {\n      packages: packageSelections(root)\n    },")
-          environment.write_text(text)
-
-          packages = Path('src/modules/standard-packages.js')
-          text = packages.read_text()
-          text = text.replace("pack_id: 'dcf.ui.package-management',\n    revision: '1.1.0',\n    title: '环境构成管理',\n    description: '提供可自更新的中文能力构成总览、revision 控制和工件安装入口。'", "pack_id: 'dcf.ui.package-management',\n    revision: '1.0.0',\n    title: '包管理界面',\n    description: '提供可自更新的中文包总览、版本控制和安装入口。'")
-          text = text.replace("kind: 'composition',\n        projection: 'environment:capabilities',\n        tab_label: '构成',\n        title: '期望环境构成'", "kind: 'package-management',\n        projection: 'environment:capabilities',\n        tab_label: '包管理',\n        title: '安装包管理'")
-          packages.write_text(text)
-
-          manager = Path('src/modules/package-manager.js')
-          text = manager.read_text()
-          text = text.replace("  else if (viewTitles.some(hasCjk)) description = `提供「${viewTitles.filter(hasCjk).slice(0, 2).join('、')}」环境视图。`;\n  else if (moduleTitles.some(hasCjk))", "  else if (viewTitles.some(hasCjk)) description = `提供「${viewTitles.filter(hasCjk).slice(0, 2).join('、')}」环境视图。`;\n  else if (surfaceTitles.some(hasCjk)) description = `提供「${surfaceTitles.filter(hasCjk).slice(0, 2).join('、')}」界面入口。`;\n  else if (contentTitles.some(hasCjk)) description = `提供「${contentTitles.filter(hasCjk).slice(0, 2).join('、')}」内容类型。`;\n  else if (moduleTitles.some(hasCjk))")
-          manager.write_text(text)
-          PY
-      - name: Verify upgraded source
+      - run: python scripts/finalize-environment-routing.py
+      - name: Verify finalized source
         shell: bash
         run: |
           set +e
@@ -60,14 +35,14 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add .environment-verify.log
-          git commit -m 'Record conversation environment verification failure'
+          git commit -m 'Record finalized environment routing failure'
           git push origin HEAD:feature/conversation-environment-architecture
       - run: node --check dcf-chatgpt-microcore.user.js
-      - name: Commit upgraded source and generated release
+      - name: Commit finalized source and generated release
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           rm -f .environment-verify.log
-          git add README.md package.json src scripts/build-userscript.js tests docs catalog dcf-chatgpt-microcore.user.js dcf-chatgpt-microcore.meta.js .environment-verify.log
-          git commit -m 'Implement desired conversation environment architecture'
+          git add src tests catalog dcf-chatgpt-microcore.user.js dcf-chatgpt-microcore.meta.js .environment-verify.log
+          git commit -m 'Route persistent changes through Environment Reconciler'
           git push origin HEAD:feature/conversation-environment-architecture
