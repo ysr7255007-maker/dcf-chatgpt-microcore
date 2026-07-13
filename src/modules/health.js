@@ -2,7 +2,6 @@
 
 const { VERSION, ROOT_KEY } = require('../core/constants');
 const { nowIso } = require('../core/utils');
-const { modulesByRole } = require('./module-roles');
 
 function sortedUnique(values) {
   return Array.from(new Set((values || []).map(String))).sort();
@@ -148,12 +147,11 @@ function createHealthReporter(engine, receiptStore, storage, host, requiredPacka
     const skipped = skippedPackageIds(root);
     const unexplainedLegacyPackages = legacy.package_ids.filter((id) => !currentPackageIds.includes(id) && !skipped.has(id));
     if (unexplainedLegacyPackages.length) add('runtime_storage_bridge_gap', 'error', 'legacy-packages', 'every legacy package is migrated or has an explicit skip record', unexplainedLegacyPackages, { bridge_present: !!(root.system && root.system.storage_bridge) }, 'The actual browser still contains legacy packages that neither reached the current root nor received an explicit conflict explanation.');
-    const legacyModulesMissingFromPresentPackages = legacy.module_providers.filter((item) => currentPackageIds.includes(item.package_id) && !currentRuntimeModuleIds.includes(item.module_id));
+    const enabledPackageIds = new Set(Object.entries(root.packages && root.packages.packages || {}).filter(([, entry]) => entry && entry.enabled !== false).map(([id]) => id));
+    const legacyModulesMissingFromPresentPackages = legacy.module_providers.filter((item) => enabledPackageIds.has(item.package_id) && !currentRuntimeModuleIds.includes(item.module_id));
     if (legacyModulesMissingFromPresentPackages.length) add('runtime_legacy_module_projection_gap', 'error', 'legacy-runtime-modules', 'modules from migrated active packages enter the current runtime registry', legacyModulesMissingFromPresentPackages, null, 'The package exists in the current browser state, but one or more of its legacy modules did not reach the running registry.');
 
-    const roles = modulesByRole(root, registry || { modules: [] });
-    const expectedDaily = sortedUnique(roles.daily.map((module) => module.id));
-    const expectedMaintenance = sortedUnique(roles.maintenance.map((module) => module.id));
+    const expectedDiscoverableModules = sortedUnique((registry && registry.modules || []).filter((module) => module.kind !== 'ammo').map((module) => module.id));
     if (ui && ui.views) {
       const actualPackages = sortedUnique(ui.views.packages && ui.views.packages.entry_ids);
       const missingPackageCards = difference(currentPackageIds, actualPackages);
@@ -162,14 +160,12 @@ function createHealthReporter(engine, receiptStore, storage, host, requiredPacka
 
       const actualDaily = sortedUnique(ui.views.functions && ui.views.functions.module_ids);
       const actualMaintenance = sortedUnique(ui.views.maintenance && ui.views.maintenance.module_ids);
-      const missingDaily = difference(expectedDaily, actualDaily);
-      const missingMaintenance = difference(expectedMaintenance, actualMaintenance);
-      const extraDaily = difference(actualDaily, currentRuntimeModuleIds);
-      const extraMaintenance = difference(actualMaintenance, currentRuntimeModuleIds);
-      const wrongDaily = actualDaily.filter((id) => expectedMaintenance.includes(id));
-      const wrongMaintenance = actualMaintenance.filter((id) => expectedDaily.includes(id));
-      if (missingDaily.length || missingMaintenance.length || extraDaily.length || extraMaintenance.length || wrongDaily.length || wrongMaintenance.length) {
-        add('runtime_function_entries_diverged', 'error', 'module-entry-dom', { daily: expectedDaily, maintenance: expectedMaintenance }, { daily: actualDaily, maintenance: actualMaintenance }, { missing_daily: missingDaily, missing_maintenance: missingMaintenance, extra_daily: extraDaily, extra_maintenance: extraMaintenance, maintenance_in_daily: wrongDaily, daily_in_maintenance: wrongMaintenance }, 'The real browser entry points do not faithfully expose the modules held by the current runtime. Folded cards still count as present because their headers remain in the DOM.');
+      const actualDiscoverable = sortedUnique(actualDaily.concat(actualMaintenance));
+      const missingEntries = difference(expectedDiscoverableModules, actualDiscoverable);
+      const extraEntries = difference(actualDiscoverable, expectedDiscoverableModules);
+      const crossSectionDuplicates = actualDaily.filter((id) => actualMaintenance.includes(id));
+      if (missingEntries.length || extraEntries.length || crossSectionDuplicates.length) {
+        add('runtime_module_entry_coverage_gap', 'error', 'module-entry-dom', expectedDiscoverableModules, actualDiscoverable, { missing: missingEntries, extra: extraEntries, present_in_both_sections: crossSectionDuplicates, daily_dom: actualDaily, maintenance_dom: actualMaintenance }, 'The real browser entry points do not provide exactly one discoverable header for every non-ammo runtime module. This comparison does not reuse the UI role resolver; it checks runtime identity coverage against the actual DOM. Folded cards still count as present.');
       }
       const duplicateCards = {
         daily: duplicates(ui.views.functions && ui.views.functions.module_ids),
