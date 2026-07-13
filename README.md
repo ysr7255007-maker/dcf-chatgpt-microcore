@@ -4,7 +4,7 @@ DCF is a personally maintained ChatGPT Tampermonkey system whose value goal is a
 
 ## Current architecture
 
-DCF `0.11.4` keeps a generic modular kernel under the first-party language-ammunition product goal. Source is modular, while Tampermonkey still installs one complete userscript.
+DCF `0.11.5` keeps a generic modular kernel under the first-party language-ammunition product goal. Source is modular, while Tampermonkey still installs one complete userscript.
 
 One authoritative state root changes only through the unified transaction path:
 

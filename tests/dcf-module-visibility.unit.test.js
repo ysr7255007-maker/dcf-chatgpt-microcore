@@ -62,6 +62,10 @@ const appSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'ui', 'app.j
 assert(appSource.includes('details class="card module-card"'), 'module cards are not foldable');
 assert(appSource.includes('collapsed_modules'), 'fold state is not kept in UI session');
 assert(appSource.includes('data-module-role="daily"'), 'daily/maintenance role controls missing');
+assert(appSource.includes('[data-runtime-section="daily"] > details.module-card[data-module-id]'), 'daily Runtime sampling is not limited to module entry cards');
+assert(appSource.includes('[data-runtime-section="maintenance-tools"] > details.module-card[data-module-id]'), 'maintenance Runtime sampling is not limited to module entry cards');
+assert(!appSource.includes('[data-runtime-section="daily"] [data-module-id]'), 'broad daily selector still counts command buttons as duplicate entries');
+assert(!appSource.includes('[data-runtime-section="maintenance-tools"] [data-module-id]'), 'broad maintenance selector still counts command buttons as duplicate entries');
 assert(!appSource.includes('data-placement="hidden"'), 'hidden remains a product placement');
 assert(!appSource.includes('module-show-all-hidden'), 'obsolete hidden restoration remains');
 assert(!appSource.includes("engine.setUserPath(['moduleDisplay', moduleId], Object.assign({}, current, { hidden"), 'folding still writes authoritative moduleDisplay state');
