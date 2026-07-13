@@ -4,7 +4,8 @@ const { clone, hash, isObject } = require('./utils');
 
 const BLOCKS = [
   { marker: 'DCF_AMMO', type: 'ammo' },
-  { marker: 'DCF_MODULE_PACK', type: 'package' }
+  { marker: 'DCF_MODULE_PACK', type: 'package' },
+  { marker: 'DCF_PACKAGE_UPDATE', type: 'package-reference' }
 ];
 
 function extractBlocks(text, marker) {
@@ -57,6 +58,24 @@ function normalizePackage(payload) {
   };
 }
 
+function normalizePackageReference(payload) {
+  if (!isObject(payload) || !(payload.package_id || payload.pack_id)) throw new Error('DCF_PACKAGE_UPDATE requires package_id');
+  const reference = {
+    schema: 'dcf.package.reference.v1',
+    package_id: String(payload.package_id || payload.pack_id),
+    target: String(payload.target || payload.revision || 'latest'),
+    channel: String(payload.channel || 'stable')
+  };
+  if (payload.catalog_url) reference.catalog_url = String(payload.catalog_url);
+  return {
+    schema: 'dcf.artifact.v1',
+    type: 'package-reference',
+    identity: `package-reference:${hash(reference)}`,
+    logical_id: `package-reference:${reference.package_id}:${reference.target}`,
+    payload: reference
+  };
+}
+
 function decodeArtifacts(text) {
   const artifacts = [];
   const errors = [];
@@ -67,7 +86,9 @@ function decodeArtifacts(text) {
       if (!trimmed.startsWith('{') || !/["'](?:schema|id|pack_id|package_id)["']\s*:/.test(trimmed)) continue;
       try {
         const payload = JSON.parse(trimmed);
-        artifacts.push(block.type === 'ammo' ? normalizeAmmo(payload) : normalizePackage(payload));
+        if (block.type === 'ammo') artifacts.push(normalizeAmmo(payload));
+        else if (block.type === 'package') artifacts.push(normalizePackage(payload));
+        else artifacts.push(normalizePackageReference(payload));
       } catch (error) {
         errors.push({ marker: block.marker, error: String(error && error.message || error), preview: { redacted: true, length: raw.length, hash: hash(raw) } });
       }
@@ -76,4 +97,4 @@ function decodeArtifacts(text) {
   return { artifacts, errors };
 }
 
-module.exports = { decodeArtifacts, normalizeAmmo, normalizePackage, extractBlocks };
+module.exports = { decodeArtifacts, normalizeAmmo, normalizePackage, normalizePackageReference, extractBlocks };

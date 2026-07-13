@@ -73,10 +73,12 @@ function createApp(options) {
   }
 
   function renderTop() {
+    const packageView = engine.getRegistry().uiViews && engine.getRegistry().uiViews.packages || {};
+    const packageTabLabel = packageView.tab_label || '包管理';
     top.innerHTML = `<b>DCF ${escapeHtml(version)}</b><div class="tabs">
       <button data-tab="ammo" class="${tab === 'ammo' ? 'on' : ''}">弹药</button>
       <button data-tab="functions" class="${tab === 'functions' ? 'on' : ''}">功能</button>
-      <button data-tab="packages" class="${tab === 'packages' ? 'on' : ''}">包管理</button>
+      <button data-tab="packages" class="${tab === 'packages' ? 'on' : ''}">${escapeHtml(packageTabLabel)}</button>
       <button data-tab="maintenance" class="${tab === 'maintenance' ? 'on' : ''}">维护</button>
     </div>`;
   }
@@ -141,17 +143,40 @@ function createApp(options) {
 
   function renderPackages() {
     const entries = packageManager.packages();
-    body.innerHTML = `<div class="card package-toolbar"><div class="row"><span class="grow"><span class="name">安装包管理</span><br><span class="mini">中文名称和功能说明用于日常识别；英文 ID 仅保留为技术标识。</span></span><button data-action="package-update">检查更新</button></div><details class="package-install"><summary>手动安装包</summary><div class="detail-body"><textarea data-role="package-json" placeholder="粘贴 DCF_MODULE_PACK JSON">${escapeHtml(packageDraft)}</textarea><div class="actions"><button data-action="package-install">安装 JSON</button></div></div></details></div><section class="card package-list" data-runtime-section="packages">` + entries.map((entry) => {
+    const view = engine.getRegistry().uiViews && engine.getRegistry().uiViews.packages || {};
+    const labels = Object.assign({
+      check_updates: '检查更新', manual_install: '手动安装包', install_json: '安装 JSON',
+      package_json_placeholder: '粘贴 DCF_MODULE_PACK JSON', switch_revision: '切换',
+      enable: '启用', disable: '停用', uninstall: '卸载'
+    }, view.labels || {});
+    const stateLabels = Object.assign({ required: '核心', enabled: '已启用', disabled: '已停用' }, view.state_labels || {});
+    const controlOrder = Array.isArray(view.control_order) && view.control_order.length ? view.control_order : ['revision', 'switch', 'toggle', 'uninstall'];
+    const density = view.density === 'comfortable' ? 'comfortable' : 'compact';
+    const manualInstall = view.manual_install !== false && view.manual_install !== 'hidden';
+    const manualOpen = view.manual_install === 'open' ? 'open' : '';
+    const installPanel = manualInstall ? `<details class="package-install" ${manualOpen}><summary>${escapeHtml(labels.manual_install)}</summary><div class="detail-body"><textarea data-role="package-json" placeholder="${escapeHtml(labels.package_json_placeholder)}">${escapeHtml(packageDraft)}</textarea><div class="actions"><button data-action="package-install">${escapeHtml(labels.install_json)}</button></div></div></details>` : '';
+    body.innerHTML = `<div class="card package-toolbar"><div class="row"><span class="grow"><span class="name">${escapeHtml(view.title || '安装包管理')}</span><br><span class="mini">${escapeHtml(view.description || '包与 revision 的期望状态控制面。')}</span></span><button data-action="package-update">${escapeHtml(labels.check_updates)}</button></div>${installPanel}</div><section class="card package-list density-${density}" data-runtime-section="packages">` + entries.map((entry) => {
       const revisions = Object.keys(entry.revisions || {}).sort();
       const required = packageManager.isRequired(entry.package_id);
       const presentation = packageManager.presentation(entry);
       const enabled = entry.enabled !== false;
       const stateClass = required ? 'required' : enabled ? 'enabled' : 'disabled';
-      const stateLabel = required ? '核心' : enabled ? '已启用' : '已停用';
-      const revisionControl = revisions.length > 1
-        ? `<select aria-label="选择版本" data-role="package-revision" data-id="${escapeHtml(entry.package_id)}">${revisions.map((revision) => `<option ${revision === entry.active_revision ? 'selected' : ''}>${escapeHtml(revision)}</option>`).join('')}</select><button data-action="package-switch" data-id="${escapeHtml(entry.package_id)}">切换</button>`
-        : `<span class="package-version">v${escapeHtml(entry.active_revision)}</span>`;
-      return `<div class="package-card" data-package-id="${escapeHtml(entry.package_id)}"><div class="package-title-row"><span class="name">${escapeHtml(presentation.title)}</span><span class="state-pill ${stateClass}">${stateLabel}</span></div><div class="package-description">${escapeHtml(presentation.description)}</div><div class="mini package-id">${escapeHtml(entry.package_id)}</div><div class="package-controls">${revisionControl}${required ? '' : `<button data-action="package-toggle" data-id="${escapeHtml(entry.package_id)}">${enabled ? '停用' : '启用'}</button><button data-action="package-uninstall" data-id="${escapeHtml(entry.package_id)}" class="danger">卸载</button>`}</div></div>`;
+      const stateLabel = required ? stateLabels.required : enabled ? stateLabels.enabled : stateLabels.disabled;
+      const controls = [];
+      for (const control of controlOrder) {
+        if (control === 'revision') {
+          controls.push(revisions.length > 1
+            ? `<select aria-label="选择版本" data-role="package-revision" data-id="${escapeHtml(entry.package_id)}">${revisions.map((revision) => `<option ${revision === entry.active_revision ? 'selected' : ''}>${escapeHtml(revision)}</option>`).join('')}</select>`
+            : `<span class="package-version">v${escapeHtml(entry.active_revision)}</span>`);
+        } else if (control === 'switch' && revisions.length > 1) {
+          controls.push(`<button data-action="package-switch" data-id="${escapeHtml(entry.package_id)}">${escapeHtml(labels.switch_revision)}</button>`);
+        } else if (control === 'toggle' && !required) {
+          controls.push(`<button data-action="package-toggle" data-id="${escapeHtml(entry.package_id)}">${escapeHtml(enabled ? labels.disable : labels.enable)}</button>`);
+        } else if (control === 'uninstall' && !required) {
+          controls.push(`<button data-action="package-uninstall" data-id="${escapeHtml(entry.package_id)}" class="danger">${escapeHtml(labels.uninstall)}</button>`);
+        }
+      }
+      return `<div class="package-card" data-package-id="${escapeHtml(entry.package_id)}"><div class="package-title-row"><span class="name">${escapeHtml(presentation.title)}</span><span class="state-pill ${stateClass}">${escapeHtml(stateLabel)}</span></div><div class="package-description">${escapeHtml(presentation.description)}</div>${view.show_technical_id === false ? '' : `<div class="mini package-id">${escapeHtml(entry.package_id)}</div>`}<div class="package-controls">${controls.join('')}</div></div>`;
     }).join('') + '</section>';
   }
 

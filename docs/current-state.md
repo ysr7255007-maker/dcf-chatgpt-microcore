@@ -16,7 +16,7 @@ Updated: 2026-07-13
 
 ## 当前版本
 
-当前候选版本：`0.11.6`
+当前候选版本：`0.12.0`
 
 `0.11.4` 保留了 0.11.3 已正确完成的包管理、日常功能和维护工具分区，移除错误的 hidden 产品语义，并把体检重建为真实浏览器 Runtime 偏差报告。`0.11.5` 修正 Runtime DOM 入口采样误报。`0.11.6` 聚焦包管理的中文可读性和紧凑总览，不改变包身份、事务、迁移或 Runtime 架构。
 
@@ -89,3 +89,12 @@ Updated: 2026-07-13
 ## Deferred to phase two
 
 ChatGPT historical-message virtualization, turn-window rendering, DOM/memory dashboard, and other attempts to reduce ChatGPT's own long-thread rendering cost.
+
+## 0.12.0 统一能力重协调
+
+- `root.packages` 正式作为期望能力集合；安装、更新、启停、切换和回滚统一为期望状态变化。
+- 对话完整 `DCF_MODULE_PACK` 是按值输入；新增 `DCF_PACKAGE_UPDATE` 是按引用输入。
+- Catalog Resolver、手动 JSON 和对话输入统一进入 `dcf.reconcile.result.v1`，成功后原子提交并立即重投影 Runtime。
+- `dcf.ui.package-management` 成为必需的声明式 UI 包，拥有包管理页文案、密度、控制顺序和可覆盖样式。
+- 普通 UI/功能调整以后应升级对应包，不再默认发布 Tampermonkey userscript。
+- Core 继续禁止远程 JavaScript，只提供可信解析、事务、协调、Host 与恢复渲染边界。
