@@ -104,9 +104,9 @@ report = reporter.report();
 const codes = report.deviations.map((item) => item.code);
 assert.strictEqual(report.status, 'error');
 assert(codes.includes('runtime_host_count_mismatch'));
-assert(codes.includes('runtime_function_entries_diverged'));
+assert(codes.includes('runtime_module_entry_coverage_gap'));
 assert(codes.includes('runtime_reply_observer_stale'));
-const entryDeviation = report.deviations.find((item) => item.code === 'runtime_function_entries_diverged');
-assert(entryDeviation.evidence.missing_daily.includes('legacy.tools'));
+const entryDeviation = report.deviations.find((item) => item.code === 'runtime_module_entry_coverage_gap');
+assert(entryDeviation.evidence.missing.includes('legacy.tools'));
 
 console.log(JSON.stringify({ ok: true, healthy_report_is_diff_only: true, browser_dom_divergence_detected: true, duplicate_runtime_detected: true, stale_host_detected: true, privacy_redaction: true }, null, 2));
