@@ -19,7 +19,7 @@ function computeFenceStyle(rect, viewport, margin = 12) {
 }
 
 function createApp(options) {
-  const { engine, ammo, packageManager, maintenance, commandRunner, storage, version } = options;
+  const { engine, ammo, packageManager, maintenance, commandRunner, reconciler, storage, version } = options;
   const doc = options.document || document;
   const windowObject = doc.defaultView || window;
   const hostElement = doc.createElement('div');
@@ -43,6 +43,7 @@ function createApp(options) {
   let tab = initialSession.tab || 'ammo';
   let collapsedModules = initialSession.collapsed_modules && typeof initialSession.collapsed_modules === 'object' ? Object.assign({}, initialSession.collapsed_modules) : {};
   let packageDraft = '';
+  let profileDraft = '';
   let fenceFrame = 0;
 
   function saveSession() {
@@ -72,21 +73,30 @@ function createApp(options) {
     }
   }
 
+  function environmentViews() {
+    const defaults = {
+      ammo: { id: 'ammo', kind: 'content', tab_label: '弹药', title: '语言弹药', order: 10 },
+      functions: { id: 'functions', kind: 'actions', tab_label: '功能', title: '日常功能', order: 20 },
+      packages: { id: 'packages', kind: 'composition', tab_label: '构成', title: '期望环境构成', order: 30 },
+      maintenance: { id: 'maintenance', kind: 'observation', tab_label: '维护', title: '环境观察与恢复', order: 40 }
+    };
+    const supplied = engine.getRegistry().uiViews || {};
+    return Object.values(Object.assign({}, defaults, supplied)).filter((view) => ['ammo', 'functions', 'packages', 'maintenance'].includes(String(view.id))).sort((a, b) => Number(a.order || 1000) - Number(b.order || 1000));
+  }
+
+  function currentView() { return environmentViews().find((view) => String(view.id) === String(tab)) || environmentViews()[0]; }
+
   function renderTop() {
-    const packageView = engine.getRegistry().uiViews && engine.getRegistry().uiViews.packages || {};
-    const packageTabLabel = packageView.tab_label || '包管理';
-    top.innerHTML = `<b>DCF ${escapeHtml(version)}</b><div class="tabs">
-      <button data-tab="ammo" class="${tab === 'ammo' ? 'on' : ''}">弹药</button>
-      <button data-tab="functions" class="${tab === 'functions' ? 'on' : ''}">功能</button>
-      <button data-tab="packages" class="${tab === 'packages' ? 'on' : ''}">${escapeHtml(packageTabLabel)}</button>
-      <button data-tab="maintenance" class="${tab === 'maintenance' ? 'on' : ''}">维护</button>
-    </div>`;
+    const views = environmentViews();
+    if (!views.some((view) => String(view.id) === String(tab))) tab = views[0] && views[0].id || 'ammo';
+    top.innerHTML = `<b>DCF ${escapeHtml(version)}</b><div class="tabs">${views.map((view) => `<button data-tab="${escapeHtml(view.id)}" class="${tab === view.id ? 'on' : ''}">${escapeHtml(view.tab_label || view.title || view.id)}</button>`).join('')}</div>`;
   }
 
   function renderAmmo() {
+    const view = engine.getRegistry().uiViews && engine.getRegistry().uiViews.ammo || {};
     const items = ammo.items();
     const mode = engine.getRoot().user.preferences && engine.getRoot().user.preferences.ammo_fire_mode || 'insert';
-    body.innerHTML = `<div class="card"><div class="name">语言弹药</div><div class="mini">自动提取、自动装填、更新与发射</div><div class="actions"><button data-action="ammo-extract">从当前对话提取</button><button data-action="ammo-mode">发射：${mode === 'send' ? '直接发送' : '填入输入框'}</button></div></div>` +
+    body.innerHTML = `<div class="card"><div class="name">${escapeHtml(view.title || '语言弹药')}</div><div class="mini">${escapeHtml(view.description || '自动提取、自动装填、更新与发射')}</div><div class="actions"><button data-action="ammo-extract">从当前对话提取</button><button data-action="ammo-mode">发射：${mode === 'send' ? '直接发送' : '填入输入框'}</button></div></div>` +
       (items.length ? items.map((item) => `<div class="card" data-ammo-id="${escapeHtml(item.id)}"><div class="name">${escapeHtml(item.title || item.id)}</div><div class="mini">${escapeHtml(item.purpose || item.id)}</div><div class="actions"><button data-action="ammo-fire">发射</button><button data-action="ammo-copy">复制</button><button data-action="ammo-update">更新</button><button data-action="ammo-delete" class="danger">删除</button></div></div>`).join('') : '<div class="card mini">弹药库为空。完成一次提取后，回复中的 DCF_AMMO 会自动装填。</div>');
   }
 
@@ -137,8 +147,9 @@ function createApp(options) {
   }
 
   function renderFunctions() {
+    const view = engine.getRegistry().uiViews && engine.getRegistry().uiViews.functions || {};
     const groups = modulesByRole(engine.getRoot(), engine.getRegistry());
-    body.innerHTML = `<section data-runtime-section="daily"><div class="card"><div class="name">日常功能</div><div class="mini">主力能力始终保留入口；点击模块标题展开或收起具体操作。</div></div>${renderModuleCards(groups.daily, 'daily', '暂无日常功能')}</section>`;
+    body.innerHTML = `<section data-runtime-section="daily"><div class="card"><div class="name">${escapeHtml(view.title || '日常功能')}</div><div class="mini">${escapeHtml(view.description || '主力能力始终保留入口；点击模块标题展开或收起具体操作。')}</div></div>${renderModuleCards(groups.daily, 'daily', '暂无日常功能')}</section>`;
   }
 
   function renderPackages() {
@@ -181,16 +192,19 @@ function createApp(options) {
   }
 
   function renderMaintenance() {
+    const view = engine.getRegistry().uiViews && engine.getRegistry().uiViews.maintenance || {};
     const summary = maintenance.summary();
     const lastHealth = maintenance.lastHealthReport();
     const receipts = maintenance.receipts().slice(-8).reverse();
     const snapshots = maintenance.snapshots().slice().reverse();
     const groups = modulesByRole(engine.getRoot(), engine.getRegistry());
+    const profileState = maintenance.profiles();
     const healthStatus = lastHealth ? lastHealth.status : 'healthy';
     const deviationCount = lastHealth && Array.isArray(lastHealth.deviations) ? lastHealth.deviations.length : 0;
-    body.innerHTML = `<div class="card health-${escapeHtml(healthStatus)}"><div class="name">一键 Runtime 体检</div><div class="mini">从真实浏览器现场核对脚本实例、存储、内存运行态、实际 DOM、ChatGPT 宿主连接和最近失败。正常项保持安静，只复制无法合理解释的 Runtime 偏差。</div>${lastHealth ? `<div class="health-count">上次结果：${escapeHtml(healthStatus)} · ${deviationCount} deviations</div>` : ''}<div class="actions"><button data-action="maintenance-health-copy">体检并复制</button></div></div>
+    body.innerHTML = `<div class="card"><div class="name">${escapeHtml(view.title || '环境观察与恢复')}</div><div class="mini">${escapeHtml(view.description || '观察期望环境在真实浏览器 Runtime 中是否成立，并提供恢复入口。')}</div></div><div class="card health-${escapeHtml(healthStatus)}"><div class="name">一键 Runtime 体检</div><div class="mini">从真实浏览器现场核对脚本实例、存储、内存运行态、实际 DOM、ChatGPT 宿主连接和最近失败。正常项保持安静，只复制无法合理解释的 Runtime 偏差。</div>${lastHealth ? `<div class="health-count">上次结果：${escapeHtml(healthStatus)} · ${deviationCount} deviations</div>` : ''}<div class="actions"><button data-action="maintenance-health-copy">体检并复制</button></div></div>
       <section data-runtime-section="maintenance-tools"><div class="section-title">维护工具</div>${renderModuleCards(groups.maintenance, 'maintenance', '暂无维护工具')}</section>
       ${renderRoleManager()}
+      <details class="card"><summary><span class="name">环境 Profile</span></summary><div class="detail-body"><div class="mini">Profile 保存包选择、政策和界面组织，不复制用户弹药正文。</div><div class="row"><input data-role="profile-title" placeholder="环境名称" value="${escapeHtml(profileDraft)}"><button data-action="profile-save">保存当前环境</button></div>${profileState.items.length ? profileState.items.map((profile) => `<div class="pkg row"><span class="grow mini">${escapeHtml(profile.title)} · ${profile.package_count} packages${profileState.active_id === profile.id ? ' · 当前' : ''}</span><button data-action="profile-activate" data-profile-id="${escapeHtml(profile.id)}">激活</button><button data-action="profile-remove" data-profile-id="${escapeHtml(profile.id)}" class="danger">删除</button></div>`).join('') : '<div class="mini">暂无环境 Profile</div>'}</div></details>
       <details class="card"><summary><span class="name">运行摘要</span></summary><div class="detail-body"><div class="receipt">${escapeHtml(JSON.stringify(summary, null, 2))}</div><div class="actions"><button data-action="maintenance-copy">复制简要诊断</button><button data-action="receipts-clear">清空回执</button></div></div></details>
       <details class="card"><summary><span class="name">最近回执</span></summary><div class="detail-body">${receipts.length ? receipts.map((item) => `<div class="receipt pkg">${escapeHtml(JSON.stringify(item, null, 2))}</div>`).join('') : '<div class="mini">暂无回执</div>'}</div></details>
       <details class="card"><summary><span class="name">状态快照</span></summary><div class="detail-body">${snapshots.length ? snapshots.map((item) => `<div class="pkg row"><span class="grow mini">r${item.revision} · ${escapeHtml(item.reason)}</span><button data-action="rollback" data-revision="${item.revision}">恢复</button></div>`).join('') : '<div class="mini">暂无快照</div>'}</div></details>`;
@@ -236,9 +250,10 @@ function createApp(options) {
 
   function render() {
     renderTop();
-    if (tab === 'functions') renderFunctions();
-    else if (tab === 'packages') renderPackages();
-    else if (tab === 'maintenance') renderMaintenance();
+    const view = currentView();
+    if (view.kind === 'actions' || view.id === 'functions') renderFunctions();
+    else if (view.kind === 'composition' || view.id === 'packages') renderPackages();
+    else if (view.kind === 'observation' || view.id === 'maintenance') renderMaintenance();
     else renderAmmo();
     applyAppearance();
   }
@@ -250,7 +265,7 @@ function createApp(options) {
       area: role === 'maintenance' ? 'maintenance' : 'work'
     });
     delete next.hidden;
-    return engine.setUserPath(['moduleDisplay', moduleId], next);
+    return reconciler.acceptIntent({ type: 'environment.user.set', path: ['moduleDisplay', moduleId] }, { value: next });
   }
 
   function collectIds(selector, attribute) {
@@ -302,6 +317,7 @@ function createApp(options) {
 
   root.addEventListener('input', (event) => {
     if (event.target && event.target.dataset.role === 'package-json') packageDraft = event.target.value;
+    if (event.target && event.target.dataset.role === 'profile-title') profileDraft = event.target.value;
   });
 
   root.addEventListener('click', (event) => {
@@ -327,11 +343,11 @@ function createApp(options) {
     if (action === 'ammo-extract') runAndRender(() => ammo.requestExtract(), '提取请求已发送');
     else if (action === 'ammo-mode') {
       const current = engine.getRoot().user.preferences && engine.getRoot().user.preferences.ammo_fire_mode || 'insert';
-      runAndRender(() => engine.setUserPath(['preferences', 'ammo_fire_mode'], current === 'send' ? 'insert' : 'send'), '发射方式已更新');
+      runAndRender(() => reconciler.acceptIntent({ type: 'environment.user.set', path: ['preferences', 'ammo_fire_mode'] }, { value: current === 'send' ? 'insert' : 'send' }), '发射方式已更新');
     } else if (action === 'ammo-fire' && item) runAndRender(() => ammo.fire(item), '弹药已发射');
     else if (action === 'ammo-copy' && item) runAndRender(() => ammo.copy(item), '已复制');
     else if (action === 'ammo-update' && item) runAndRender(() => ammo.requestUpdate(item), '更新请求已发送');
-    else if (action === 'ammo-delete' && item) runAndRender(() => engine.removeContent('ammo', item.id), '已删除');
+    else if (action === 'ammo-delete' && item) runAndRender(() => reconciler.acceptIntent({ type: 'environment.resource.remove', resource_type: 'ammo', resource_id: item.id }), '已删除');
     else if (action === 'package-install') runAndRender(() => packageManager.installJson(packageDraft), '安装包已安装');
     else if (action === 'package-update') runAndRender(() => packageManager.checkUpdates(true), '更新检查完成');
     else if (action === 'package-toggle') {
@@ -350,6 +366,9 @@ function createApp(options) {
     } else if (action === 'maintenance-health-copy') runAndRender(() => maintenance.copyHealthReport(), 'Runtime 体检报告已复制');
     else if (action === 'maintenance-copy') runAndRender(() => maintenance.copySummary(), '简要诊断已复制');
     else if (action === 'receipts-clear') runAndRender(() => maintenance.clearReceipts(), '回执已清空');
+    else if (action === 'profile-save') runAndRender(() => maintenance.saveProfile(profileDraft || '当前环境'), '环境 Profile 已保存');
+    else if (action === 'profile-activate') runAndRender(() => maintenance.activateProfile(button.dataset.profileId), '环境 Profile 已激活');
+    else if (action === 'profile-remove') runAndRender(() => maintenance.removeProfile(button.dataset.profileId), '环境 Profile 已删除');
     else if (action === 'rollback') runAndRender(() => maintenance.rollbackTo(Number(button.dataset.revision)), '状态已恢复');
   });
 

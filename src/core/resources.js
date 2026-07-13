@@ -2,13 +2,35 @@
 
 const { clone, isObject, safeId } = require('./utils');
 
+const RESOURCE_FAMILIES = { content: 'content', action: 'action', view: 'view', style: 'style', policy: 'policy' };
+
+function resourceFamily(address) {
+  const value = String(address || '');
+  if (value.startsWith('content:') || value.startsWith('content-type:')) return RESOURCE_FAMILIES.content;
+  if (value.startsWith('module:')) return RESOURCE_FAMILIES.action;
+  if (value.startsWith('surface:') || value.startsWith('ui-view:') || value.startsWith('module-display:')) return RESOURCE_FAMILIES.view;
+  if (value.startsWith('appearance-') || value.startsWith('appearance-var:') || value.startsWith('style:')) return RESOURCE_FAMILIES.style;
+  return RESOURCE_FAMILIES.policy;
+}
+
+function observationContract(address) {
+  const family = resourceFamily(address);
+  if (family === 'action') return { registry: 'modules', runtime: 'module-entry' };
+  if (family === 'view') return { registry: 'uiViews/surfaces/moduleDisplay', runtime: 'view-entry' };
+  if (family === 'content') return { registry: 'content/contentTypes', runtime: 'content-entry' };
+  if (family === 'style') return { registry: 'appearance', runtime: 'computed-style' };
+  return { registry: 'settings/policies', runtime: 'state-only' };
+}
+
 function normalizeClaim(address, value, provider, mode = 'exclusive', replaces = []) {
   return {
     address: String(address),
     value: clone(value),
     provider: String(provider),
     mode: mode === 'extend' ? 'extend' : 'exclusive',
-    replaces: Array.isArray(replaces) ? replaces.map(String) : []
+    replaces: Array.isArray(replaces) ? replaces.map(String) : [],
+    family: resourceFamily(address),
+    observation: observationContract(address)
   };
 }
 
@@ -78,6 +100,9 @@ function normalizePack(pack, fallbackId, fallbackRevision) {
   }
   for (const [key, value] of Object.entries(isObject(contributions.settings) ? contributions.settings : {})) {
     claims.push(normalizeClaim(`setting-default:${key}`, value, provider, 'exclusive', replaces));
+  }
+  for (const [key, value] of Object.entries(isObject(contributions.policies) ? contributions.policies : {})) {
+    claims.push(normalizeClaim(`policy-default:${key}`, value, provider, 'exclusive', replaces));
   }
   for (const [type, items] of Object.entries(isObject(contributions.content) ? contributions.content : {})) {
     const list = Array.isArray(items) ? items : Object.values(isObject(items) ? items : {});
@@ -169,7 +194,8 @@ function compilePackageSet(packageState) {
     };
   }
   const claims = resolveClaims(allClaims, ownership, errors);
-  return { ok: errors.length === 0, errors, claims, ownership, styles, activePackages };
+  const resources = Array.from(claims.entries()).map(([address, claim]) => ({ address, family: claim.family || resourceFamily(address), provider: claim.provider, observation: clone(claim.observation || observationContract(address)) }));
+  return { ok: errors.length === 0, errors, claims, ownership, styles, activePackages, resourceGraph: { schema: 'dcf.environment.resource-graph.v1', resources } };
 }
 
-module.exports = { normalizePack, compilePackageSet, styleViolations, resolveClaims };
+module.exports = { RESOURCE_FAMILIES, resourceFamily, observationContract, normalizePack, compilePackageSet, styleViolations, resolveClaims };

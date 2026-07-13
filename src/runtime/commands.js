@@ -26,49 +26,52 @@ function commandList(module) {
   return out;
 }
 
-function createCommandRunner(engine, effectRunner, receiptStore, shellObserver) {
+function createCommandRunner(engine, effectRunner, receiptStore, shellObserver, reconciler) {
+  function environmentIntent(intent, material) {
+    return reconciler ? reconciler.acceptIntent(intent, material) : engine.applyEnvironmentIntent(intent, material);
+  }
+
+  function adjustedAppearance(args) {
+    const next = clone(engine.getRoot().user.appearance || { side: null, vars: {}, css: '', safe_mode: false });
+    const vars = next.vars || (next.vars = {});
+    for (const key of ['w', 'h', 'top', 'bottom']) {
+      if (args[key] == null) continue;
+      const current = Number.parseInt(String(vars[key] || engine.getRegistry().appearance.vars[key] || '0'), 10) || 0;
+      const minimum = key === 'w' ? 240 : key === 'h' ? 300 : 0;
+      vars[key] = `${Math.max(minimum, current + Number(args[key]))}px`;
+    }
+    if (args.offset != null) {
+      const anchor = vars.anchor || engine.getRegistry().appearance.vars.anchor || 'bottom';
+      const key = anchor === 'top' ? 'top' : 'bottom';
+      const current = Number.parseInt(String(vars[key] || engine.getRegistry().appearance.vars[key] || (key === 'top' ? '12px' : '112px')), 10) || 0;
+      vars[key] = `${Math.max(0, current + Number(args.offset))}px`;
+    }
+    if (args.anchor) vars.anchor = args.anchor === 'top' ? 'top' : 'bottom';
+    if (args.side === 'toggle') next.side = engine.getRegistry().appearance.side === 'left' ? 'right' : 'left';
+    else if (args.side) next.side = args.side === 'left' ? 'left' : 'right';
+    return next;
+  }
+
   async function runStep(step, context) {
     const call = String(step.call || '');
     const args = clone(step.with || step.args || {});
-    const before = {
-      state_hash: engine.getRoot().state_hash,
-      revision: engine.getRoot().revision,
-      appearance: clone(engine.getRegistry().appearance.vars)
-    };
+    const before = { state_hash: engine.getRoot().state_hash, revision: engine.getRoot().revision, appearance: clone(engine.getRegistry().appearance.vars) };
     let result;
     if (call === 'appearance.adjust') {
-      result = engine.transact({ type: 'capability.appearance.adjust', module_id: context.module_id, command_id: context.command_id }, (candidate) => {
-        const vars = candidate.user.appearance.vars || (candidate.user.appearance.vars = {});
-        for (const key of ['w', 'h', 'top', 'bottom']) {
-          if (args[key] == null) continue;
-          const current = Number.parseInt(String(vars[key] || engine.getRegistry().appearance.vars[key] || '0'), 10) || 0;
-          const minimum = key === 'w' ? 240 : key === 'h' ? 300 : 0;
-          vars[key] = `${Math.max(minimum, current + Number(args[key]))}px`;
-        }
-        if (args.offset != null) {
-          const anchor = vars.anchor || engine.getRegistry().appearance.vars.anchor || 'bottom';
-          const key = anchor === 'top' ? 'top' : 'bottom';
-          const current = Number.parseInt(String(vars[key] || engine.getRegistry().appearance.vars[key] || (key === 'top' ? '12px' : '112px')), 10) || 0;
-          vars[key] = `${Math.max(0, current + Number(args.offset))}px`;
-        }
-        if (args.anchor) vars.anchor = args.anchor === 'top' ? 'top' : 'bottom';
-        if (args.side === 'toggle') candidate.user.appearance.side = engine.getRegistry().appearance.side === 'left' ? 'right' : 'left';
-        else if (args.side) candidate.user.appearance.side = args.side === 'left' ? 'left' : 'right';
-        candidate.user.revision += 1;
-      });
+      result = environmentIntent({ type: 'environment.user.set', path: ['appearance'], source: { module_id: context.module_id, command_id: context.command_id } }, { value: adjustedAppearance(args) });
     } else if (call === 'appearance.set') {
-      result = engine.transact({ type: 'capability.appearance.set', module_id: context.module_id, command_id: context.command_id }, (candidate) => {
-        if (args.side) candidate.user.appearance.side = args.side === 'left' ? 'left' : 'right';
-        for (const [key, value] of Object.entries(args.vars || {})) candidate.user.appearance.vars[key] = value;
-        candidate.user.revision += 1;
-      });
+      const next = clone(engine.getRoot().user.appearance || { side: null, vars: {}, css: '', safe_mode: false });
+      if (args.side) next.side = args.side === 'left' ? 'left' : 'right';
+      next.vars = Object.assign({}, next.vars || {}, args.vars || {});
+      result = environmentIntent({ type: 'environment.user.set', path: ['appearance'], source: { module_id: context.module_id, command_id: context.command_id } }, { value: next });
     } else if (call === 'settings.set') {
       if (!args.key) throw new Error('settings.set requires key');
-      result = engine.setUserPath(['settings', String(args.key)], args.value);
+      result = environmentIntent({ type: 'environment.user.set', path: ['settings', String(args.key)], source: { module_id: context.module_id, command_id: context.command_id } }, { value: args.value });
     } else if (call === 'content.upsert') {
-      result = engine.upsertContent(String(args.type || 'ammo'), args.item || {}, null);
+      const item = args.item || {};
+      result = environmentIntent({ type: 'environment.resource.upsert', resource_type: String(args.type || 'ammo'), resource_id: String(item.id || ''), source: { module_id: context.module_id, command_id: context.command_id } }, { value: item });
     } else if (call === 'content.remove') {
-      result = engine.removeContent(String(args.type || 'ammo'), String(args.id || ''));
+      result = environmentIntent({ type: 'environment.resource.remove', resource_type: String(args.type || 'ammo'), resource_id: String(args.id || ''), source: { module_id: context.module_id, command_id: context.command_id } });
     } else if (call === 'composer.replace' || call === 'composer.insert') {
       result = await effectRunner.run({ type: 'composer.insert', text: String(args.text || '') }, context);
     } else if (call === 'composer.send') {
@@ -80,24 +83,13 @@ function createCommandRunner(engine, effectRunner, receiptStore, shellObserver) 
     } else {
       throw new Error(`unknown capability ${call}`);
     }
-    const after = {
-      state_hash: engine.getRoot().state_hash,
-      revision: engine.getRoot().revision,
-      appearance: clone(engine.getRegistry().appearance.vars),
-      shell: typeof shellObserver === 'function' ? shellObserver() : null
-    };
+    const after = { state_hash: engine.getRoot().state_hash, revision: engine.getRoot().revision, appearance: clone(engine.getRegistry().appearance.vars), shell: typeof shellObserver === 'function' ? shellObserver() : null };
     return { call, input: sanitizeValue(args), before, after, result: sanitizeValue(result, 'result') };
   }
 
   async function execute(module, command, block) {
     const context = { module_id: module.id, module_version: module.version || null, block_id: block && block.id || null, command_id: command.id };
-    const trace = {
-      schema: 'dcf.command.receipt.v3',
-      trace_id: `cmd-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-      context,
-      status: 'running',
-      steps: []
-    };
+    const trace = { schema: 'dcf.command.receipt.v3', trace_id: `cmd-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`, context, status: 'running', steps: [] };
     try {
       for (const step of Array.isArray(command.steps) ? command.steps : []) trace.steps.push(await runStep(step, context));
       trace.status = 'ok';

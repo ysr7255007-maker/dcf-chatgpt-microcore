@@ -4,6 +4,8 @@ const { ROOT_KEY, SNAPSHOT_KEY, RUNTIME_KEY } = require('./constants');
 const { clone, nowIso, boundedPush } = require('./utils');
 const { finalizeCandidate, validateRoot, addPackRevision } = require('./state');
 const { buildProjection } = require('./projection');
+const { environmentSnapshot } = require('./environment');
+const { normalizeEnvironmentIntent, artifactToEnvironmentInput, applyEnvironmentTransition } = require('./intents');
 
 function createTransactionEngine(storage, receiptStore, options = {}) {
   const snapshotLimit = Number(options.snapshotLimit || 20);
@@ -78,110 +80,94 @@ function createTransactionEngine(storage, receiptStore, options = {}) {
     storage.set(ROOT_KEY, finalized);
     root = finalized;
     persistProjection(built.registry);
-    const receipt = receiptStore.append({
+    return receiptStore.append({
       schema: 'dcf.receipt.v1', receipt_id: `r-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
       intent: clone(intent), status: 'committed', previous_revision: previous.revision, revision: finalized.revision,
       previous_state_hash: previous.state_hash, state_hash: finalized.state_hash, build_id: built.registry.build.build_id,
       effects: clone(reduction.effects || []), observations: clone(reduction.observations || []), duration_ms: Date.now() - started
     });
-    return receipt;
+  }
+
+  function applyEnvironmentIntent(intent, material = {}) {
+    const normalized = normalizeEnvironmentIntent(intent);
+    if (material.artifact_identity && root.system.artifact_index[material.artifact_identity]) {
+      return receiptStore.append({
+        schema: 'dcf.receipt.v1',
+        intent: clone(normalized),
+        status: 'ignored',
+        reason: 'already-applied',
+        artifact_identity: material.artifact_identity
+      });
+    }
+    return transact(normalized, (candidate) => {
+      const reduction = applyEnvironmentTransition(candidate, normalized, material, { addPackRevision });
+      if (material.artifact_identity) recordArtifact(candidate, material.artifact_identity, material.logical_id);
+      return reduction;
+    });
   }
 
   function installPackage(pack, source) {
-    return transact({ type: 'package.install', package_id: pack.pack_id, revision: pack.revision, source }, (candidate) => {
-      addPackRevision(candidate, pack, source);
-      return {};
-    });
+    return applyEnvironmentIntent({ type: 'environment.package.install', package_id: pack.pack_id, revision: pack.revision, source }, { pack, source });
   }
 
   function setPackageEnabled(packageId, enabled) {
-    return transact({ type: enabled ? 'package.enable' : 'package.disable', package_id: packageId }, (candidate) => {
-      const entry = candidate.packages.packages[packageId];
-      if (!entry) throw new Error(`package ${packageId} not installed`);
-      entry.enabled = !!enabled;
-      candidate.packages.revision += 1;
-    });
+    return applyEnvironmentIntent({ type: 'environment.package.enable', package_id: packageId, enabled: !!enabled });
   }
 
   function uninstallPackage(packageId) {
-    return transact({ type: 'package.uninstall', package_id: packageId }, (candidate) => {
-      if (!candidate.packages.packages[packageId]) throw new Error(`package ${packageId} not installed`);
-      delete candidate.packages.packages[packageId];
-      candidate.packages.revision += 1;
-    });
+    return applyEnvironmentIntent({ type: 'environment.package.remove', package_id: packageId });
   }
 
   function switchPackageRevision(packageId, revision) {
-    return transact({ type: 'package.switch-revision', package_id: packageId, revision }, (candidate) => {
-      const entry = candidate.packages.packages[packageId];
-      if (!entry || !entry.revisions || !entry.revisions[revision]) throw new Error(`package revision ${packageId}@${revision} missing`);
-      entry.active_revision = revision;
-      entry.enabled = true;
-      candidate.packages.revision += 1;
-    });
+    return applyEnvironmentIntent({ type: 'environment.package.select', package_id: packageId, revision });
   }
 
   function upsertContent(type, item, artifactIdentity) {
-    return transact({ type: 'content.upsert', content_type: type, content_id: item.id, artifact_identity: artifactIdentity }, (candidate) => {
-      candidate.user.content[type] = candidate.user.content[type] || {};
-      candidate.user.content[type][item.id] = clone(item);
-      candidate.user.revision += 1;
-      if (artifactIdentity) recordArtifact(candidate, artifactIdentity, `${type}:${item.id}`);
-    });
+    return applyEnvironmentIntent({ type: 'environment.resource.upsert', resource_type: type, resource_id: item.id }, { value: item, artifact_identity: artifactIdentity, logical_id: `${type}:${item.id}` });
   }
 
   function removeContent(type, id) {
-    return transact({ type: 'content.remove', content_type: type, content_id: id }, (candidate) => {
-      if (candidate.user.content[type]) delete candidate.user.content[type][id];
-      candidate.user.revision += 1;
-    });
+    return applyEnvironmentIntent({ type: 'environment.resource.remove', resource_type: type, resource_id: id });
   }
 
   function setUserPath(path, value) {
-    return transact({ type: 'user.set', path: path.join('.') }, (candidate) => {
-      let cursor = candidate.user;
-      for (let i = 0; i < path.length - 1; i += 1) {
-        cursor[path[i]] = cursor[path[i]] && typeof cursor[path[i]] === 'object' ? cursor[path[i]] : {};
-        cursor = cursor[path[i]];
-      }
-      cursor[path[path.length - 1]] = clone(value);
-      candidate.user.revision += 1;
-    });
+    return applyEnvironmentIntent({ type: 'environment.user.set', path: path.slice() }, { value });
   }
 
   function applyArtifact(artifact, source) {
-    if (root.system.artifact_index[artifact.identity]) {
-      return receiptStore.append({
-        schema: 'dcf.receipt.v1', receipt_id: `r-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
-        intent: { type: 'artifact.apply', artifact_identity: artifact.identity, source }, status: 'ignored', reason: 'already-applied'
-      });
+    if (artifact.type === 'package-reference') {
+      return receiptStore.append({ schema: 'dcf.receipt.v1', intent: { type: 'environment.package.resolve' }, status: 'rejected', error: 'package reference requires resolver' });
     }
-    if (artifact.type === 'ammo') return upsertContent('ammo', artifact.payload, artifact.identity);
-    if (artifact.type === 'package') {
-      return transact({ type: 'artifact.apply', artifact_type: 'package', artifact_identity: artifact.identity, source }, (candidate) => {
-        addPackRevision(candidate, artifact.payload, source);
-        recordArtifact(candidate, artifact.identity, artifact.logical_id);
-      });
-    }
-    return receiptStore.append({ schema: 'dcf.receipt.v1', intent: { type: 'artifact.apply' }, status: 'rejected', error: `unsupported artifact type ${artifact.type}` });
+    const input = artifactToEnvironmentInput(artifact, source);
+    return applyEnvironmentIntent(input.intent, input.material);
   }
 
   function rollbackTo(snapshotRevision) {
     const record = snapshots().slice().reverse().find((item) => Number(item.revision) === Number(snapshotRevision));
-    if (!record) return receiptStore.append({ schema: 'dcf.receipt.v1', intent: { type: 'state.rollback', revision: snapshotRevision }, status: 'rejected', error: 'snapshot not found' });
-    return transact({ type: 'state.rollback', revision: snapshotRevision }, (candidate) => {
-      const restored = clone(record.root);
-      for (const key of Object.keys(candidate)) delete candidate[key];
-      Object.assign(candidate, restored);
-    });
+    if (!record) return receiptStore.append({ schema: 'dcf.receipt.v1', intent: { type: 'environment.restore', revision: snapshotRevision }, status: 'rejected', error: 'snapshot not found' });
+    return applyEnvironmentIntent({ type: 'environment.restore', revision: snapshotRevision }, { root: record.root });
+  }
+
+  function saveEnvironmentProfile(title, profileId) {
+    return applyEnvironmentIntent({ type: 'environment.profile.save', title, profile_id: profileId });
+  }
+
+  function activateEnvironmentProfile(profileId) {
+    return applyEnvironmentIntent({ type: 'environment.profile.activate', profile_id: profileId });
+  }
+
+  function removeEnvironmentProfile(profileId) {
+    return applyEnvironmentIntent({ type: 'environment.profile.remove', profile_id: profileId });
   }
 
   function getRoot() { return root; }
   function getRegistry() { return registry; }
+  function getEnvironment() { return environmentSnapshot(root, registry); }
 
   return {
     initialize,
     transact,
+    applyEnvironmentIntent,
     installPackage,
     setPackageEnabled,
     uninstallPackage,
@@ -191,9 +177,13 @@ function createTransactionEngine(storage, receiptStore, options = {}) {
     setUserPath,
     applyArtifact,
     rollbackTo,
+    saveEnvironmentProfile,
+    activateEnvironmentProfile,
+    removeEnvironmentProfile,
     snapshots,
     getRoot,
-    getRegistry
+    getRegistry,
+    getEnvironment
   };
 }
 

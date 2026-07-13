@@ -16,6 +16,7 @@ function buildProjection(root) {
   const modules = [];
   const moduleDisplayDefaults = {};
   const settingDefaults = {};
+  const policyDefaults = {};
 
   for (const [address, claim] of claims.entries()) {
     if (address === 'appearance-side') continue;
@@ -26,6 +27,7 @@ function buildProjection(root) {
     else if (address.startsWith('module:')) modules.push(clone(claim.value));
     else if (address.startsWith('module-display:')) moduleDisplayDefaults[address.slice(15)] = clone(claim.value);
     else if (address.startsWith('setting-default:')) settingDefaults[address.slice(16)] = clone(claim.value);
+    else if (address.startsWith('policy-default:')) policyDefaults[address.slice(15)] = clone(claim.value);
     else if (address.startsWith('content:')) {
       const rest = address.slice(8);
       const split = rest.indexOf(':');
@@ -70,10 +72,12 @@ function buildProjection(root) {
     modules,
     moduleDisplay: deepMerge(moduleDisplayDefaults, user.moduleDisplay || {}),
     settings: Object.assign({}, settingDefaults, clone(user.settings || {})),
+    policies: Object.assign({}, policyDefaults, clone(user.preferences || {})),
+    resources: clone(compiled.resourceGraph),
     installedPacks: compiled.activePackages,
     build: {
       schema: 'dcf.build.result.v2',
-      build_id: hash({ state_hash: root.state_hash, active: compiled.activePackages, ownership: compiled.ownership }),
+      build_id: hash({ state_hash: root.state_hash, active: compiled.activePackages, ownership: compiled.ownership, resources: compiled.resourceGraph }),
       resource_ownership: compiled.ownership,
       conflicts: []
     }
