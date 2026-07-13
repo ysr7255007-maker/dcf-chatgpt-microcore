@@ -21,14 +21,19 @@ jobs:
         with:
           node-version: '22'
       - run: python scripts/apply-conversation-environment-architecture.py
-      - name: Preserve reconciler result compatibility
+      - name: Preserve compatibility facades
         run: |
           python - <<'PY'
           from pathlib import Path
-          path = Path('src/runtime/reconciler.js')
-          text = path.read_text()
+          reconciler = Path('src/runtime/reconciler.js')
+          text = reconciler.read_text()
           text = text.replace("schema: 'dcf.environment.reconcile.result.v1',", "schema: 'dcf.reconcile.result.v1',\n      environment_schema: 'dcf.environment.reconcile.result.v1',")
-          path.write_text(text)
+          reconciler.write_text(text)
+
+          environment = Path('src/core/environment.js')
+          text = environment.read_text()
+          text = text.replace("    capabilities: {\n      packages: packageSelections(root)\n    },", "    packages: packageSelections(root),\n    capabilities: {\n      packages: packageSelections(root)\n    },")
+          environment.write_text(text)
           PY
       - name: Verify upgraded source
         shell: bash
@@ -36,7 +41,7 @@ jobs:
           set +e
           npm run verify > /tmp/dcf-verify.log 2>&1
           status=$?
-          tail -n 160 /tmp/dcf-verify.log > .environment-verify.log
+          tail -n 180 /tmp/dcf-verify.log > .environment-verify.log
           exit "$status"
       - name: Publish failure evidence
         if: failure()
