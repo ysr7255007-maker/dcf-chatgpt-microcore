@@ -4,6 +4,7 @@ const { VERSION, ROOT_KEY, SNAPSHOT_KEY, RUNTIME_KEY, RECEIPT_KEY, CATALOG_STATE
 const { computeStateHash, validateRoot } = require('../core/state');
 const { hash, isObject, nowIso } = require('../core/utils');
 const { commandList } = require('../runtime/commands');
+const { classifyModule, modulesByPlacement } = require('./module-roles');
 
 function summarizeStoredValue(value) {
   if (value == null) return { present: false };
@@ -53,7 +54,7 @@ function legacyInventory(storage, backend) {
       registry: summarizeStoredValue(registry)
     },
     package_ids: packageIds,
-    module_ids: Array.from(moduleIds).sort(),
+    runtime_module_ids: Array.from(moduleIds).sort(),
     ammo_count: ammoCount,
     settings_count: Object.keys(user && user.settings || registry && registry.settings || {}).length,
     module_display_count: Object.keys(user && user.moduleDisplay || registry && registry.moduleDisplay || {}).length
@@ -82,13 +83,12 @@ function createHealthReporter(engine, receiptStore, storage, host, requiredPacka
     const receipts = receiptStore.list();
     const snapshots = engine.snapshots();
     const currentPackageIds = Object.keys(root.packages && root.packages.packages || {}).sort();
-    const currentModuleIds = (registry.modules || []).map((module) => String(module.id)).sort();
-    const hiddenModuleIds = (registry.modules || []).filter((module) => registry.moduleDisplay && registry.moduleDisplay[module.id] && registry.moduleDisplay[module.id].hidden === true).map((module) => String(module.id)).sort();
+    const currentRuntimeModuleIds = (registry.modules || []).map((module) => String(module.id)).sort();
+    const placement = modulesByPlacement(root, registry);
     const localLegacy = legacyInventory(storage, 'localStorage');
     const gmInventory = legacyInventory(storage, 'gm');
-    const missingLegacyModules = localLegacy.module_ids.filter((id) => !currentModuleIds.includes(id));
+    const missingLegacyModules = localLegacy.runtime_module_ids.filter((id) => !currentRuntimeModuleIds.includes(id));
     const missingLegacyPackages = localLegacy.package_ids.filter((id) => !currentPackageIds.includes(id));
-    const hiddenLegacyModules = localLegacy.module_ids.filter((id) => hiddenModuleIds.includes(id));
     const rootValidation = validateRoot(root);
     const checks = [];
 
@@ -107,13 +107,13 @@ function createHealthReporter(engine, receiptStore, storage, host, requiredPacka
     });
     addCheck('product.required-packages', missingRequired.length ? 'error' : 'ok', missingRequired.length ? '产品核心包缺失或停用' : '产品核心包完整', missingRequired);
 
-    const localLegacyPresent = !!(localLegacy.package_ids.length || localLegacy.module_ids.length || localLegacy.ammo_count || localLegacy.stores.root.present);
+    const localLegacyPresent = !!(localLegacy.package_ids.length || localLegacy.runtime_module_ids.length || localLegacy.ammo_count || localLegacy.stores.root.present);
     if (missingLegacyModules.length || missingLegacyPackages.length) {
-      addCheck('migration.legacy-coverage', 'error', '检测到未进入当前运行态的旧模块或旧包', { missing_module_ids: missingLegacyModules, missing_package_ids: missingLegacyPackages });
+      addCheck('migration.legacy-coverage', 'error', '检测到未进入当前运行态的旧模块或旧包', { missing_runtime_module_ids: missingLegacyModules, missing_package_ids: missingLegacyPackages });
     } else if (localLegacyPresent) {
-      addCheck('migration.legacy-coverage', 'ok', '检测到旧存储，当前运行态已覆盖其模块与包');
+      addCheck('migration.legacy-coverage', 'ok', '检测到旧存储，当前运行态已覆盖其包与运行模块');
     } else {
-      addCheck('migration.legacy-coverage', 'ok', '未检测到需要迁移的旧模块存储');
+      addCheck('migration.legacy-coverage', 'ok', '未检测到需要迁移的旧存储');
     }
 
     if (storage.primaryBackend === 'gm' && localLegacyPresent && !root.system.storage_bridge) {
@@ -124,9 +124,11 @@ function createHealthReporter(engine, receiptStore, storage, host, requiredPacka
       addCheck('storage.backend-bridge', 'ok', root.system.storage_bridge ? '旧存储桥已完成' : '当前无需存储桥接');
     }
 
-    addCheck('ui.hidden-modules', hiddenModuleIds.length ? 'info' : 'ok', hiddenModuleIds.length ? `${hiddenModuleIds.length} 个模块已安装但处于隐藏状态` : '没有隐藏模块', {
-      hidden_module_ids: hiddenModuleIds,
-      hidden_legacy_module_ids: hiddenLegacyModules
+    addCheck('ui.module-placement', 'info', `运行态模块 ${currentRuntimeModuleIds.length} 个：日常 ${placement.daily.length}、维护 ${placement.maintenance.length}、隐藏 ${placement.hidden.length}、弹药专用 ${placement.ammo.length}`, {
+      daily_function_ids: placement.daily.map((module) => module.id),
+      maintenance_tool_ids: placement.maintenance.map((module) => module.id),
+      hidden_runtime_module_ids: placement.hidden.map((module) => module.id),
+      ammo_module_ids: placement.ammo.map((module) => module.id)
     });
 
     const hostDiagnostics = host && typeof host.diagnostics === 'function' ? host.diagnostics() : null;
@@ -144,7 +146,7 @@ function createHealthReporter(engine, receiptStore, storage, host, requiredPacka
     }, {});
 
     return {
-      schema: 'dcf.health.report.v1',
+      schema: 'dcf.health.report.v2',
       generated_at: nowIso(),
       overall,
       kernel_version: VERSION,
@@ -180,10 +182,12 @@ function createHealthReporter(engine, receiptStore, storage, host, requiredPacka
         build_id: registry.build && registry.build.build_id,
         state_revision: registry.state_revision,
         state_hash: registry.state_hash,
-        package_count: currentPackageIds.length,
-        module_count: currentModuleIds.length,
-        visible_module_count: currentModuleIds.length - hiddenModuleIds.length,
-        hidden_module_count: hiddenModuleIds.length,
+        installed_package_count: currentPackageIds.length,
+        runtime_module_count: currentRuntimeModuleIds.length,
+        daily_function_count: placement.daily.length,
+        maintenance_tool_count: placement.maintenance.length,
+        hidden_runtime_module_count: placement.hidden.length,
+        ammo_module_count: placement.ammo.length,
         surface_count: Object.keys(registry.surfaces || {}).length,
         content_type_count: Object.keys(registry.contentTypes || {}).length,
         style_source_count: (registry.appearance && registry.appearance.styles || []).length
@@ -201,15 +205,18 @@ function createHealthReporter(engine, receiptStore, storage, host, requiredPacka
           required: requiredPackages.includes(packageId)
         };
       }),
-      modules: (registry.modules || []).map((module) => ({
-        module_id: module.id,
-        title: module.title || null,
-        version: module.version || null,
-        area: registry.moduleDisplay && registry.moduleDisplay[module.id] && registry.moduleDisplay[module.id].area || module.area || 'work',
-        hidden: !!(registry.moduleDisplay && registry.moduleDisplay[module.id] && registry.moduleDisplay[module.id].hidden),
-        command_count: commandList(module).length,
-        provider: registry.build && registry.build.resource_ownership && registry.build.resource_ownership[`module:${module.id}`] || null
-      })),
+      runtime_modules: (registry.modules || []).map((module) => {
+        const classification = classifyModule(root, registry, module);
+        return {
+          module_id: module.id,
+          title: module.title || null,
+          version: module.version || null,
+          placement: classification.placement,
+          placement_source: classification.source,
+          command_count: commandList(module).length,
+          provider: registry.build && registry.build.resource_ownership && registry.build.resource_ownership[`module:${module.id}`] || null
+        };
+      }),
       surfaces: Object.values(registry.surfaces || {}).map((surface) => ({ id: surface.id, title: surface.title || null, area: surface.area || null, kind: surface.kind || null, content_type: surface.content_type || null })),
       user_data: {
         content_counts: Object.fromEntries(Object.entries(root.user.content || {}).map(([type, items]) => [type, Object.keys(isObject(items) ? items : {}).length])),
@@ -225,13 +232,12 @@ function createHealthReporter(engine, receiptStore, storage, host, requiredPacka
       host: hostDiagnostics,
       receipts: { count: receipts.length, status_counts: statusCounts, recent_failures: recentFailures },
       comparison: {
-        legacy_local_module_ids: localLegacy.module_ids,
-        current_module_ids: currentModuleIds,
-        missing_legacy_module_ids: missingLegacyModules,
-        hidden_legacy_module_ids: hiddenLegacyModules,
         legacy_local_package_ids: localLegacy.package_ids,
         current_package_ids: currentPackageIds,
-        missing_legacy_package_ids: missingLegacyPackages
+        missing_legacy_package_ids: missingLegacyPackages,
+        legacy_local_runtime_module_ids: localLegacy.runtime_module_ids,
+        current_runtime_module_ids: currentRuntimeModuleIds,
+        missing_legacy_runtime_module_ids: missingLegacyModules
       },
       privacy: {
         conversation_text_included: false,
