@@ -21,13 +21,22 @@ jobs:
         with:
           node-version: '22'
       - run: python scripts/finalize-environment-routing.py
+      - name: Fix routing guard assertion quoting
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('tests/dcf-conversation-environment.unit.test.js')
+          text = path.read_text()
+          text = text.replace("assert(!commandSource.includes('engine.transact({ type: 'capability.'), 'command persistence bypasses Environment Intent');", "assert(!commandSource.includes(\"engine.transact({ type: 'capability.\"), 'command persistence bypasses Environment Intent');")
+          path.write_text(text)
+          PY
       - name: Verify finalized source
         shell: bash
         run: |
           set +e
           npm run verify > /tmp/dcf-verify.log 2>&1
           status=$?
-          tail -n 220 /tmp/dcf-verify.log > .environment-verify.log
+          tail -n 240 /tmp/dcf-verify.log > .environment-verify.log
           exit "$status"
       - name: Publish failure evidence
         if: failure()
