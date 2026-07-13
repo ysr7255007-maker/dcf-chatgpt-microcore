@@ -12,19 +12,17 @@ Updated: 2026-07-14
 6. 与当前事项相关的 ADR
 7. 本文件
 
-需要把新维护窗口直接接入当前仓库与用户浏览器现场时，使用 `docs/prompts/dcf-current-loaded-system-handoff.md`。
-
-根 `.user.js` 是生成发布物，不再作为理解源码架构的首要入口。
+普通窗口的低扰动 DCF 认知位于 `docs/prompts/dcf-awareness-prompt.md`。根 `.user.js` 是生成发布物，不再作为理解源码架构的首要入口。
 
 ## 当前版本
 
-当前正式版本：`0.13.0`
+当前正式版本：`0.14.0`
 
-`0.11.4` 保留包管理、日常功能和维护工具分区，移除错误的 hidden 产品语义，并把体检重建为真实浏览器 Runtime 偏差报告。`0.11.5` 修正 Runtime DOM 入口采样误报。`0.11.6` 聚焦包管理中文可读性和紧凑总览。`0.12.0` 统一按值/按引用能力包更新。`0.13.0` 将系统整体收拢为期望对话环境、typed intent、有限资源族、环境投影和 Profile/恢复架构。
+`0.11.4` 保留包管理、日常功能和维护工具分区，移除错误的 hidden 产品语义，并把体检重建为真实浏览器 Runtime 偏差报告。`0.11.5` 修正 Runtime DOM 入口采样误报。`0.11.6` 聚焦包管理中文可读性和紧凑总览。`0.12.0` 统一按值/按引用能力包更新。`0.13.0` 将系统整体收拢为期望对话环境、typed intent、有限资源族、环境投影和 Profile/恢复架构。`0.14.0` 为语言弹药增加语境化调用标志和实质更新协议，并把协议下沉为 ammo package policy。
 
 ## 当前浏览器 Runtime 检查点
 
-用户已确认完成 `0.13.0` 迁移。最近一次真实浏览器体检生成于 `2026-07-13T14:01:49.777Z`：
+用户最近确认完成的是 `0.13.0` 迁移。最近一次真实浏览器体检生成于 `2026-07-13T14:01:49.777Z`：
 
 ```text
 schema: dcf.runtime.health.diff.v1
@@ -36,7 +34,7 @@ status: healthy
 deviations: []
 ```
 
-体检隐私边界确认未包含对话正文、弹药正文、包 payload、命令参数或认证数据。该结果关闭 0.13.0 的 Runtime 迁移检查点，但不单独证明 Environment Profile、具体模块命令和用户内容隔离等业务行为；这些继续由对应功能验收负责。
+体检隐私边界确认未包含对话正文、弹药正文、包 payload、命令参数或认证数据。该结果关闭 0.13.0 的 Runtime 迁移检查点，但不证明用户浏览器已经加载 0.14.0，也不单独证明 Environment Profile、具体模块命令和用户内容隔离等业务行为。
 
 ## 0.11.4 Runtime 体检与折叠模型
 
@@ -85,24 +83,27 @@ deviations: []
 
 - `npm run verify`;
 - `node --check dcf-chatgpt-microcore.user.js`;
+- firing emits only `〔DCF·语言弹药〕` plus the body;
+- update requests include `〔DCF·弹药更新〕`, the complete current item, substantive revision rules and complete `DCF_AMMO` output requirements;
+- copying still exports the raw body;
+- `dcf.standard.ammo@1.2.0` owns the `ammo_protocol` policy;
 - Environment Snapshot derives from the single root and current registry;
 - persistent production controls route through Environment Reconciler;
 - content/action/view/style/policy resource graph has stable ownership and observation contracts;
 - all four main views are package-owned while Core retains safe fallback rendering;
 - Profiles do not copy user ammo bodies and activation/restore remain atomic environment transitions;
-- package presentation remains readable without changing immutable package identity;
-- legacy hidden metadata remains discoverable and fold state remains disposable UI session;
 - healthy Runtime report remains diff-only and privacy filtered;
 - dual-backend bridge, bounded Host Adapter, catalog, viewport and deterministic release tests remain green.
 
 ## User checkpoint after release
 
-1. Tampermonkey 已加载 `0.13.0`，迁移与基础 Runtime 体检通过；
-2. 四个标签及包提供的标签/顺序已进入当前 Runtime；
-3. Environment Profile 的保存、修改后激活恢复和弹药正文隔离仍属于可按需要执行的专项行为验收；
-4. 模块命令产生的 appearance、setting、content 持久变化必须继续经 Environment Reconciler；
-5. 包管理名称、紧凑控制和已有不可变 revision 必须保持兼容；
-6. 后续只有出现用户现场异常或相关功能变化时，才重新运行并提交完整 `DCF_RUNTIME_HEALTH`。
+1. update Tampermonkey to `0.14.0` and refresh ChatGPT；
+2. wait for Catalog to coordinate `dcf.standard.ammo@1.2.0`；
+3. fire one ammo item and confirm the composer contains `〔DCF·语言弹药〕` followed by one blank line and the original body；
+4. confirm the receiving window adapts the ammo to the current conversation instead of treating the body as a verbatim immediate command；
+5. click update and confirm the sent request includes `〔DCF·弹药更新〕`, the complete current ammo and the same-id complete `DCF_AMMO` return contract；
+6. confirm copy still copies only the raw ammo body；
+7. run Runtime health after the behavior checks and submit the complete block only if deviations are present。
 
 ## Deferred to phase two
 
@@ -127,3 +128,11 @@ ChatGPT historical-message virtualization, turn-window rendering, DOM/memory das
 - 弹药、功能、包管理、维护成为包拥有的四种环境投影。
 - Environment Profile 保存包选择、政策和产品组织，不复制用户弹药正文。
 - Runtime API 的 `environment` 是动态只读 Facade，不是启动时静态快照。
+
+## 0.14.0 语言弹药调用与更新协议
+
+- 发射消息改为轻量 `〔DCF·语言弹药〕` 标志加原始正文，触发当前语境二次理解。
+- 语境清楚时适配后直接执行；只有关键冲突或无法可靠选择的多义落地才确认。
+- 更新消息包含 `〔DCF·弹药更新〕`、完整原弹药、实质修订规则和完整同 `id` `DCF_AMMO` 返回要求。
+- `dcf.standard.ammo@1.2.0` 通过 `ammo_protocol` policy 拥有标志与更新规则；bootstrap 只保留安全回退。
+- 复制保持原始正文，不自动附加调用标志。
