@@ -1,35 +1,119 @@
 # DCF 维护技能
 
-本文件只维护实际改动纪律。
+本文件维护 DCF 的实际改动纪律。维护目标不是保持某一版代码形状，而是在不把内部复杂度交还给用户的前提下，持续维护“低摩擦语言弹药闭环”及其期望对话环境。
 
-先判断需求属于：第一方产品模块、通用资源/命令能力、ChatGPT Host Adapter、Core 状态事务、transport、UI projection，还是发布流程。语言弹药体验变化优先改 ammo 模块；ChatGPT DOM 变化只改 Host Adapter；只有多个真实模块共同需要且现有底座无法表达时才扩展 Core。
+## 一、开始维护前先建立两份事实
 
-任何权威变化都必须走统一事务：从当前 `dcf.state.root.v1` 生成候选，验证根与资源不变量，构建投影，成功后保存旧根快照并一次提交新根，再写派生 registry 和回执。禁止直接修改 registry，禁止为安装、卸载、内容、设置、迁移、角色覆盖或回退另建保存/反向补丁路径。
+先分别确认：
 
-包 revision 不可变。同一 package/revision 内容不同必须拒绝。包定义、包默认资产与用户结果分开；用户弹药、设置、外观和角色覆盖不随可选包卸载删除。`dcf.standard.ammo` 是价值闭环所需第一方核心包，不通过包管理停用或卸载。
+1. **仓库事实**：读取 `README.md`、`docs/architecture-current.md`、`docs/dcf-basic-consensus-prompt.md`、本文件、`docs/adr/status-index.md`、相关 ADR 和 `docs/current-state.md`。理解源码时以 `src/` 与构建输入为准，根 `.user.js` 只是生成发布物。
+2. **当前浏览器事实**：用户当前加载的 userscript 版本、主存储后端、当前 Runtime 体检和实际操作反馈。仓库最新版本不等于用户已经加载该版本；健康体检也只证明其覆盖的 Runtime 观察面无偏差，不替代具体功能行为验收。
 
-安装包、运行模块、日常功能和维护工具必须分别描述。`包管理` 只管理包与 revision；`功能` 承载日常和主力工作流；探针、诊断、验收、作者、布局和恢复工具进入 `维护`。`hidden` 不得作为产品角色。所有非弹药运行模块必须保留可发现标题。界面密度使用展开/折叠，折叠状态只写 `dcf.ui.session.v1`，不得修改权威根、moduleDisplay 或包定义。
+两份事实冲突时，先判断是未更新、迁移未完成、Runtime 偏差，还是诊断口径错误，不得根据仓库推断浏览器已经处于相同状态。
 
-GM storage 可用时是唯一权威写入后端，但迁移与 Runtime 体检必须显式检查 page `localStorage`。旧后端数据只能通过候选合并进入当前根：当前值优先，缺失值补回，每个旧包先验证投影，冲突项记录在 `system.storage_bridge`。不得因为切换存储 API 而把旧状态当作不存在，也不得把两个后端长期并列为双权威。
+## 二、先判断变化属于哪一层
 
-外部 `DCF_AMMO`、完整 `DCF_MODULE_PACK`、引用式 `DCF_PACKAGE_UPDATE`、手动 JSON 和 GitHub catalog 都必须进入统一工件入口。完整包按值交付，更新控制按引用解析；取得完整不可变包后统一进入 Reconciler、候选验证、单根提交、Runtime 重投影与回执。GitHub 只解析可信 Catalog 引用、下载和校验 JSON，不执行远程代码。
+维护前把需求归入：
 
-对话摄取只通过 Host Adapter 观察 `main` / `[role=main]` 的新增节点，并临时观察当前助手回复。回复完成后只读一次。禁止观察 `document.body`，禁止全页 innerText，禁止枚举全部历史消息，禁止恢复 `seenBlocks` 页面账本。启动补偿必须是固定回复数和硬访问上限。
+- 第一方语言弹药产品能力；
+- Environment Intent 或 Action Intent；
+- Artifact / Resolver / transport；
+- content、action、view、style、policy Resource Compiler；
+- 声明式 View Projection；
+- ChatGPT Host Adapter 与一次性 Host Effect；
+- Core 状态、事务、启动、权限或恢复边界；
+- 构建与发布流程。
 
-本地状态与外部 effect 分开。composer 有不同草稿时不得覆盖；发送、复制和通知失败只产生 effect receipt，不回滚不相关状态。普通成功不向对话自动发送反馈。
+先做源头检查：现有 Intent、资源类型、View、Profile 或适配器是否已经能表达该变化。只有多个真实能力共同需要且现有环境语言无法表达时，才扩展 Core。语言弹药体验优先改 ammo 包；普通文案、布局、页面组织和控制顺序优先改对应能力包 revision；ChatGPT DOM 变化只进入 Host Adapter。
 
-命令渲染和执行必须共用同一 `commandList` 解析。新增能力应进入通用命令解释器，不能同时保留一个硬编码 UI 旁路。命令和 effect 回执默认把正文、提示词、内容、凭据等转成长度/hash，不保存明文。
+## 三、期望对话环境是统一架构对象
 
-代码逻辑、schema、事务和构建问题由读源码、单元测试、集成测试、CI 和浏览器自动化解决；不要把这些内容倾倒进现场体检。“一键 Runtime 体检并复制”只调查真实浏览器实例：实际存储回读、内存 root/registry、真实 Shadow DOM、host 数量与矩形、当前 ChatGPT root、observer、composer 和最近失败。健康报告只含空 deviation；异常报告只附证明偏差的最小现场证据。
+`dcf.state.root.v1` 继续是唯一权威状态；`dcf.environment.snapshot.v1` 只是从 root 与 registry 动态推导的只读 Facade，不得成为第二份需要同步的状态。
 
-Runtime 体检不得复用被检查 UI 的同一结论函数来证明 UI 正确。至少一条独立观察面必须比较内存身份与真实 DOM 身份；当报告与用户现场冲突时，先审查报告的观察口径和调用链，禁止修改产品去迎合诊断字段。
+所有持续影响未来对话的生产操作都必须表达为有限的 `dcf.intent.v1` Environment Intent，并经 Environment Reconciler 进入：
 
-壳体几何只来自用户 appearance 状态和通用 appearance 命令。任何包/用户 CSS 不得声明 `.sh` 的位置、边界、宽高、min/max 或 transform。最终显示必须通过 `visualViewport` 与实际 shell rect 围栏。
+```text
+Intent / Artifact
+→ 候选环境迁移
+→ 根与资源不变量验证
+→ 确定性投影
+→ 旧根快照
+→ 单根原子提交
+→ Runtime 重投影
+→ 协调回执
+```
 
-源码只改 `src/` 与构建输入；根 `.user.js`、`.meta.js` 和 catalog 由 `npm run build` 生成。发布前执行 `npm run verify`、`node --check dcf-chatgpt-microcore.user.js`，回读版本、catalog hash、无 eval/远程代码路径，并执行真实浏览器的“回复工件→自动装填→发射”冒烟。
+包安装、启停、revision 切换、用户内容增删、设置、偏好、外观、模块分区、Profile 和历史恢复不得因入口不同建立业务旁路。UI、模块命令、维护工具、对话工件和菜单只负责发出 Intent。生产入口不得直接修改 root、registry，或绕过 Reconciler 调用独立保存路径。
 
-架构变化更新 `docs/architecture-current.md`、新 ADR、`docs/adr/status-index.md`、本文件、基本共识和 current-state。旧 ADR 保留历史正文，当前状态以 status index 为准。
+一次性 composer、clipboard、notification 等 Action / Host Effect 与环境事务分离。Effect 失败只形成 effect receipt，不回滚已经独立成立的环境变化，也不得把一次性结果写成长期环境事实。
 
-普通产品功能、中文文案、页面组织、控制顺序和样式变化优先修改对应能力包 revision，不得默认升级整份 userscript。只有包协议、Resolver/Reconciler、存储、Host Adapter、权限、启动与恢复边界无法由现有包资源表达时，才发布 bootstrap 版本。声明式 UI 使用 `ui-view:*` 资源，由 Core 的稳定安全渲染器消费。
+## 四、工件、包与资源必须分清
 
-维护时先判断变化属于 Environment Intent、Action Intent、Artifact Resolver、Resource Compiler、View Projection、Host Effect 还是 Runtime Observation。不得因为入口不同为同一意图增加旁路。所有持久变化必须经 Environment Reconciler；包只是交付容器，资源地址和观察契约才是 Runtime 编译依据。新增页面优先成为 `ui-view:*` 资源；新增工作模式优先成为 Environment Profile，不得另建平行工作区系统。
+外部 `DCF_AMMO`、完整 `DCF_MODULE_PACK`、引用式 `DCF_PACKAGE_UPDATE`、手动 JSON、内嵌第一方包和 GitHub Catalog 都只是工件输入或寻址方式。
+
+- 完整包是按值交付；
+- 更新控制是按引用交付；
+- GitHub 只解析可信 Catalog、下载并校验 JSON；
+- 取得完整工件后统一编译为 Intent 并进入 Environment Reconciler；
+- 禁止远程 JavaScript、`eval`、运行时分块引擎和 localStorage-as-code。
+
+包 revision 不可变。同一 package/revision 内容不同必须拒绝。修改正式包内容时创建新 revision，不能原地重写 Catalog 中已有 revision。包只是交付容器；进入 Runtime 的能力单位是具有稳定地址、提供者、替换/扩展规则、投影目标和观察契约的 content、action、view、style、policy 资源。
+
+包默认资源与用户成果分离。可选包卸载或 Profile 切换不得删除用户弹药、用户设置和其他用户生成结果。`dcf.standard.ammo` 是价值闭环所需第一方核心包，不通过正常包管理停用或卸载。
+
+## 五、页面与产品组织
+
+弹药、功能、包管理、维护是同一期望环境的内容、行动、构成、观察投影。正常页面由包声明的 `ui-view:*` 资源拥有；Core 只保留安全宿主、稳定操作协议、HTML 转义、最低回退与恢复渲染。
+
+安装包、Runtime 模块、日常功能和维护工具是不同事实：
+
+- 包管理只表达包、来源和 revision；
+- 功能承载日常行动资源；
+- 维护承载观察、诊断、作者、布局和恢复工具；
+- 弹药承载内容资源和低摩擦发射；
+- `hidden` 不是产品角色，所有非弹药模块都必须在日常或维护保留可发现标题。
+
+界面密度使用展开/折叠。折叠状态只写可丢弃的 `dcf.ui.session.v1`，不得进入权威根、Profile、moduleDisplay 或包定义。
+
+## 六、Environment Profile 与恢复
+
+Environment Profile 用于保存包选择、政策和产品组织，不复制用户弹药正文。激活 Profile 必须验证所引用的包和 revision 已安装，再作为普通环境迁移原子提交。环境在激活后被单独修改时，应明确产生漂移，而不是继续宣称等于原 Profile。
+
+历史快照恢复是“选择过去环境作为新的目标环境”，必须重新经过验证、投影、提交和回执，不能维护反向补丁路径。旧存储迁移同样作为环境材料来源进入候选合并；GM storage 可用时仍是唯一权威写后端，page `localStorage` 仅作为显式迁移输入。
+
+## 七、Host、命令、证据与隐私
+
+对话摄取只通过 Host Adapter 观察 `main` / `[role=main]` 的新增节点和当前流式助手回复，完成后只读一次。禁止观察 `document.body`、全页 `innerText`、枚举全部历史消息或恢复页面块账本；启动补偿必须有固定回复数与硬访问上限。
+
+命令渲染与执行共用同一 `commandList`。持久步骤发出 Environment Intent；composer、clipboard、notification 等步骤进入 Effect Runner。不得同时保留硬编码 UI 旁路。
+
+回执和证据默认对正文、提示词、内容、凭据和认证信息做长度/hash 脱敏。普通成功保持安静；失败形成可复制回执。证据不得改变被观察行为。
+
+## 八、Runtime 体检边界
+
+源码逻辑、schema、事务、构建和兼容问题由源码审查、单元测试、集成测试、CI 与真实浏览器冒烟解决。`dcf.runtime.health.diff.v1` 只回答通过测试的代码在用户当前标签页实际运行成了什么。
+
+体检必须独立观察实际存储、内存 root/registry、真实 Shadow DOM、host 数量与几何、当前 ChatGPT root、observer、composer 和最近失败。健康时只报告 `deviations: []`；异常只附证明偏差所需的最小证据。体检不得复用被检查 UI 的同一结论函数来证明 UI 正确。
+
+用户现场与体检冲突时，先审查体检观察口径和调用链。不得修改产品去迎合错误诊断字段。健康报告不单独证明 Profile 行为、弹药正文隔离或某个命令的业务效果，这些仍需对应功能验收。
+
+## 九、壳体与样式所有权
+
+壳体几何只来自用户 appearance 环境状态和通用 appearance Intent。任何包或用户 CSS 不得声明 `.sh` 的 position、边界、宽高、min/max 或 transform。最终显示必须经过 `visualViewport` 与真实 shell rect 围栏。
+
+## 十、发布与验收
+
+源码只改 `src/` 与构建输入；根 `.user.js`、`.meta.js` 和 Catalog 由 `npm run build` 生成。
+
+发布前必须：
+
+1. 执行 `npm run verify`；
+2. 执行 `node --check dcf-chatgpt-microcore.user.js`；
+3. 回读版本、Catalog package/revision/hash 和生成物一致性；
+4. 确认无 `eval`、远程代码或生产持久操作旁路；
+5. 执行真实浏览器的工件摄取、低摩擦发射及本次变化对应的行为冒烟；
+6. 最后运行 Runtime 体检，区分代码验证、功能验收和现场偏差三类证据。
+
+普通产品功能、文案、布局、页面组织、控制顺序和声明式样式变化只升级对应能力包 revision。只有现有包协议、Resolver/Reconciler、存储、Host Adapter、权限、启动与恢复边界无法表达变化时，才发布新的 bootstrap userscript 版本。
+
+架构变化同步更新 `docs/architecture-current.md`、新 ADR、`docs/adr/status-index.md`、本文件、基本共识和 `docs/current-state.md`。旧 ADR 保留历史正文，当前决策以 status index 为准。
