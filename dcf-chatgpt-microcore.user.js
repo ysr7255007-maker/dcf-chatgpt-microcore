@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         DCF ChatGPT Microcore
 // @namespace    https://chatgpt.com/
-// @version      0.11.3
-// @description  DCF modular runtime with separated daily functions, maintenance tools, package management, accurate health reporting and bounded reply intake.
+// @version      0.11.4
+// @description  DCF modular runtime with foldable daily and maintenance views, browser Runtime deviation health checks, bounded reply intake and unified transactions.
 // @updateURL    https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.meta.js
 // @downloadURL  https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.user.js
 // @supportURL   https://github.com/ysr7255007-maker/dcf-chatgpt-microcore
@@ -112,7 +112,7 @@ module.exports = {
 "src/core/constants.js":function(module,exports,require){
 'use strict';
 
-const VERSION = '0.11.3';
+const VERSION = '0.11.4';
 const ROOT_KEY = 'dcf.state.root.v1';
 const SNAPSHOT_KEY = 'dcf.state.snapshots.v1';
 const RUNTIME_KEY = 'dcf.runtime.registry.v3';
@@ -1547,6 +1547,7 @@ function createChatGPTHost(windowObject = window, options = {}) {
       conversation_root_found: !!root,
       reply_root_observer_attached: !!rootObserver,
       observed_root_connected: !!(observedRoot && observedRoot.isConnected),
+      observed_root_is_current: !!(observedRoot && root && observedRoot === root),
       active_reply_tracked: !!activeNode,
       active_reply_connected: !!(activeNode && activeNode.isConnected),
       streaming: isStreaming(),
@@ -1577,6 +1578,7 @@ function createChatGPTHost(windowObject = window, options = {}) {
 }
 
 module.exports = { createChatGPTHost };
+
 },
 "src/modules/standard-packages.js":function(module,exports,require){
 'use strict';
@@ -1789,41 +1791,38 @@ function projectedDisplay(registry, moduleId) {
   return registry && registry.moduleDisplay && registry.moduleDisplay[moduleId] || {};
 }
 
-function declaredRole(module, display) {
-  const role = display.role || module.role || null;
-  if (role === 'daily' || role === 'maintenance') return role;
-  const area = display.area || module.area || null;
-  if (area === 'maintenance') return 'maintenance';
-  if (area === 'work' || area === 'primary') return 'daily';
+function roleFrom(value) {
+  if (!value) return null;
+  if (value.role === 'daily' || value.role === 'maintenance') return value.role;
+  if (value.area === 'maintenance') return 'maintenance';
+  if (value.area === 'work' || value.area === 'primary') return 'daily';
   return null;
 }
 
 function classifyModule(root, registry, module) {
   const id = String(module && module.id || '');
-  if (module && module.kind === 'ammo') return { placement: 'ammo', source: 'module-kind' };
+  if (module && module.kind === 'ammo') return { role: 'ammo', source: 'module-kind' };
 
-  const user = userDisplay(root, id);
-  if (user) {
-    if (user.hidden === true) return { placement: 'hidden', source: 'user' };
-    const userRole = declaredRole(module, user);
-    if (userRole) return { placement: userRole, source: 'user' };
-  }
+  const userRole = roleFrom(userDisplay(root, id));
+  if (userRole) return { role: userRole, source: 'user' };
 
-  if (LEGACY_MAINTENANCE_MODULE_IDS.has(id)) return { placement: 'maintenance', source: 'legacy-product-map' };
-  if (LEGACY_DAILY_MODULE_IDS.has(id)) return { placement: 'daily', source: 'legacy-product-map' };
+  if (LEGACY_MAINTENANCE_MODULE_IDS.has(id)) return { role: 'maintenance', source: 'legacy-product-map' };
+  if (LEGACY_DAILY_MODULE_IDS.has(id)) return { role: 'daily', source: 'legacy-product-map' };
 
-  const display = projectedDisplay(registry, id);
-  if (display.hidden === true) return { placement: 'hidden', source: 'declaration' };
-  const declared = declaredRole(module, display);
-  if (declared) return { placement: declared, source: 'declaration' };
-  return { placement: 'daily', source: 'default' };
+  const displayRole = roleFrom(projectedDisplay(registry, id));
+  if (displayRole) return { role: displayRole, source: 'declaration' };
+
+  const moduleRole = roleFrom(module);
+  if (moduleRole) return { role: moduleRole, source: 'module' };
+
+  return { role: 'daily', source: 'default' };
 }
 
-function modulesByPlacement(root, registry) {
-  const result = { ammo: [], daily: [], maintenance: [], hidden: [] };
+function modulesByRole(root, registry) {
+  const result = { ammo: [], daily: [], maintenance: [] };
   for (const module of registry && registry.modules || []) {
     const classification = classifyModule(root, registry, module);
-    result[classification.placement].push(module);
+    result[classification.role].push(module);
   }
   for (const modules of Object.values(result)) modules.sort((a, b) => String(a.id).localeCompare(String(b.id)));
   return result;
@@ -1833,269 +1832,231 @@ module.exports = {
   LEGACY_DAILY_MODULE_IDS,
   LEGACY_MAINTENANCE_MODULE_IDS,
   classifyModule,
-  modulesByPlacement
+  modulesByRole
 };
 
 },
 "src/modules/health.js":function(module,exports,require){
 'use strict';
 
-const { VERSION, ROOT_KEY, SNAPSHOT_KEY, RUNTIME_KEY, RECEIPT_KEY, CATALOG_STATE_KEY, LEGACY_KEYS } = require("src/core/constants.js");
-const { computeStateHash, validateRoot } = require("src/core/state.js");
-const { hash, isObject, nowIso } = require("src/core/utils.js");
-const { commandList } = require("src/runtime/commands.js");
-const { classifyModule, modulesByPlacement } = require("src/modules/module-roles.js");
+const { VERSION, ROOT_KEY } = require("src/core/constants.js");
+const { nowIso } = require("src/core/utils.js");
 
-function summarizeStoredValue(value) {
-  if (value == null) return { present: false };
-  const summary = { present: true, type: Array.isArray(value) ? 'array' : typeof value, hash: hash(value) };
-  if (isObject(value)) {
-    if (value.schema) summary.schema = value.schema;
-    if (value.revision != null) summary.revision = value.revision;
-    summary.key_count = Object.keys(value).length;
-  }
-  if (Array.isArray(value)) summary.item_count = value.length;
-  return summary;
+function sortedUnique(values) {
+  return Array.from(new Set((values || []).map(String))).sort();
 }
 
-function activePackModuleIds(packageState) {
-  const ids = [];
-  for (const entry of Object.values(packageState && packageState.packages || {})) {
+function difference(left, right) {
+  const rightSet = new Set(right || []);
+  return sortedUnique((left || []).filter((value) => !rightSet.has(value)));
+}
+
+function duplicates(values) {
+  const seen = new Set();
+  const duplicate = new Set();
+  for (const value of values || []) {
+    if (seen.has(value)) duplicate.add(value);
+    seen.add(value);
+  }
+  return Array.from(duplicate).sort();
+}
+
+function activePackModules(packageState) {
+  const result = [];
+  for (const [packageId, entry] of Object.entries(packageState && packageState.packages || {})) {
     if (!entry || entry.enabled === false) continue;
     const revision = entry.active_revision;
     const pack = entry.revisions && entry.revisions[revision] && entry.revisions[revision].pack;
     for (const module of Array.isArray(pack && pack.modules) ? pack.modules : []) {
-      if (module && module.id) ids.push(String(module.id));
+      if (module && module.id) result.push({ module_id: String(module.id), package_id: String(packageId) });
     }
   }
-  return Array.from(new Set(ids)).sort();
+  return result;
 }
 
 function legacyInventory(storage, backend) {
-  const packages = storage.getFrom(backend, LEGACY_KEYS.packages, null);
-  const user = storage.getFrom(backend, LEGACY_KEYS.user, null);
-  const ops = storage.getFrom(backend, LEGACY_KEYS.ops, null);
-  const registry = storage.getFrom(backend, LEGACY_KEYS.registry, null);
+  const packages = storage.getFrom(backend, 'dcf.package.sources.v1', null);
+  const registry = storage.getFrom(backend, 'dcf.kernel.registry.v1', null);
   const root = storage.getFrom(backend, ROOT_KEY, null);
   const packageIds = Object.keys(packages && packages.packages || {}).sort();
-  const moduleIds = new Set(activePackModuleIds(packages));
+  const moduleProviders = activePackModules(packages);
+  const moduleIds = new Set(moduleProviders.map((item) => item.module_id));
   for (const module of Array.isArray(registry && registry.modules) ? registry.modules : []) {
     if (module && module.id) moduleIds.add(String(module.id));
   }
-  const ammoCount = Object.keys(user && user.content && user.content.ammo || registry && registry.content && registry.content.ammo || {}).length;
   return {
     backend,
     dcf_keys: storage.dcfKeys(backend),
-    stores: {
-      root: summarizeStoredValue(root),
-      packages: summarizeStoredValue(packages),
-      user: summarizeStoredValue(user),
-      ops: summarizeStoredValue(ops),
-      registry: summarizeStoredValue(registry)
-    },
+    root_present: !!root,
     package_ids: packageIds,
     runtime_module_ids: Array.from(moduleIds).sort(),
-    ammo_count: ammoCount,
-    settings_count: Object.keys(user && user.settings || registry && registry.settings || {}).length,
-    module_display_count: Object.keys(user && user.moduleDisplay || registry && registry.moduleDisplay || {}).length
+    module_providers: moduleProviders
   };
 }
 
 function receiptSummary(receipt) {
   return {
-    receipt_id: receipt.receipt_id || null,
+    at: receipt.at || null,
     status: receipt.status || null,
     stage: receipt.stage || null,
     intent_type: receipt.intent && receipt.intent.type || null,
     package_id: receipt.intent && receipt.intent.package_id || null,
-    content_type: receipt.intent && receipt.intent.content_type || null,
     error: receipt.error || null,
-    errors: Array.isArray(receipt.errors) ? receipt.errors.slice(0, 8) : [],
-    revision: receipt.revision == null ? null : receipt.revision,
-    duration_ms: receipt.duration_ms == null ? null : receipt.duration_ms
+    errors: Array.isArray(receipt.errors) ? receipt.errors.slice(0, 4) : []
   };
 }
 
-function createHealthReporter(engine, receiptStore, storage, host, requiredPackages = []) {
+function skippedPackageIds(root) {
+  const items = root && root.system && root.system.storage_bridge && root.system.storage_bridge.skipped && root.system.storage_bridge.skipped.packages || [];
+  return new Set(items.map((item) => String(typeof item === 'string' ? item : item && (item.package_id || item.id) || '')).filter(Boolean));
+}
+
+function createHealthReporter(engine, receiptStore, storage, host, requiredPackages = [], runtime = {}) {
   function report() {
+    const generatedAt = nowIso();
     const root = engine.getRoot();
     const registry = engine.getRegistry();
-    const receipts = receiptStore.list();
-    const snapshots = engine.snapshots();
-    const currentPackageIds = Object.keys(root.packages && root.packages.packages || {}).sort();
-    const currentRuntimeModuleIds = (registry.modules || []).map((module) => String(module.id)).sort();
-    const placement = modulesByPlacement(root, registry);
-    const localLegacy = legacyInventory(storage, 'localStorage');
-    const gmInventory = legacyInventory(storage, 'gm');
-    const missingLegacyModules = localLegacy.runtime_module_ids.filter((id) => !currentRuntimeModuleIds.includes(id));
-    const missingLegacyPackages = localLegacy.package_ids.filter((id) => !currentPackageIds.includes(id));
-    const rootValidation = validateRoot(root);
-    const checks = [];
+    const runtimeObject = typeof runtime.getRuntime === 'function' ? runtime.getRuntime() : null;
+    const app = typeof runtime.getApp === 'function' ? runtime.getApp() : null;
+    const deviations = [];
 
-    function addCheck(id, status, summary, details) {
-      checks.push({ id, status, summary, details: details || null });
+    function add(code, severity, subject, expected, actual, evidence, explanation) {
+      deviations.push({ code, severity, subject: subject || null, expected, actual, evidence: evidence || null, explanation });
     }
 
-    const computedHash = computeStateHash(root);
-    addCheck('state.root.valid', rootValidation.ok ? 'ok' : 'error', rootValidation.ok ? '权威状态根可验证' : '权威状态根验证失败', rootValidation.errors);
-    addCheck('state.hash.matches', computedHash === root.state_hash ? 'ok' : 'error', computedHash === root.state_hash ? '状态哈希一致' : '状态哈希不一致');
-    addCheck('projection.matches-root', registry && registry.state_hash === root.state_hash ? 'ok' : 'error', registry && registry.state_hash === root.state_hash ? '运行投影与权威根一致' : '运行投影与权威根不一致');
+    let ui = null;
+    if (app && typeof app.captureRuntimeViews === 'function') {
+      try {
+        ui = app.captureRuntimeViews();
+      } catch (error) {
+        add('runtime_ui_snapshot_failed', 'error', 'dcf-ui', 'runtime UI can be observed without changing authoritative state', 'snapshot threw', { error: String(error && error.message || error) }, 'The report could not observe the real Shadow DOM, so UI/runtime consistency is unknown.');
+      }
+    } else {
+      add('runtime_app_unavailable', 'error', 'dcf-app', 'a mounted app exposes captureRuntimeViews()', 'app or runtime observer missing', null, 'The userscript runtime exists without an observable app instance, or boot did not finish.');
+    }
 
+    if (!runtimeObject) {
+      add('runtime_global_missing', 'error', '__DCF_RUNTIME__', 'the current userscript instance publishes its runtime object', 'missing', null, 'The browser page does not expose the runtime object created at the end of DCF boot.');
+    } else if (runtimeObject.version !== VERSION) {
+      add('runtime_version_mismatch', 'error', '__DCF_RUNTIME__.version', VERSION, runtimeObject.version || null, null, 'The in-memory runtime and the installed userscript source are not the same version.');
+    }
+
+    if (ui) {
+      if (ui.host_count !== 1) add('runtime_host_count_mismatch', 'error', '#dcf-chatgpt-microcore-host', 1, ui.host_count, null, ui.host_count === 0 ? 'DCF boot produced no host in the real document.' : 'The userscript appears to have been injected more than once in the same page.');
+      if (!ui.host_connected || !ui.shadow_root_attached || !ui.shell_connected) add('runtime_ui_detached', 'error', 'dcf-ui', 'host, shadow root and shell are connected', { host_connected: ui.host_connected, shadow_root_attached: ui.shadow_root_attached, shell_connected: ui.shell_connected }, null, 'The in-memory app exists but part of its real DOM is detached.');
+      if (!ui.shell_visible || !ui.shell_intersects_viewport) add('runtime_shell_not_visible', 'warning', 'dcf-shell', 'the shell has a visible rectangle intersecting the viewport', { shell_visible: ui.shell_visible, shell_intersects_viewport: ui.shell_intersects_viewport }, { rect: ui.shell_rect }, 'DCF is mounted but its real browser geometry makes it unavailable to the user.');
+      if (!String(ui.version_text || '').includes(VERSION)) add('runtime_ui_version_mismatch', 'warning', 'dcf-ui-version', VERSION, ui.version_text || null, null, 'The visible sidebar version text does not match the running source version.');
+    }
+
+    const persistedRoot = storage.getFrom(storage.primaryBackend, ROOT_KEY, null);
+    if (!persistedRoot) {
+      add('runtime_authoritative_root_missing', 'error', `${storage.primaryBackend}:${ROOT_KEY}`, 'the authoritative backend contains the current root', 'missing', null, 'The in-memory runtime has no corresponding persisted authority in the backend it claims to use.');
+    } else if (persistedRoot.state_hash !== root.state_hash || persistedRoot.revision !== root.revision) {
+      add('runtime_memory_storage_diverged', 'error', ROOT_KEY, { revision: root.revision, state_hash: root.state_hash }, { revision: persistedRoot.revision, state_hash: persistedRoot.state_hash }, null, 'The current in-memory root and the actual persisted root have diverged.');
+    }
+    if (!registry || registry.state_hash !== root.state_hash) {
+      add('runtime_projection_stale', 'error', 'runtime-registry', root.state_hash, registry && registry.state_hash || null, { root_revision: root.revision, projection_revision: registry && registry.state_revision }, 'The registry currently used by the browser was not built from the current in-memory root.');
+    }
+
+    const probeKey = `dcf.runtime.probe.${Date.now()}`;
+    const probeValue = `ok:${Math.random().toString(36).slice(2)}`;
+    try {
+      storage.set(probeKey, probeValue);
+      const readBack = storage.get(probeKey, null);
+      storage.remove(probeKey);
+      if (readBack !== probeValue) add('runtime_storage_roundtrip_failed', 'error', storage.primaryBackend, probeValue, readBack, null, 'The browser storage API accepted a write call but did not return the same value.');
+    } catch (error) {
+      try { storage.remove(probeKey); } catch (_) {}
+      add('runtime_storage_roundtrip_failed', 'error', storage.primaryBackend, 'write/read/delete succeeds', 'probe threw', { error: String(error && error.message || error) }, 'The actual browser storage backend is not usable by this running userscript instance.');
+    }
+
+    const currentPackageIds = Object.keys(root.packages && root.packages.packages || {}).sort();
     const missingRequired = requiredPackages.filter((id) => {
-      const entry = root.packages.packages[id];
+      const entry = root.packages && root.packages.packages && root.packages.packages[id];
       return !entry || entry.enabled === false;
     });
-    addCheck('product.required-packages', missingRequired.length ? 'error' : 'ok', missingRequired.length ? '产品核心包缺失或停用' : '产品核心包完整', missingRequired);
+    if (missingRequired.length) add('runtime_required_packages_missing', 'error', 'product-baseline', 'all required first-party packages installed and enabled', missingRequired, null, 'The running browser state cannot provide the language-ammunition value loop.');
 
-    const localLegacyPresent = !!(localLegacy.package_ids.length || localLegacy.runtime_module_ids.length || localLegacy.ammo_count || localLegacy.stores.root.present);
-    if (missingLegacyModules.length || missingLegacyPackages.length) {
-      addCheck('migration.legacy-coverage', 'error', '检测到未进入当前运行态的旧模块或旧包', { missing_runtime_module_ids: missingLegacyModules, missing_package_ids: missingLegacyPackages });
-    } else if (localLegacyPresent) {
-      addCheck('migration.legacy-coverage', 'ok', '检测到旧存储，当前运行态已覆盖其包与运行模块');
-    } else {
-      addCheck('migration.legacy-coverage', 'ok', '未检测到需要迁移的旧存储');
+    const currentRuntimeModuleIds = sortedUnique((registry && registry.modules || []).map((module) => module.id));
+    const providerMap = registry && registry.build && registry.build.resource_ownership || {};
+    const orphanModules = currentRuntimeModuleIds.filter((id) => !providerMap[`module:${id}`]);
+    if (orphanModules.length) add('runtime_modules_without_provider', 'error', 'runtime-registry', 'every runtime module is traceable to an active package resource', orphanModules, null, 'These modules exist in memory without a provider that can explain why they are present.');
+
+    const legacy = legacyInventory(storage, 'localStorage');
+    const skipped = skippedPackageIds(root);
+    const unexplainedLegacyPackages = legacy.package_ids.filter((id) => !currentPackageIds.includes(id) && !skipped.has(id));
+    if (unexplainedLegacyPackages.length) add('runtime_storage_bridge_gap', 'error', 'legacy-packages', 'every legacy package is migrated or has an explicit skip record', unexplainedLegacyPackages, { bridge_present: !!(root.system && root.system.storage_bridge) }, 'The actual browser still contains legacy packages that neither reached the current root nor received an explicit conflict explanation.');
+    const enabledPackageIds = new Set(Object.entries(root.packages && root.packages.packages || {}).filter(([, entry]) => entry && entry.enabled !== false).map(([id]) => id));
+    const legacyModulesMissingFromPresentPackages = legacy.module_providers.filter((item) => enabledPackageIds.has(item.package_id) && !currentRuntimeModuleIds.includes(item.module_id));
+    if (legacyModulesMissingFromPresentPackages.length) add('runtime_legacy_module_projection_gap', 'error', 'legacy-runtime-modules', 'modules from migrated active packages enter the current runtime registry', legacyModulesMissingFromPresentPackages, null, 'The package exists in the current browser state, but one or more of its legacy modules did not reach the running registry.');
+
+    const expectedDiscoverableModules = sortedUnique((registry && registry.modules || []).filter((module) => module.kind !== 'ammo').map((module) => module.id));
+    if (ui && ui.views) {
+      const actualPackages = sortedUnique(ui.views.packages && ui.views.packages.entry_ids);
+      const missingPackageCards = difference(currentPackageIds, actualPackages);
+      const extraPackageCards = difference(actualPackages, currentPackageIds);
+      if (missingPackageCards.length || extraPackageCards.length) add('runtime_package_view_diverged', 'error', 'package-management-dom', currentPackageIds, actualPackages, { missing: missingPackageCards, extra: extraPackageCards }, 'The package list rendered in the real Shadow DOM does not match the packages held by the running authoritative state.');
+
+      const actualDaily = sortedUnique(ui.views.functions && ui.views.functions.module_ids);
+      const actualMaintenance = sortedUnique(ui.views.maintenance && ui.views.maintenance.module_ids);
+      const actualDiscoverable = sortedUnique(actualDaily.concat(actualMaintenance));
+      const missingEntries = difference(expectedDiscoverableModules, actualDiscoverable);
+      const extraEntries = difference(actualDiscoverable, expectedDiscoverableModules);
+      const crossSectionDuplicates = actualDaily.filter((id) => actualMaintenance.includes(id));
+      if (missingEntries.length || extraEntries.length || crossSectionDuplicates.length) {
+        add('runtime_module_entry_coverage_gap', 'error', 'module-entry-dom', expectedDiscoverableModules, actualDiscoverable, { missing: missingEntries, extra: extraEntries, present_in_both_sections: crossSectionDuplicates, daily_dom: actualDaily, maintenance_dom: actualMaintenance }, 'The real browser entry points do not provide exactly one discoverable header for every non-ammo runtime module. This comparison does not reuse the UI role resolver; it checks runtime identity coverage against the actual DOM. Folded cards still count as present.');
+      }
+      const duplicateCards = {
+        daily: duplicates(ui.views.functions && ui.views.functions.module_ids),
+        maintenance: duplicates(ui.views.maintenance && ui.views.maintenance.module_ids),
+        packages: duplicates(ui.views.packages && ui.views.packages.entry_ids)
+      };
+      if (duplicateCards.daily.length || duplicateCards.maintenance.length || duplicateCards.packages.length) add('runtime_duplicate_entries', 'warning', 'dcf-shadow-dom', 'each package or module has one entry in its owning view', duplicateCards, null, 'The real DOM contains duplicate entries even though the underlying runtime identities are unique.');
     }
-
-    if (storage.primaryBackend === 'gm' && localLegacyPresent && !root.system.storage_bridge) {
-      addCheck('storage.backend-bridge', 'error', 'GM 存储与 localStorage 之间存在旧数据，但没有桥接记录');
-    } else if (root.system.storage_bridge && root.system.storage_bridge.skipped && root.system.storage_bridge.skipped.packages && root.system.storage_bridge.skipped.packages.length) {
-      addCheck('storage.backend-bridge', 'warning', '存储桥已运行，但有旧包因冲突被跳过', root.system.storage_bridge.skipped.packages);
-    } else {
-      addCheck('storage.backend-bridge', 'ok', root.system.storage_bridge ? '旧存储桥已完成' : '当前无需存储桥接');
-    }
-
-    addCheck('ui.module-placement', 'info', `运行态模块 ${currentRuntimeModuleIds.length} 个：日常 ${placement.daily.length}、维护 ${placement.maintenance.length}、隐藏 ${placement.hidden.length}、弹药专用 ${placement.ammo.length}`, {
-      daily_function_ids: placement.daily.map((module) => module.id),
-      maintenance_tool_ids: placement.maintenance.map((module) => module.id),
-      hidden_runtime_module_ids: placement.hidden.map((module) => module.id),
-      ammo_module_ids: placement.ammo.map((module) => module.id)
-    });
 
     const hostDiagnostics = host && typeof host.diagnostics === 'function' ? host.diagnostics() : null;
-    addCheck('host.reply-observer', hostDiagnostics && hostDiagnostics.reply_root_observer_attached ? 'ok' : 'warning', hostDiagnostics && hostDiagnostics.reply_root_observer_attached ? '回复监听器已连接' : '回复监听器尚未连接', hostDiagnostics);
-    addCheck('host.composer', hostDiagnostics && hostDiagnostics.composer_found ? 'ok' : 'warning', hostDiagnostics && hostDiagnostics.composer_found ? '输入框可用' : '当前页面未找到输入框');
+    if (!hostDiagnostics || !hostDiagnostics.conversation_root_found) {
+      add('runtime_conversation_root_missing', 'warning', 'chatgpt-main', 'the current ChatGPT route exposes a conversation root', hostDiagnostics && hostDiagnostics.conversation_root_found || false, { route_kind: hostDiagnostics && hostDiagnostics.route_kind || null }, 'The Host Adapter cannot observe replies on the current page because the expected live page root is absent.');
+    } else {
+      if (!hostDiagnostics.reply_root_observer_attached) add('runtime_reply_observer_missing', 'error', 'reply-observer', 'observer attached to the current conversation root', false, hostDiagnostics, 'Automatic reply ingestion is not connected in this browser tab.');
+      else if (!hostDiagnostics.observed_root_connected || hostDiagnostics.observed_root_is_current === false) add('runtime_reply_observer_stale', 'error', 'reply-observer', 'the observed node is connected and is the current conversation root', { connected: hostDiagnostics.observed_root_connected, is_current: hostDiagnostics.observed_root_is_current }, hostDiagnostics, 'ChatGPT navigation replaced the page root while DCF kept observing an old node.');
+    }
+    if (!hostDiagnostics || !hostDiagnostics.composer_found) add('runtime_composer_missing', 'warning', 'chatgpt-composer', 'the current page exposes a writable composer', false, { route_kind: hostDiagnostics && hostDiagnostics.route_kind || null }, 'DCF cannot insert or send ammunition in the current browser state.');
 
-    const recentFailures = receipts.filter((item) => item.status === 'rejected' || item.status === 'error').slice(-20).map(receiptSummary);
-    addCheck('receipts.recent-failures', recentFailures.length ? 'warning' : 'ok', recentFailures.length ? `最近存在 ${recentFailures.length} 条失败回执` : '最近没有失败回执');
+    const cutoff = Date.now() - 30 * 60 * 1000;
+    const recentFailures = receiptStore.list().filter((item) => (item.status === 'rejected' || item.status === 'error') && (!item.at || Date.parse(item.at) >= cutoff)).slice(-8).map(receiptSummary);
+    if (recentFailures.length) add('runtime_recent_failures', 'warning', 'runtime-receipts', 'no rejected or failed operations in the last 30 minutes', recentFailures.length, { failures: recentFailures }, 'The current browser session recently attempted operations that did not complete successfully.');
 
-    const overall = checks.some((item) => item.status === 'error') ? 'error' : checks.some((item) => item.status === 'warning') ? 'warning' : 'ok';
-    const statusCounts = receipts.reduce((result, item) => {
-      const status = item.status || 'unknown';
-      result[status] = (result[status] || 0) + 1;
-      return result;
-    }, {});
-
+    const status = deviations.some((item) => item.severity === 'error') ? 'error' : deviations.some((item) => item.severity === 'warning') ? 'warning' : 'healthy';
     return {
-      schema: 'dcf.health.report.v2',
-      generated_at: nowIso(),
-      overall,
-      kernel_version: VERSION,
-      checks,
-      storage: {
+      schema: 'dcf.runtime.health.diff.v1',
+      generated_at: generatedAt,
+      status,
+      runtime: {
+        version: VERSION,
+        route_kind: hostDiagnostics && hostDiagnostics.route_kind || null,
         primary_backend: storage.primaryBackend,
-        available_backends: storage.availableBackends,
-        authoritative_keys: {
-          root: ROOT_KEY,
-          snapshots: SNAPSHOT_KEY,
-          runtime_projection: RUNTIME_KEY,
-          receipts: RECEIPT_KEY,
-          catalog: CATALOG_STATE_KEY
-        },
-        bridge: root.system.storage_bridge || null,
-        gm: gmInventory,
-        local_storage: localLegacy
+        current_tab: ui && ui.current_tab || null
       },
-      state: {
-        schema: root.schema,
-        revision: root.revision,
-        parent_revision: root.parent_revision,
-        state_hash: root.state_hash,
-        computed_state_hash: computedHash,
-        package_revision: root.packages.revision,
-        user_revision: root.user.revision,
-        migration: root.system.migration || null,
-        artifact_index_count: Object.keys(root.system.artifact_index || {}).length,
-        snapshot_count: snapshots.length
-      },
-      projection: {
-        schema: registry.schema,
-        build_id: registry.build && registry.build.build_id,
-        state_revision: registry.state_revision,
-        state_hash: registry.state_hash,
-        installed_package_count: currentPackageIds.length,
-        runtime_module_count: currentRuntimeModuleIds.length,
-        daily_function_count: placement.daily.length,
-        maintenance_tool_count: placement.maintenance.length,
-        hidden_runtime_module_count: placement.hidden.length,
-        ammo_module_count: placement.ammo.length,
-        surface_count: Object.keys(registry.surfaces || {}).length,
-        content_type_count: Object.keys(registry.contentTypes || {}).length,
-        style_source_count: (registry.appearance && registry.appearance.styles || []).length
-      },
-      packages: currentPackageIds.map((packageId) => {
-        const entry = root.packages.packages[packageId];
-        const active = entry.revisions && entry.revisions[entry.active_revision];
-        return {
-          package_id: packageId,
-          enabled: entry.enabled !== false,
-          active_revision: entry.active_revision,
-          revision_count: Object.keys(entry.revisions || {}).length,
-          active_hash: active && active.hash || null,
-          source_kind: entry.source && entry.source.kind || null,
-          required: requiredPackages.includes(packageId)
-        };
-      }),
-      runtime_modules: (registry.modules || []).map((module) => {
-        const classification = classifyModule(root, registry, module);
-        return {
-          module_id: module.id,
-          title: module.title || null,
-          version: module.version || null,
-          placement: classification.placement,
-          placement_source: classification.source,
-          command_count: commandList(module).length,
-          provider: registry.build && registry.build.resource_ownership && registry.build.resource_ownership[`module:${module.id}`] || null
-        };
-      }),
-      surfaces: Object.values(registry.surfaces || {}).map((surface) => ({ id: surface.id, title: surface.title || null, area: surface.area || null, kind: surface.kind || null, content_type: surface.content_type || null })),
-      user_data: {
-        content_counts: Object.fromEntries(Object.entries(root.user.content || {}).map(([type, items]) => [type, Object.keys(isObject(items) ? items : {}).length])),
-        settings_keys: Object.keys(root.user.settings || {}).sort(),
-        module_display_keys: Object.keys(root.user.moduleDisplay || {}).sort(),
-        appearance: {
-          side: root.user.appearance && root.user.appearance.side || null,
-          variable_keys: Object.keys(root.user.appearance && root.user.appearance.vars || {}).sort(),
-          has_user_css: !!(root.user.appearance && root.user.appearance.css),
-          safe_mode: !!(root.user.appearance && root.user.appearance.safe_mode)
-        }
-      },
-      host: hostDiagnostics,
-      receipts: { count: receipts.length, status_counts: statusCounts, recent_failures: recentFailures },
-      comparison: {
-        legacy_local_package_ids: localLegacy.package_ids,
-        current_package_ids: currentPackageIds,
-        missing_legacy_package_ids: missingLegacyPackages,
-        legacy_local_runtime_module_ids: localLegacy.runtime_module_ids,
-        current_runtime_module_ids: currentRuntimeModuleIds,
-        missing_legacy_runtime_module_ids: missingLegacyModules
-      },
+      deviations,
       privacy: {
         conversation_text_included: false,
         ammo_bodies_included: false,
         package_payloads_included: false,
+        command_arguments_included: false,
         authentication_data_included: false
       }
     };
   }
 
   function format() {
-    return `<<<DCF_HEALTH_REPORT\n${JSON.stringify(report(), null, 2)}\nDCF_HEALTH_REPORT>>>`;
+    return `<<<DCF_RUNTIME_HEALTH\n${JSON.stringify(report(), null, 2)}\nDCF_RUNTIME_HEALTH>>>`;
   }
 
   return { report, format };
 }
 
-module.exports = { createHealthReporter, legacyInventory, activePackModuleIds };
+module.exports = { createHealthReporter, legacyInventory, activePackModules, difference, duplicates };
 
 },
 "src/modules/maintenance.js":function(module,exports,require){
@@ -2104,6 +2065,8 @@ module.exports = { createHealthReporter, legacyInventory, activePackModuleIds };
 const { CATALOG_STATE_KEY } = require("src/core/constants.js");
 
 function createMaintenanceModule(engine, receiptStore, effectRunner, storage, healthReporter) {
+  let lastHealth = null;
+
   function summary() {
     const root = engine.getRoot();
     const registry = engine.getRegistry();
@@ -2120,20 +2083,31 @@ function createMaintenanceModule(engine, receiptStore, effectRunner, storage, he
       catalog: storage ? storage.get(CATALOG_STATE_KEY, { last_checked_at: null, last_result: null }) : null
     };
   }
+
   function copySummary() {
     return effectRunner.run({ type: 'clipboard.write', text: JSON.stringify(summary(), null, 2) }, { module: 'maintenance', report: 'summary' });
   }
+
   function healthReport() {
-    return healthReporter ? healthReporter.report() : { schema: 'dcf.health.report.v1', overall: 'error', checks: [{ id: 'health.reporter', status: 'error', summary: '体检器未初始化' }] };
+    lastHealth = healthReporter ? healthReporter.report() : {
+      schema: 'dcf.runtime.health.diff.v1',
+      status: 'error',
+      deviations: [{ code: 'runtime_health_reporter_missing', severity: 'error', expected: 'reporter initialized', actual: 'missing', explanation: 'Boot did not create the Runtime health reporter.' }]
+    };
+    return lastHealth;
   }
+
   function copyHealthReport() {
-    const text = healthReporter ? healthReporter.format() : `<<<DCF_HEALTH_REPORT\n${JSON.stringify(healthReport(), null, 2)}\nDCF_HEALTH_REPORT>>>`;
-    return effectRunner.run({ type: 'clipboard.write', text }, { module: 'maintenance', report: 'health' });
+    const report = healthReport();
+    const text = `<<<DCF_RUNTIME_HEALTH\n${JSON.stringify(report, null, 2)}\nDCF_RUNTIME_HEALTH>>>`;
+    return effectRunner.run({ type: 'clipboard.write', text }, { module: 'maintenance', report: 'runtime-health' });
   }
+
   return {
     summary,
     copySummary,
     healthReport,
+    lastHealthReport: () => lastHealth,
     copyHealthReport,
     receipts: () => receiptStore.list(),
     clearReceipts: () => receiptStore.clear(),
@@ -2143,12 +2117,14 @@ function createMaintenanceModule(engine, receiptStore, effectRunner, storage, he
 }
 
 module.exports = { createMaintenanceModule };
+
 },
 "src/ui/app.js":function(module,exports,require){
 'use strict';
 
+const { UI_KEY } = require("src/core/constants.js");
 const { commandList } = require("src/runtime/commands.js");
-const { classifyModule, modulesByPlacement } = require("src/modules/module-roles.js");
+const { classifyModule, modulesByRole } = require("src/modules/module-roles.js");
 
 function escapeHtml(value) {
   return String(value == null ? '' : value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
@@ -2176,7 +2152,8 @@ function createApp(options) {
       :host{all:initial}.sh{position:fixed;right:12px;bottom:var(--bottom,112px);top:auto;width:var(--w,340px);height:min(var(--h,800px),calc(100vh - 24px));z-index:2147483646;background:#fffffff2;color:#111;border:1px solid #9996;border-radius:14px;box-shadow:0 18px 44px #0002;font:13px system-ui;overflow:hidden;box-sizing:border-box;display:flex;flex-direction:column}
       .sh[data-side=left]{left:12px;right:auto}.sh[data-anchor=top]{top:var(--top,12px);bottom:auto}.sh[data-anchor=bottom]{bottom:var(--bottom,112px);top:auto}
       @media(prefers-color-scheme:dark){.sh{background:#171717ee;color:#eee}}
-      button{border:1px solid #9995;border-radius:9px;background:transparent;color:inherit;padding:6px 8px;cursor:pointer}button:hover{background:#8882}button.danger{border-color:#dc262666}.top{height:42px;flex:0 0 42px;display:flex;align-items:center;gap:6px;padding:6px;border-bottom:1px solid #9993;box-sizing:border-box}.top b{margin-right:auto}.tabs{display:flex;gap:5px}.tabs button.on{background:#2563eb22;border-color:#2563eb66}.body{flex:1;min-height:0;overflow:auto;padding:9px;box-sizing:border-box}.card{border:1px solid #9994;border-radius:12px;background:#8881;padding:9px;margin-bottom:9px;box-sizing:border-box}.name{font-weight:700}.mini{font-size:11px;opacity:.7;word-break:break-all}.section-title{font-size:12px;font-weight:700;opacity:.8;margin:12px 2px 7px}.actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}textarea,input,select{width:100%;box-sizing:border-box;border:1px solid #9995;border-radius:9px;background:#fff8;color:inherit;padding:7px}textarea{min-height:120px}.notice{padding:6px 9px;border-bottom:1px solid #9993;font-size:12px}.notice:empty{display:none}.row{display:flex;gap:6px;align-items:center}.row>*{min-width:0}.grow{flex:1}.pkg{padding-top:8px;margin-top:8px;border-top:1px solid #9993}.receipt{font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;word-break:break-word;max-height:180px;overflow:auto}.health-ok{border-color:#16a34a66}.health-warning{border-color:#d9770666}.health-error{border-color:#dc262666}.state-pill{font-size:10px;padding:2px 6px;border:1px solid #9995;border-radius:999px}.state-pill.daily{border-color:#16a34a66}.state-pill.maintenance{border-color:#2563eb66}.state-pill.hidden{border-color:#d9770666}
+      button{border:1px solid #9995;border-radius:9px;background:transparent;color:inherit;padding:6px 8px;cursor:pointer}button:hover{background:#8882}button.danger{border-color:#dc262666}.top{height:42px;flex:0 0 42px;display:flex;align-items:center;gap:6px;padding:6px;border-bottom:1px solid #9993;box-sizing:border-box}.top b{margin-right:auto}.tabs{display:flex;gap:5px}.tabs button.on{background:#2563eb22;border-color:#2563eb66}.body{flex:1;min-height:0;overflow:auto;padding:9px;box-sizing:border-box}.card{border:1px solid #9994;border-radius:12px;background:#8881;padding:9px;margin-bottom:9px;box-sizing:border-box}.name{font-weight:700}.mini{font-size:11px;opacity:.7;word-break:break-all}.section-title{font-size:12px;font-weight:700;opacity:.8;margin:12px 2px 7px}.actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}textarea,input,select{width:100%;box-sizing:border-box;border:1px solid #9995;border-radius:9px;background:#fff8;color:inherit;padding:7px}textarea{min-height:120px}.notice{padding:6px 9px;border-bottom:1px solid #9993;font-size:12px}.notice:empty{display:none}.row{display:flex;gap:6px;align-items:center}.row>*{min-width:0}.grow{flex:1}.pkg{padding-top:8px;margin-top:8px;border-top:1px solid #9993}.receipt{font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;word-break:break-word;max-height:180px;overflow:auto}.health-healthy{border-color:#16a34a66}.health-warning{border-color:#d9770666}.health-error{border-color:#dc262666}.state-pill{font-size:10px;padding:2px 6px;border:1px solid #9995;border-radius:999px}.state-pill.daily{border-color:#16a34a66}.state-pill.maintenance{border-color:#2563eb66}
+      details.card{padding:0}details.card>summary{list-style:none;cursor:pointer;padding:9px}details.card>summary::-webkit-details-marker{display:none}details.card>summary:before{content:'▸';display:inline-block;width:16px;opacity:.7}details.card[open]>summary:before{content:'▾'}details.card>.module-body,details.card>.detail-body{padding:0 9px 9px}.module-summary{display:flex;align-items:flex-start;gap:5px}.module-summary .grow{display:block}.module-summary .fold-hint{font-size:10px;opacity:.55;margin-left:auto}.health-count{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;margin-top:6px}
     </style><style id="package-style"></style><aside class="sh"><div class="top"></div><div class="notice"></div><div class="body"></div></aside>`;
   doc.documentElement.appendChild(hostElement);
   const shell = root.querySelector('.sh');
@@ -2184,9 +2161,16 @@ function createApp(options) {
   const body = root.querySelector('.body');
   const notice = root.querySelector('.notice');
   const packageStyle = root.querySelector('#package-style');
-  let tab = storage.get('dcf.ui.session.v1', { tab: 'ammo' }).tab || 'ammo';
+  const initialSession = storage.get(UI_KEY, { tab: 'ammo', collapsed_modules: {} }) || {};
+  let tab = initialSession.tab || 'ammo';
+  let collapsedModules = initialSession.collapsed_modules && typeof initialSession.collapsed_modules === 'object' ? Object.assign({}, initialSession.collapsed_modules) : {};
   let packageDraft = '';
   let fenceFrame = 0;
+  let capturing = false;
+
+  function saveSession() {
+    storage.set(UI_KEY, { tab, collapsed_modules: collapsedModules });
+  }
 
   function setNotice(text) {
     notice.textContent = String(text || '');
@@ -2236,7 +2220,12 @@ function createApp(options) {
     return Number(display.order != null ? display.order : module.order != null ? module.order : 1000);
   }
 
-  function renderModuleCards(modules, emptyText) {
+  function isCollapsed(module, role) {
+    if (Object.prototype.hasOwnProperty.call(collapsedModules, module.id)) return collapsedModules[module.id] === true;
+    return role === 'maintenance';
+  }
+
+  function renderModuleCards(modules, role, emptyText) {
     modules = modules.slice().sort((a, b) => moduleOrder(a) - moduleOrder(b) || String(a.id).localeCompare(String(b.id)));
     if (!modules.length) return `<div class="card mini">${escapeHtml(emptyText || '暂无功能')}</div>`;
     return modules.map((module) => {
@@ -2247,57 +2236,55 @@ function createApp(options) {
         const blockTitle = entry.block && entry.block.title;
         if (blockTitle && !grouped.includes(blockTitle)) grouped.push(blockTitle);
       }
-      return `<div class="card" data-module-id="${escapeHtml(module.id)}"><div class="name">${escapeHtml(display.title || module.title || module.id)}</div><div class="mini">${escapeHtml(module.version || '')} · ${escapeHtml(module.id)}</div>${grouped.length ? `<div class="mini">${grouped.map(escapeHtml).join(' · ')}</div>` : ''}<div class="actions">${entries.map((entry) => `<button data-action="module-command" data-module-id="${escapeHtml(module.id)}" data-command-id="${escapeHtml(entry.command.id)}">${escapeHtml(entry.command.label || entry.command.title || entry.command.id)}</button>`).join('') || '<span class="mini">无可执行命令</span>'}</div></div>`;
+      const open = !isCollapsed(module, role);
+      return `<details class="card module-card" data-module-id="${escapeHtml(module.id)}" data-module-role="${escapeHtml(role)}" ${open ? 'open' : ''}><summary class="module-summary"><span class="grow"><span class="name">${escapeHtml(display.title || module.title || module.id)}</span><br><span class="mini">${escapeHtml(module.version || '')} · ${escapeHtml(module.id)}</span></span><span class="fold-hint">${open ? '收起' : '展开'}</span></summary><div class="module-body">${grouped.length ? `<div class="mini">${grouped.map(escapeHtml).join(' · ')}</div>` : ''}<div class="actions">${entries.map((entry) => `<button data-action="module-command" data-module-id="${escapeHtml(module.id)}" data-command-id="${escapeHtml(entry.command.id)}">${escapeHtml(entry.command.label || entry.command.title || entry.command.id)}</button>`).join('') || '<span class="mini">无可执行命令</span>'}</div></div></details>`;
     }).join('');
   }
 
-  function placementLabel(placement) {
-    if (placement === 'daily') return '日常';
-    if (placement === 'maintenance') return '维护';
-    return '隐藏';
+  function roleLabel(role) {
+    return role === 'maintenance' ? '维护' : '日常';
   }
 
-  function renderPlacementManager() {
+  function renderRoleManager() {
     const registry = engine.getRegistry();
     const currentRoot = engine.getRoot();
     const modules = registry.modules.filter((module) => module.kind !== 'ammo').slice().sort((a, b) => String(a.id).localeCompare(String(b.id)));
     const rows = modules.map((module) => {
       const display = moduleDisplay(module);
       const classification = classifyModule(currentRoot, registry, module);
-      const placement = classification.placement;
-      return `<div class="pkg" data-placement-module-id="${escapeHtml(module.id)}"><div class="row"><span class="grow"><span class="name">${escapeHtml(display.title || module.title || module.id)}</span><br><span class="mini">${escapeHtml(module.id)} · ${escapeHtml(classification.source)}</span></span><span class="state-pill ${escapeHtml(placement)}">${escapeHtml(placementLabel(placement))}</span></div><div class="actions"><button data-action="module-placement" data-module-id="${escapeHtml(module.id)}" data-placement="daily">日常功能</button><button data-action="module-placement" data-module-id="${escapeHtml(module.id)}" data-placement="maintenance">维护工具</button><button data-action="module-placement" data-module-id="${escapeHtml(module.id)}" data-placement="hidden">隐藏</button></div></div>`;
+      return `<div class="pkg" data-role-module-id="${escapeHtml(module.id)}"><div class="row"><span class="grow"><span class="name">${escapeHtml(display.title || module.title || module.id)}</span><br><span class="mini">${escapeHtml(module.id)} · ${escapeHtml(classification.source)}</span></span><span class="state-pill ${escapeHtml(classification.role)}">${escapeHtml(roleLabel(classification.role))}</span></div><div class="actions"><button data-action="module-role" data-module-id="${escapeHtml(module.id)}" data-module-role="daily">日常功能</button><button data-action="module-role" data-module-id="${escapeHtml(module.id)}" data-module-role="maintenance">维护工具</button></div></div>`;
     }).join('');
-    return `<div class="card"><div class="name">功能分类管理</div><div class="mini">包是否安装、模块是否进入运行态、以及它显示在日常功能还是维护工具中，是三个不同状态。这里仅修改用户自己的显示分类，不改写模块包。</div>${rows}</div>`;
+    return `<details class="card"><summary><span class="name">功能分区管理</span></summary><div class="detail-body"><div class="mini">这里只决定模块属于日常功能还是维护工具。界面密度由各模块卡片的展开与折叠处理，模块不会因显示偏好而消失。</div>${rows}</div></details>`;
   }
 
   function renderFunctions() {
-    const groups = modulesByPlacement(engine.getRoot(), engine.getRegistry());
-    body.innerHTML = `<div class="card"><div class="name">日常功能</div><div class="mini">这里只保留日常使用和主力工作流；诊断、探针、布局调节和开发工具统一放在维护页。</div></div>${renderModuleCards(groups.daily, '暂无日常功能')}`;
+    const groups = modulesByRole(engine.getRoot(), engine.getRegistry());
+    body.innerHTML = `<section data-runtime-section="daily"><div class="card"><div class="name">日常功能</div><div class="mini">主力能力始终保留入口；点击模块标题展开或收起具体操作。</div></div>${renderModuleCards(groups.daily, 'daily', '暂无日常功能')}</section>`;
   }
 
   function renderPackages() {
     const entries = packageManager.packages();
-    body.innerHTML = `<div class="card"><div class="name">安装包管理</div><div class="mini">这里显示的是已安装包和版本，不代表它一定作为功能卡片出现在日常功能页。</div><textarea data-role="package-json">${escapeHtml(packageDraft)}</textarea><div class="actions"><button data-action="package-install">安装包</button><button data-action="package-update">检查 GitHub 更新</button></div></div>` + entries.map((entry) => {
+    body.innerHTML = `<div class="card"><div class="name">安装包管理</div><div class="mini">这里显示已安装包与版本；它和运行模块、日常功能、维护工具是不同层次。</div><textarea data-role="package-json">${escapeHtml(packageDraft)}</textarea><div class="actions"><button data-action="package-install">安装包</button><button data-action="package-update">检查 GitHub 更新</button></div></div><section data-runtime-section="packages">` + entries.map((entry) => {
       const revisions = Object.keys(entry.revisions || {}).sort();
       const required = packageManager.isRequired(entry.package_id);
-      return `<div class="card"><div class="name">${escapeHtml(entry.package_id)}${required ? ' · 核心' : ''}</div><div class="mini">active ${escapeHtml(entry.active_revision)} · ${entry.enabled === false ? 'disabled' : 'enabled'}</div><div class="actions">${required ? '' : `<button data-action="package-toggle" data-id="${escapeHtml(entry.package_id)}">${entry.enabled === false ? '启用' : '停用'}</button>`}<select data-role="package-revision" data-id="${escapeHtml(entry.package_id)}">${revisions.map((revision) => `<option ${revision === entry.active_revision ? 'selected' : ''}>${escapeHtml(revision)}</option>`).join('')}</select><button data-action="package-switch" data-id="${escapeHtml(entry.package_id)}">切换</button>${required ? '' : `<button data-action="package-uninstall" data-id="${escapeHtml(entry.package_id)}" class="danger">卸载</button>`}</div></div>`;
-    }).join('');
+      return `<div class="card" data-package-id="${escapeHtml(entry.package_id)}"><div class="name">${escapeHtml(entry.package_id)}${required ? ' · 核心' : ''}</div><div class="mini">active ${escapeHtml(entry.active_revision)} · ${entry.enabled === false ? 'disabled' : 'enabled'}</div><div class="actions">${required ? '' : `<button data-action="package-toggle" data-id="${escapeHtml(entry.package_id)}">${entry.enabled === false ? '启用' : '停用'}</button>`}<select data-role="package-revision" data-id="${escapeHtml(entry.package_id)}">${revisions.map((revision) => `<option ${revision === entry.active_revision ? 'selected' : ''}>${escapeHtml(revision)}</option>`).join('')}</select><button data-action="package-switch" data-id="${escapeHtml(entry.package_id)}">切换</button>${required ? '' : `<button data-action="package-uninstall" data-id="${escapeHtml(entry.package_id)}" class="danger">卸载</button>`}</div></div>`;
+    }).join('') + '</section>';
   }
 
   function renderMaintenance() {
     const summary = maintenance.summary();
-    const health = maintenance.healthReport();
-    const issues = (health.checks || []).filter((item) => item.status !== 'ok' && item.status !== 'info');
+    const lastHealth = maintenance.lastHealthReport();
     const receipts = maintenance.receipts().slice(-8).reverse();
     const snapshots = maintenance.snapshots().slice().reverse();
-    const groups = modulesByPlacement(engine.getRoot(), engine.getRegistry());
-    const healthText = issues.length ? issues.map((item) => `${item.status.toUpperCase()} · ${item.summary}`).join('\n') : '全部关键检查通过';
-    body.innerHTML = `<div class="card health-${escapeHtml(health.overall || 'warning')}"><div class="name">一键体检 · ${(health.overall || 'warning').toUpperCase()}</div><div class="mini">分别核对安装包、运行模块、日常功能、维护工具和隐藏项，不再把它们统称为“模块显示”。</div><div class="receipt">${escapeHtml(healthText)}</div><div class="actions"><button data-action="maintenance-health-copy">一键体检并复制</button></div></div>
-      <div class="section-title">维护工具</div>${renderModuleCards(groups.maintenance, '暂无维护工具')}
-      ${renderPlacementManager()}
-      <div class="card"><div class="name">运行状态</div><div class="receipt">${escapeHtml(JSON.stringify(summary, null, 2))}</div><div class="actions"><button data-action="maintenance-copy">复制简要诊断</button><button data-action="receipts-clear">清空回执</button></div></div>
-      <div class="card"><div class="name">最近回执</div>${receipts.length ? receipts.map((item) => `<div class="receipt pkg">${escapeHtml(JSON.stringify(item, null, 2))}</div>`).join('') : '<div class="mini">暂无回执</div>'}</div>
-      <div class="card"><div class="name">状态快照</div>${snapshots.length ? snapshots.map((item) => `<div class="pkg row"><span class="grow mini">r${item.revision} · ${escapeHtml(item.reason)}</span><button data-action="rollback" data-revision="${item.revision}">恢复</button></div>`).join('') : '<div class="mini">暂无快照</div>'}</div>`;
+    const groups = modulesByRole(engine.getRoot(), engine.getRegistry());
+    const healthStatus = lastHealth ? lastHealth.status : 'healthy';
+    const deviationCount = lastHealth && Array.isArray(lastHealth.deviations) ? lastHealth.deviations.length : 0;
+    body.innerHTML = `<div class="card health-${escapeHtml(healthStatus)}"><div class="name">一键 Runtime 体检</div><div class="mini">从真实浏览器现场核对脚本实例、存储、内存运行态、实际 DOM、ChatGPT 宿主连接和最近失败。正常项保持安静，只复制无法合理解释的 Runtime 偏差。</div>${lastHealth ? `<div class="health-count">上次结果：${escapeHtml(healthStatus)} · ${deviationCount} deviations</div>` : ''}<div class="actions"><button data-action="maintenance-health-copy">体检并复制</button></div></div>
+      <section data-runtime-section="maintenance-tools"><div class="section-title">维护工具</div>${renderModuleCards(groups.maintenance, 'maintenance', '暂无维护工具')}</section>
+      ${renderRoleManager()}
+      <details class="card"><summary><span class="name">运行摘要</span></summary><div class="detail-body"><div class="receipt">${escapeHtml(JSON.stringify(summary, null, 2))}</div><div class="actions"><button data-action="maintenance-copy">复制简要诊断</button><button data-action="receipts-clear">清空回执</button></div></div></details>
+      <details class="card"><summary><span class="name">最近回执</span></summary><div class="detail-body">${receipts.length ? receipts.map((item) => `<div class="receipt pkg">${escapeHtml(JSON.stringify(item, null, 2))}</div>`).join('') : '<div class="mini">暂无回执</div>'}</div></details>
+      <details class="card"><summary><span class="name">状态快照</span></summary><div class="detail-body">${snapshots.length ? snapshots.map((item) => `<div class="pkg row"><span class="grow mini">r${item.revision} · ${escapeHtml(item.reason)}</span><button data-action="rollback" data-revision="${item.revision}">恢复</button></div>`).join('') : '<div class="mini">暂无快照</div>'}</div></details>`;
   }
 
   function applyAppearance() {
@@ -2347,28 +2334,83 @@ function createApp(options) {
     applyAppearance();
   }
 
-  function setModulePlacement(moduleId, placement) {
+  function setModuleRole(moduleId, role) {
     const current = engine.getRoot().user.moduleDisplay && engine.getRoot().user.moduleDisplay[moduleId] || {};
-    const next = Object.assign({}, current);
-    if (placement === 'hidden') next.hidden = true;
-    else {
-      next.hidden = false;
-      next.role = placement;
-      next.area = placement === 'maintenance' ? 'maintenance' : 'work';
-    }
+    const next = Object.assign({}, current, {
+      role,
+      area: role === 'maintenance' ? 'maintenance' : 'work'
+    });
+    delete next.hidden;
     return engine.setUserPath(['moduleDisplay', moduleId], next);
+  }
+
+  function collectIds(selector, attribute) {
+    return Array.from(root.querySelectorAll(selector)).map((node) => String(node.getAttribute(attribute) || '')).filter(Boolean);
+  }
+
+  function captureRuntimeViews() {
+    const originalTab = tab;
+    const originalScroll = body.scrollTop;
+    const views = {};
+    capturing = true;
+    try {
+      tab = 'packages'; render();
+      views.packages = { entry_ids: collectIds('[data-runtime-section="packages"] [data-package-id]', 'data-package-id') };
+      tab = 'functions'; render();
+      views.functions = {
+        module_ids: collectIds('[data-runtime-section="daily"] [data-module-id]', 'data-module-id'),
+        collapsed_module_ids: collectIds('[data-runtime-section="daily"] details[data-module-id]:not([open])', 'data-module-id')
+      };
+      tab = 'maintenance'; render();
+      views.maintenance = {
+        module_ids: collectIds('[data-runtime-section="maintenance-tools"] [data-module-id]', 'data-module-id'),
+        collapsed_module_ids: collectIds('[data-runtime-section="maintenance-tools"] details[data-module-id]:not([open])', 'data-module-id')
+      };
+    } finally {
+      tab = originalTab;
+      render();
+      body.scrollTop = originalScroll;
+      capturing = false;
+    }
+    const rect = shell.getBoundingClientRect();
+    const style = typeof windowObject.getComputedStyle === 'function' ? windowObject.getComputedStyle(shell) : null;
+    const viewport = windowObject.visualViewport ? { width: windowObject.visualViewport.width, height: windowObject.visualViewport.height, left: windowObject.visualViewport.offsetLeft || 0, top: windowObject.visualViewport.offsetTop || 0 } : { width: windowObject.innerWidth, height: windowObject.innerHeight, left: 0, top: 0 };
+    const visible = !!(shell.isConnected && rect.width > 0 && rect.height > 0 && (!style || (style.display !== 'none' && style.visibility !== 'hidden')));
+    const intersectsViewport = visible && rect.right > viewport.left && rect.bottom > viewport.top && rect.left < viewport.left + viewport.width && rect.top < viewport.top + viewport.height;
+    return {
+      schema: 'dcf.ui.runtime.snapshot.v1',
+      host_count: doc.querySelectorAll('#dcf-chatgpt-microcore-host').length,
+      host_connected: hostElement.isConnected,
+      shadow_root_attached: hostElement.shadowRoot === root,
+      shell_connected: shell.isConnected,
+      shell_visible: visible,
+      shell_intersects_viewport: intersectsViewport,
+      shell_rect: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height },
+      current_tab: originalTab,
+      tab_ids: collectIds('.tabs [data-tab]', 'data-tab'),
+      version_text: String((top.querySelector('b') && top.querySelector('b').textContent) || ''),
+      views
+    };
   }
 
   root.addEventListener('input', (event) => {
     if (event.target && event.target.dataset.role === 'package-json') packageDraft = event.target.value;
   });
 
+  root.addEventListener('toggle', (event) => {
+    if (capturing) return;
+    const details = event.target && event.target.closest && event.target.closest('details[data-module-id]');
+    if (!details) return;
+    collapsedModules[details.dataset.moduleId] = !details.open;
+    saveSession();
+  }, true);
+
   root.addEventListener('click', (event) => {
     const button = event.target.closest('button');
     if (!button) return;
     if (button.dataset.tab) {
       tab = button.dataset.tab;
-      storage.set('dcf.ui.session.v1', { tab });
+      saveSession();
       render();
       return;
     }
@@ -2396,9 +2438,9 @@ function createApp(options) {
       const module = engine.getRegistry().modules.find((entry) => entry.id === button.dataset.moduleId);
       const found = module && commandList(module).find((entry) => String(entry.command.id) === String(button.dataset.commandId));
       if (module && found) runAndRender(() => commandRunner.execute(module, found.command, found.block), '命令已执行');
-    } else if (action === 'module-placement') {
-      runAndRender(() => setModulePlacement(button.dataset.moduleId, button.dataset.placement), '功能分类已更新');
-    } else if (action === 'maintenance-health-copy') runAndRender(() => maintenance.copyHealthReport(), '完整体检报告已复制');
+    } else if (action === 'module-role') {
+      runAndRender(() => setModuleRole(button.dataset.moduleId, button.dataset.moduleRole), '功能分区已更新');
+    } else if (action === 'maintenance-health-copy') runAndRender(() => maintenance.copyHealthReport(), 'Runtime 体检报告已复制');
     else if (action === 'maintenance-copy') runAndRender(() => maintenance.copySummary(), '简要诊断已复制');
     else if (action === 'receipts-clear') runAndRender(() => maintenance.clearReceipts(), '回执已清空');
     else if (action === 'rollback') runAndRender(() => maintenance.rollbackTo(Number(button.dataset.revision)), '状态已恢复');
@@ -2410,7 +2452,7 @@ function createApp(options) {
     windowObject.visualViewport.addEventListener('scroll', scheduleFence, { passive: true });
   }
   render();
-  return { render, setNotice, destroy: () => hostElement.remove(), root, shell };
+  return { render, setNotice, captureRuntimeViews, destroy: () => hostElement.remove(), root, shell, hostElement };
 }
 
 module.exports = { createApp, computeFenceStyle };
@@ -2455,20 +2497,25 @@ function ensureProductBaseline(root) {
 }
 
 function boot(api = globalThis) {
+  const windowObject = api.window || (typeof window !== 'undefined' ? window : null);
   const storage = createStorage(api);
   const receiptStore = createReceiptStore(storage);
   let initialRoot = loadOrMigrate(storage, STANDARD_PACKS);
   initialRoot = ensureProductBaseline(initialRoot);
   const engine = createTransactionEngine(storage, receiptStore, { initialRoot });
   engine.initialize();
-  const host = createChatGPTHost(api.window || window);
+  const host = createChatGPTHost(windowObject);
   const effects = createEffectRunner(host, receiptStore);
   const catalog = createCatalogTransport(storage, engine, api);
   const ammo = createAmmoModule(engine, effects);
   const packageManager = createPackageManager(engine, catalog);
-  const health = createHealthReporter(engine, receiptStore, storage, host, REQUIRED_PRODUCT_PACKAGES);
-  const maintenance = createMaintenanceModule(engine, receiptStore, effects, storage, health);
   let app = null;
+  const health = createHealthReporter(engine, receiptStore, storage, host, REQUIRED_PRODUCT_PACKAGES, {
+    windowObject,
+    getApp: () => app,
+    getRuntime: () => api.__DCF_RUNTIME__ || null
+  });
+  const maintenance = createMaintenanceModule(engine, receiptStore, effects, storage, health);
   const commandRunner = createCommandRunner(engine, effects, receiptStore, () => {
     if (!app || !app.shell) return null;
     const rect = app.shell.getBoundingClientRect();
@@ -2493,17 +2540,18 @@ function boot(api = globalThis) {
 
   if (typeof api.GM_registerMenuCommand === 'function') {
     api.GM_registerMenuCommand('DCF：检查模块更新', () => catalog.check({ force: true }).then(() => app.render()));
-    api.GM_registerMenuCommand('DCF：一键体检并复制', () => maintenance.copyHealthReport());
+    api.GM_registerMenuCommand('DCF：一键 Runtime 体检并复制', () => maintenance.copyHealthReport());
     api.GM_registerMenuCommand('DCF：复制简要诊断', () => maintenance.copySummary());
   }
 
-  api.__DCF_RUNTIME__ = { version: VERSION, engine, host, app, catalog, receiptStore, health };
+  api.__DCF_RUNTIME__ = { version: VERSION, engine, host, app, catalog, receiptStore, health, maintenance };
   return api.__DCF_RUNTIME__;
 }
 
 if (typeof window !== 'undefined' && typeof document !== 'undefined') boot(globalThis);
 
 module.exports = { boot, ensureProductBaseline };
+
 }
 };
 const cache={};
