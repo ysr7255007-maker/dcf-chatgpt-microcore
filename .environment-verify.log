@@ -10,7 +10,7 @@
   "ok": true,
   "version": "0.13.0",
   "modules": 24,
-  "bytes": 165468,
+  "bytes": 165454,
   "catalog_packages": 4
 }
 
@@ -32,17 +32,66 @@
   "desired_state_derived_from_root": true,
   "runtime_activation_callback": true
 }
-node:assert:150
-  throw new AssertionError(obj);
-  ^
+{
+  "ok": true,
+  "package_owned_ui_view": true,
+  "ui_updates_by_package_revision": true,
+  "bootstrap_renderer_remains_declarative": true
+}
+{
+  "ok": true,
+  "single_root": true,
+  "deterministic_projection": true,
+  "user_state_separated": true,
+  "first_party_package": true,
+  "order_independent_replacement": true
+}
+{
+  "ok": true,
+  "automatic_artifacts": true,
+  "idempotent_identity": true,
+  "atomic_package_artifact": true,
+  "failed_candidate_preserves_state": true,
+  "decode_error_redacted": true
+}
+{
+  "ok": true,
+  "legacy_commands_preserved": true,
+  "generic_capability_execution": true,
+  "privacy_redaction": true
+}
+{
+  "ok": true,
+  "v10_root_migration": true,
+  "gm_localstorage_bridge": true,
+  "user_data_preserved": true,
+  "legacy_modules_preserved": true,
+  "bridge_is_idempotent": true
+}
+{
+  "ok": true,
+  "healthy_report_is_diff_only": true,
+  "browser_dom_divergence_detected": true,
+  "duplicate_runtime_detected": true,
+  "stale_host_detected": true,
+  "privacy_redaction": true
+}
+{
+  "ok": true,
+  "hidden_semantics_removed": true,
+  "daily_maintenance_roles_preserved": true,
+  "fold_state_is_ui_session": true,
+  "package_preserved": true
+}
+node:internal/assert/utils:77
+    throw err;
+    ^
 
-AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
-+ actual - expected
+AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
 
-+ 'composition'
-- 'package-management'
+  assert(view.description.includes('界面入口'))
 
-    at Object.<anonymous> (/home/runner/work/dcf-chatgpt-microcore/dcf-chatgpt-microcore/tests/dcf-declarative-ui-package.unit.test.js:18:8)
+    at Object.<anonymous> (/home/runner/work/dcf-chatgpt-microcore/dcf-chatgpt-microcore/tests/dcf-package-management-ui.unit.test.js:44:1)
     at Module._compile (node:internal/modules/cjs/loader:1781:14)
     at Object..js (node:internal/modules/cjs/loader:1913:10)
     at Module.load (node:internal/modules/cjs/loader:1505:32)
@@ -52,9 +101,9 @@ AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
     at node:internal/main/run_main_module:36:49 {
   generatedMessage: true,
   code: 'ERR_ASSERTION',
-  actual: 'composition',
-  expected: 'package-management',
-  operator: 'strictEqual',
+  actual: false,
+  expected: true,
+  operator: '==',
   diff: 'simple'
 }
 
