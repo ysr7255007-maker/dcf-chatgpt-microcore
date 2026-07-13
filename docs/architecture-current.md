@@ -1,7 +1,7 @@
 # DCF 当前架构
 
 Updated: 2026-07-13  
-Current release: `0.11.2`
+Current release: `0.11.3`
 
 ## 1. Value and engineering dependency
 
@@ -98,13 +98,21 @@ Local state transitions and external effects are separate. Composer insert/send,
 
 Transactions, commands, and effects emit bounded receipts. Conversational bodies, prompts, content, tokens, credentials, and similar values are represented by redacted length/hash summaries. Success remains local and quiet; failures are available for explicit diagnostic copying.
 
-## 9. UI projection, module visibility, and one-click health report
+## 9. Package management, runtime modules, and function placement
 
-The sidebar is a projection of current state and active resources. The ammo view is a first-party product view. Generic module cards consume module, Surface, area/order, and module-display projections. Package management and maintenance are first-party modules outside Core.
+DCF no longer uses the word “module” for every layer.
 
-A module's installed state and display state are distinct. `hidden: true` means the module remains installed, projected, versioned, diagnosable, and available for explicit display restoration; it does not mean the module is absent or failed to migrate. The Functions view reports the hidden-module count instead of silently omitting all evidence. Maintenance exposes the complete non-ammo module visibility inventory and writes per-module or show-all overrides into user-owned `moduleDisplay` through the unified transaction engine. Package definitions remain unchanged.
+- **Installed package**: immutable package and revision state shown in `包管理`.
+- **Runtime module**: executable module contributed by an enabled package and present in the registry projection.
+- **Daily function**: a runtime module placed in the ordinary `功能` view.
+- **Maintenance tool**: a runtime module placed in `维护`, including probes, diagnostics, layout controls, authoring, acceptance, and recovery tools.
+- **Hidden runtime module**: present in the runtime but omitted from both function entry points.
 
-Maintenance exposes a privacy-safe `dcf.health.report.v1`. It is a diagnostic projection, not another authority store. It compares GM and page localStorage inventories; validates root/hash/projection; lists packages, modules, visible/hidden counts, Surfaces, command counts and providers; reports migration/bridge coverage; inspects Host Adapter connection and composer state; and summarizes recent failures. It excludes conversation text, ammo bodies, package payloads, command arguments and authentication data.
+The `功能` view is intentionally limited to daily and primary workflows. Maintenance tools are not mixed into it. The `维护` view contains health, diagnostics, snapshots, receipts, maintenance commands, and function-classification controls. The package-management view never implies where a runtime module is placed.
+
+UI and health reporting share `module-roles.js` as the only classification source. Known first-party legacy modules receive explicit daily or maintenance roles so generic historical `area: work` and `hidden` defaults cannot distort the current product layout. User-owned `moduleDisplay` overrides can move a runtime module between daily, maintenance, and hidden through the unified transaction path without rewriting its package.
+
+Maintenance exposes privacy-safe `dcf.health.report.v2`. It separately reports installed-package count, runtime-module count, daily-function count, maintenance-tool count, hidden-runtime-module count, each runtime module’s placement and placement source, migration coverage, root/hash/projection integrity, Surfaces, Host Adapter status, and recent failures. It excludes conversation text, ammo bodies, package payloads, command arguments, and authentication data.
 
 Shell geometry has one source of truth in user appearance state and is finally constrained by the actual `visualViewport` and shell rectangle. The shell adjuster is declarative; no second hard-coded adjustment path exists.
 
@@ -130,7 +138,9 @@ Acceptance requires:
 - reply intake work does not grow with total conversation rounds;
 - legacy localStorage modules/commands and user data survive migration into GM storage;
 - storage bridge is idempotent and records skipped conflicts;
-- hidden modules are observable and can be restored through user-owned projection overrides without rewriting packages;
+- package presence, runtime module presence, and function placement are reported separately;
+- UI and health reporting use the same placement resolver;
+- daily functions and maintenance tools remain separate by default;
 - one-click health report can establish cross-layer state without leaking content;
 - GitHub and reply artifacts share the same application path;
 - no runtime remote-code execution;
