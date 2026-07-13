@@ -1,7 +1,8 @@
 'use strict';
 
+const { UI_KEY } = require('../core/constants');
 const { commandList } = require('../runtime/commands');
-const { classifyModule, modulesByPlacement } = require('../modules/module-roles');
+const { classifyModule, modulesByRole } = require('../modules/module-roles');
 
 function escapeHtml(value) {
   return String(value == null ? '' : value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
@@ -29,7 +30,8 @@ function createApp(options) {
       :host{all:initial}.sh{position:fixed;right:12px;bottom:var(--bottom,112px);top:auto;width:var(--w,340px);height:min(var(--h,800px),calc(100vh - 24px));z-index:2147483646;background:#fffffff2;color:#111;border:1px solid #9996;border-radius:14px;box-shadow:0 18px 44px #0002;font:13px system-ui;overflow:hidden;box-sizing:border-box;display:flex;flex-direction:column}
       .sh[data-side=left]{left:12px;right:auto}.sh[data-anchor=top]{top:var(--top,12px);bottom:auto}.sh[data-anchor=bottom]{bottom:var(--bottom,112px);top:auto}
       @media(prefers-color-scheme:dark){.sh{background:#171717ee;color:#eee}}
-      button{border:1px solid #9995;border-radius:9px;background:transparent;color:inherit;padding:6px 8px;cursor:pointer}button:hover{background:#8882}button.danger{border-color:#dc262666}.top{height:42px;flex:0 0 42px;display:flex;align-items:center;gap:6px;padding:6px;border-bottom:1px solid #9993;box-sizing:border-box}.top b{margin-right:auto}.tabs{display:flex;gap:5px}.tabs button.on{background:#2563eb22;border-color:#2563eb66}.body{flex:1;min-height:0;overflow:auto;padding:9px;box-sizing:border-box}.card{border:1px solid #9994;border-radius:12px;background:#8881;padding:9px;margin-bottom:9px;box-sizing:border-box}.name{font-weight:700}.mini{font-size:11px;opacity:.7;word-break:break-all}.section-title{font-size:12px;font-weight:700;opacity:.8;margin:12px 2px 7px}.actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}textarea,input,select{width:100%;box-sizing:border-box;border:1px solid #9995;border-radius:9px;background:#fff8;color:inherit;padding:7px}textarea{min-height:120px}.notice{padding:6px 9px;border-bottom:1px solid #9993;font-size:12px}.notice:empty{display:none}.row{display:flex;gap:6px;align-items:center}.row>*{min-width:0}.grow{flex:1}.pkg{padding-top:8px;margin-top:8px;border-top:1px solid #9993}.receipt{font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;word-break:break-word;max-height:180px;overflow:auto}.health-ok{border-color:#16a34a66}.health-warning{border-color:#d9770666}.health-error{border-color:#dc262666}.state-pill{font-size:10px;padding:2px 6px;border:1px solid #9995;border-radius:999px}.state-pill.daily{border-color:#16a34a66}.state-pill.maintenance{border-color:#2563eb66}.state-pill.hidden{border-color:#d9770666}
+      button{border:1px solid #9995;border-radius:9px;background:transparent;color:inherit;padding:6px 8px;cursor:pointer}button:hover{background:#8882}button.danger{border-color:#dc262666}.top{height:42px;flex:0 0 42px;display:flex;align-items:center;gap:6px;padding:6px;border-bottom:1px solid #9993;box-sizing:border-box}.top b{margin-right:auto}.tabs{display:flex;gap:5px}.tabs button.on{background:#2563eb22;border-color:#2563eb66}.body{flex:1;min-height:0;overflow:auto;padding:9px;box-sizing:border-box}.card{border:1px solid #9994;border-radius:12px;background:#8881;padding:9px;margin-bottom:9px;box-sizing:border-box}.name{font-weight:700}.mini{font-size:11px;opacity:.7;word-break:break-all}.section-title{font-size:12px;font-weight:700;opacity:.8;margin:12px 2px 7px}.actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}textarea,input,select{width:100%;box-sizing:border-box;border:1px solid #9995;border-radius:9px;background:#fff8;color:inherit;padding:7px}textarea{min-height:120px}.notice{padding:6px 9px;border-bottom:1px solid #9993;font-size:12px}.notice:empty{display:none}.row{display:flex;gap:6px;align-items:center}.row>*{min-width:0}.grow{flex:1}.pkg{padding-top:8px;margin-top:8px;border-top:1px solid #9993}.receipt{font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;word-break:break-word;max-height:180px;overflow:auto}.health-healthy{border-color:#16a34a66}.health-warning{border-color:#d9770666}.health-error{border-color:#dc262666}.state-pill{font-size:10px;padding:2px 6px;border:1px solid #9995;border-radius:999px}.state-pill.daily{border-color:#16a34a66}.state-pill.maintenance{border-color:#2563eb66}
+      details.card{padding:0}details.card>summary{list-style:none;cursor:pointer;padding:9px}details.card>summary::-webkit-details-marker{display:none}details.card>summary:before{content:'▸';display:inline-block;width:16px;opacity:.7}details.card[open]>summary:before{content:'▾'}details.card>.module-body,details.card>.detail-body{padding:0 9px 9px}.module-summary{display:flex;align-items:flex-start;gap:5px}.module-summary .grow{display:block}.module-summary .fold-hint{font-size:10px;opacity:.55;margin-left:auto}.health-count{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;margin-top:6px}
     </style><style id="package-style"></style><aside class="sh"><div class="top"></div><div class="notice"></div><div class="body"></div></aside>`;
   doc.documentElement.appendChild(hostElement);
   const shell = root.querySelector('.sh');
@@ -37,9 +39,15 @@ function createApp(options) {
   const body = root.querySelector('.body');
   const notice = root.querySelector('.notice');
   const packageStyle = root.querySelector('#package-style');
-  let tab = storage.get('dcf.ui.session.v1', { tab: 'ammo' }).tab || 'ammo';
+  const initialSession = storage.get(UI_KEY, { tab: 'ammo', collapsed_modules: {} }) || {};
+  let tab = initialSession.tab || 'ammo';
+  let collapsedModules = initialSession.collapsed_modules && typeof initialSession.collapsed_modules === 'object' ? Object.assign({}, initialSession.collapsed_modules) : {};
   let packageDraft = '';
   let fenceFrame = 0;
+
+  function saveSession() {
+    storage.set(UI_KEY, { tab, collapsed_modules: collapsedModules });
+  }
 
   function setNotice(text) {
     notice.textContent = String(text || '');
@@ -89,7 +97,12 @@ function createApp(options) {
     return Number(display.order != null ? display.order : module.order != null ? module.order : 1000);
   }
 
-  function renderModuleCards(modules, emptyText) {
+  function isCollapsed(module, role) {
+    if (Object.prototype.hasOwnProperty.call(collapsedModules, module.id)) return collapsedModules[module.id] === true;
+    return role === 'maintenance';
+  }
+
+  function renderModuleCards(modules, role, emptyText) {
     modules = modules.slice().sort((a, b) => moduleOrder(a) - moduleOrder(b) || String(a.id).localeCompare(String(b.id)));
     if (!modules.length) return `<div class="card mini">${escapeHtml(emptyText || '暂无功能')}</div>`;
     return modules.map((module) => {
@@ -100,57 +113,55 @@ function createApp(options) {
         const blockTitle = entry.block && entry.block.title;
         if (blockTitle && !grouped.includes(blockTitle)) grouped.push(blockTitle);
       }
-      return `<div class="card" data-module-id="${escapeHtml(module.id)}"><div class="name">${escapeHtml(display.title || module.title || module.id)}</div><div class="mini">${escapeHtml(module.version || '')} · ${escapeHtml(module.id)}</div>${grouped.length ? `<div class="mini">${grouped.map(escapeHtml).join(' · ')}</div>` : ''}<div class="actions">${entries.map((entry) => `<button data-action="module-command" data-module-id="${escapeHtml(module.id)}" data-command-id="${escapeHtml(entry.command.id)}">${escapeHtml(entry.command.label || entry.command.title || entry.command.id)}</button>`).join('') || '<span class="mini">无可执行命令</span>'}</div></div>`;
+      const open = !isCollapsed(module, role);
+      return `<details class="card module-card" data-module-id="${escapeHtml(module.id)}" data-module-role="${escapeHtml(role)}" ${open ? 'open' : ''}><summary class="module-summary"><span class="grow"><span class="name">${escapeHtml(display.title || module.title || module.id)}</span><br><span class="mini">${escapeHtml(module.version || '')} · ${escapeHtml(module.id)}</span></span><span class="fold-hint">${open ? '收起' : '展开'}</span></summary><div class="module-body">${grouped.length ? `<div class="mini">${grouped.map(escapeHtml).join(' · ')}</div>` : ''}<div class="actions">${entries.map((entry) => `<button data-action="module-command" data-module-id="${escapeHtml(module.id)}" data-command-id="${escapeHtml(entry.command.id)}">${escapeHtml(entry.command.label || entry.command.title || entry.command.id)}</button>`).join('') || '<span class="mini">无可执行命令</span>'}</div></div></details>`;
     }).join('');
   }
 
-  function placementLabel(placement) {
-    if (placement === 'daily') return '日常';
-    if (placement === 'maintenance') return '维护';
-    return '隐藏';
+  function roleLabel(role) {
+    return role === 'maintenance' ? '维护' : '日常';
   }
 
-  function renderPlacementManager() {
+  function renderRoleManager() {
     const registry = engine.getRegistry();
     const currentRoot = engine.getRoot();
     const modules = registry.modules.filter((module) => module.kind !== 'ammo').slice().sort((a, b) => String(a.id).localeCompare(String(b.id)));
     const rows = modules.map((module) => {
       const display = moduleDisplay(module);
       const classification = classifyModule(currentRoot, registry, module);
-      const placement = classification.placement;
-      return `<div class="pkg" data-placement-module-id="${escapeHtml(module.id)}"><div class="row"><span class="grow"><span class="name">${escapeHtml(display.title || module.title || module.id)}</span><br><span class="mini">${escapeHtml(module.id)} · ${escapeHtml(classification.source)}</span></span><span class="state-pill ${escapeHtml(placement)}">${escapeHtml(placementLabel(placement))}</span></div><div class="actions"><button data-action="module-placement" data-module-id="${escapeHtml(module.id)}" data-placement="daily">日常功能</button><button data-action="module-placement" data-module-id="${escapeHtml(module.id)}" data-placement="maintenance">维护工具</button><button data-action="module-placement" data-module-id="${escapeHtml(module.id)}" data-placement="hidden">隐藏</button></div></div>`;
+      return `<div class="pkg" data-role-module-id="${escapeHtml(module.id)}"><div class="row"><span class="grow"><span class="name">${escapeHtml(display.title || module.title || module.id)}</span><br><span class="mini">${escapeHtml(module.id)} · ${escapeHtml(classification.source)}</span></span><span class="state-pill ${escapeHtml(classification.role)}">${escapeHtml(roleLabel(classification.role))}</span></div><div class="actions"><button data-action="module-role" data-module-id="${escapeHtml(module.id)}" data-module-role="daily">日常功能</button><button data-action="module-role" data-module-id="${escapeHtml(module.id)}" data-module-role="maintenance">维护工具</button></div></div>`;
     }).join('');
-    return `<div class="card"><div class="name">功能分类管理</div><div class="mini">包是否安装、模块是否进入运行态、以及它显示在日常功能还是维护工具中，是三个不同状态。这里仅修改用户自己的显示分类，不改写模块包。</div>${rows}</div>`;
+    return `<details class="card"><summary><span class="name">功能分区管理</span></summary><div class="detail-body"><div class="mini">这里只决定模块属于日常功能还是维护工具。界面密度由各模块卡片的展开与折叠处理，模块不会因显示偏好而消失。</div>${rows}</div></details>`;
   }
 
   function renderFunctions() {
-    const groups = modulesByPlacement(engine.getRoot(), engine.getRegistry());
-    body.innerHTML = `<div class="card"><div class="name">日常功能</div><div class="mini">这里只保留日常使用和主力工作流；诊断、探针、布局调节和开发工具统一放在维护页。</div></div>${renderModuleCards(groups.daily, '暂无日常功能')}`;
+    const groups = modulesByRole(engine.getRoot(), engine.getRegistry());
+    body.innerHTML = `<section data-runtime-section="daily"><div class="card"><div class="name">日常功能</div><div class="mini">主力能力始终保留入口；点击模块标题展开或收起具体操作。</div></div>${renderModuleCards(groups.daily, 'daily', '暂无日常功能')}</section>`;
   }
 
   function renderPackages() {
     const entries = packageManager.packages();
-    body.innerHTML = `<div class="card"><div class="name">安装包管理</div><div class="mini">这里显示的是已安装包和版本，不代表它一定作为功能卡片出现在日常功能页。</div><textarea data-role="package-json">${escapeHtml(packageDraft)}</textarea><div class="actions"><button data-action="package-install">安装包</button><button data-action="package-update">检查 GitHub 更新</button></div></div>` + entries.map((entry) => {
+    body.innerHTML = `<div class="card"><div class="name">安装包管理</div><div class="mini">这里显示已安装包与版本；它和运行模块、日常功能、维护工具是不同层次。</div><textarea data-role="package-json">${escapeHtml(packageDraft)}</textarea><div class="actions"><button data-action="package-install">安装包</button><button data-action="package-update">检查 GitHub 更新</button></div></div><section data-runtime-section="packages">` + entries.map((entry) => {
       const revisions = Object.keys(entry.revisions || {}).sort();
       const required = packageManager.isRequired(entry.package_id);
-      return `<div class="card"><div class="name">${escapeHtml(entry.package_id)}${required ? ' · 核心' : ''}</div><div class="mini">active ${escapeHtml(entry.active_revision)} · ${entry.enabled === false ? 'disabled' : 'enabled'}</div><div class="actions">${required ? '' : `<button data-action="package-toggle" data-id="${escapeHtml(entry.package_id)}">${entry.enabled === false ? '启用' : '停用'}</button>`}<select data-role="package-revision" data-id="${escapeHtml(entry.package_id)}">${revisions.map((revision) => `<option ${revision === entry.active_revision ? 'selected' : ''}>${escapeHtml(revision)}</option>`).join('')}</select><button data-action="package-switch" data-id="${escapeHtml(entry.package_id)}">切换</button>${required ? '' : `<button data-action="package-uninstall" data-id="${escapeHtml(entry.package_id)}" class="danger">卸载</button>`}</div></div>`;
-    }).join('');
+      return `<div class="card" data-package-id="${escapeHtml(entry.package_id)}"><div class="name">${escapeHtml(entry.package_id)}${required ? ' · 核心' : ''}</div><div class="mini">active ${escapeHtml(entry.active_revision)} · ${entry.enabled === false ? 'disabled' : 'enabled'}</div><div class="actions">${required ? '' : `<button data-action="package-toggle" data-id="${escapeHtml(entry.package_id)}">${entry.enabled === false ? '启用' : '停用'}</button>`}<select data-role="package-revision" data-id="${escapeHtml(entry.package_id)}">${revisions.map((revision) => `<option ${revision === entry.active_revision ? 'selected' : ''}>${escapeHtml(revision)}</option>`).join('')}</select><button data-action="package-switch" data-id="${escapeHtml(entry.package_id)}">切换</button>${required ? '' : `<button data-action="package-uninstall" data-id="${escapeHtml(entry.package_id)}" class="danger">卸载</button>`}</div></div>`;
+    }).join('') + '</section>';
   }
 
   function renderMaintenance() {
     const summary = maintenance.summary();
-    const health = maintenance.healthReport();
-    const issues = (health.checks || []).filter((item) => item.status !== 'ok' && item.status !== 'info');
+    const lastHealth = maintenance.lastHealthReport();
     const receipts = maintenance.receipts().slice(-8).reverse();
     const snapshots = maintenance.snapshots().slice().reverse();
-    const groups = modulesByPlacement(engine.getRoot(), engine.getRegistry());
-    const healthText = issues.length ? issues.map((item) => `${item.status.toUpperCase()} · ${item.summary}`).join('\n') : '全部关键检查通过';
-    body.innerHTML = `<div class="card health-${escapeHtml(health.overall || 'warning')}"><div class="name">一键体检 · ${(health.overall || 'warning').toUpperCase()}</div><div class="mini">分别核对安装包、运行模块、日常功能、维护工具和隐藏项，不再把它们统称为“模块显示”。</div><div class="receipt">${escapeHtml(healthText)}</div><div class="actions"><button data-action="maintenance-health-copy">一键体检并复制</button></div></div>
-      <div class="section-title">维护工具</div>${renderModuleCards(groups.maintenance, '暂无维护工具')}
-      ${renderPlacementManager()}
-      <div class="card"><div class="name">运行状态</div><div class="receipt">${escapeHtml(JSON.stringify(summary, null, 2))}</div><div class="actions"><button data-action="maintenance-copy">复制简要诊断</button><button data-action="receipts-clear">清空回执</button></div></div>
-      <div class="card"><div class="name">最近回执</div>${receipts.length ? receipts.map((item) => `<div class="receipt pkg">${escapeHtml(JSON.stringify(item, null, 2))}</div>`).join('') : '<div class="mini">暂无回执</div>'}</div>
-      <div class="card"><div class="name">状态快照</div>${snapshots.length ? snapshots.map((item) => `<div class="pkg row"><span class="grow mini">r${item.revision} · ${escapeHtml(item.reason)}</span><button data-action="rollback" data-revision="${item.revision}">恢复</button></div>`).join('') : '<div class="mini">暂无快照</div>'}</div>`;
+    const groups = modulesByRole(engine.getRoot(), engine.getRegistry());
+    const healthStatus = lastHealth ? lastHealth.status : 'healthy';
+    const deviationCount = lastHealth && Array.isArray(lastHealth.deviations) ? lastHealth.deviations.length : 0;
+    body.innerHTML = `<div class="card health-${escapeHtml(healthStatus)}"><div class="name">一键 Runtime 体检</div><div class="mini">从真实浏览器现场核对脚本实例、存储、内存运行态、实际 DOM、ChatGPT 宿主连接和最近失败。正常项保持安静，只复制无法合理解释的 Runtime 偏差。</div>${lastHealth ? `<div class="health-count">上次结果：${escapeHtml(healthStatus)} · ${deviationCount} deviations</div>` : ''}<div class="actions"><button data-action="maintenance-health-copy">体检并复制</button></div></div>
+      <section data-runtime-section="maintenance-tools"><div class="section-title">维护工具</div>${renderModuleCards(groups.maintenance, 'maintenance', '暂无维护工具')}</section>
+      ${renderRoleManager()}
+      <details class="card"><summary><span class="name">运行摘要</span></summary><div class="detail-body"><div class="receipt">${escapeHtml(JSON.stringify(summary, null, 2))}</div><div class="actions"><button data-action="maintenance-copy">复制简要诊断</button><button data-action="receipts-clear">清空回执</button></div></div></details>
+      <details class="card"><summary><span class="name">最近回执</span></summary><div class="detail-body">${receipts.length ? receipts.map((item) => `<div class="receipt pkg">${escapeHtml(JSON.stringify(item, null, 2))}</div>`).join('') : '<div class="mini">暂无回执</div>'}</div></details>
+      <details class="card"><summary><span class="name">状态快照</span></summary><div class="detail-body">${snapshots.length ? snapshots.map((item) => `<div class="pkg row"><span class="grow mini">r${item.revision} · ${escapeHtml(item.reason)}</span><button data-action="rollback" data-revision="${item.revision}">恢复</button></div>`).join('') : '<div class="mini">暂无快照</div>'}</div></details>`;
   }
 
   function applyAppearance() {
@@ -200,16 +211,61 @@ function createApp(options) {
     applyAppearance();
   }
 
-  function setModulePlacement(moduleId, placement) {
+  function setModuleRole(moduleId, role) {
     const current = engine.getRoot().user.moduleDisplay && engine.getRoot().user.moduleDisplay[moduleId] || {};
-    const next = Object.assign({}, current);
-    if (placement === 'hidden') next.hidden = true;
-    else {
-      next.hidden = false;
-      next.role = placement;
-      next.area = placement === 'maintenance' ? 'maintenance' : 'work';
-    }
+    const next = Object.assign({}, current, {
+      role,
+      area: role === 'maintenance' ? 'maintenance' : 'work'
+    });
+    delete next.hidden;
     return engine.setUserPath(['moduleDisplay', moduleId], next);
+  }
+
+  function collectIds(selector, attribute) {
+    return Array.from(root.querySelectorAll(selector)).map((node) => String(node.getAttribute(attribute) || '')).filter(Boolean);
+  }
+
+  function captureRuntimeViews() {
+    const originalTab = tab;
+    const originalScroll = body.scrollTop;
+    const views = {};
+    try {
+      tab = 'packages'; render();
+      views.packages = { entry_ids: collectIds('[data-runtime-section="packages"] [data-package-id]', 'data-package-id') };
+      tab = 'functions'; render();
+      views.functions = {
+        module_ids: collectIds('[data-runtime-section="daily"] [data-module-id]', 'data-module-id'),
+        collapsed_module_ids: collectIds('[data-runtime-section="daily"] details[data-module-id]:not([open])', 'data-module-id')
+      };
+      tab = 'maintenance'; render();
+      views.maintenance = {
+        module_ids: collectIds('[data-runtime-section="maintenance-tools"] [data-module-id]', 'data-module-id'),
+        collapsed_module_ids: collectIds('[data-runtime-section="maintenance-tools"] details[data-module-id]:not([open])', 'data-module-id')
+      };
+    } finally {
+      tab = originalTab;
+      render();
+      body.scrollTop = originalScroll;
+    }
+    const rect = shell.getBoundingClientRect();
+    const style = typeof windowObject.getComputedStyle === 'function' ? windowObject.getComputedStyle(shell) : null;
+    const viewport = windowObject.visualViewport ? { width: windowObject.visualViewport.width, height: windowObject.visualViewport.height, left: windowObject.visualViewport.offsetLeft || 0, top: windowObject.visualViewport.offsetTop || 0 } : { width: windowObject.innerWidth, height: windowObject.innerHeight, left: 0, top: 0 };
+    const visible = !!(shell.isConnected && rect.width > 0 && rect.height > 0 && (!style || (style.display !== 'none' && style.visibility !== 'hidden')));
+    const intersectsViewport = visible && rect.right > viewport.left && rect.bottom > viewport.top && rect.left < viewport.left + viewport.width && rect.top < viewport.top + viewport.height;
+    return {
+      schema: 'dcf.ui.runtime.snapshot.v1',
+      host_count: doc.querySelectorAll('#dcf-chatgpt-microcore-host').length,
+      host_connected: hostElement.isConnected,
+      shadow_root_attached: hostElement.shadowRoot === root,
+      shell_connected: shell.isConnected,
+      shell_visible: visible,
+      shell_intersects_viewport: intersectsViewport,
+      shell_rect: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height },
+      current_tab: originalTab,
+      tab_ids: collectIds('.tabs [data-tab]', 'data-tab'),
+      version_text: String((top.querySelector('b') && top.querySelector('b').textContent) || ''),
+      views
+    };
   }
 
   root.addEventListener('input', (event) => {
@@ -217,11 +273,19 @@ function createApp(options) {
   });
 
   root.addEventListener('click', (event) => {
+    const moduleSummary = event.target.closest('details[data-module-id] > summary');
+    if (moduleSummary) {
+      const details = moduleSummary.parentElement;
+      collapsedModules[details.dataset.moduleId] = details.open;
+      saveSession();
+      return;
+    }
+
     const button = event.target.closest('button');
     if (!button) return;
     if (button.dataset.tab) {
       tab = button.dataset.tab;
-      storage.set('dcf.ui.session.v1', { tab });
+      saveSession();
       render();
       return;
     }
@@ -230,7 +294,7 @@ function createApp(options) {
     const item = card ? ammo.items().find((entry) => entry.id === card.dataset.ammoId) : null;
     if (action === 'ammo-extract') runAndRender(() => ammo.requestExtract(), '提取请求已发送');
     else if (action === 'ammo-mode') {
-      const current = engine.getRoot().user.preferences.ammo_fire_mode || 'insert';
+      const current = engine.getRoot().user.preferences && engine.getRoot().user.preferences.ammo_fire_mode || 'insert';
       runAndRender(() => engine.setUserPath(['preferences', 'ammo_fire_mode'], current === 'send' ? 'insert' : 'send'), '发射方式已更新');
     } else if (action === 'ammo-fire' && item) runAndRender(() => ammo.fire(item), '弹药已发射');
     else if (action === 'ammo-copy' && item) runAndRender(() => ammo.copy(item), '已复制');
@@ -249,9 +313,9 @@ function createApp(options) {
       const module = engine.getRegistry().modules.find((entry) => entry.id === button.dataset.moduleId);
       const found = module && commandList(module).find((entry) => String(entry.command.id) === String(button.dataset.commandId));
       if (module && found) runAndRender(() => commandRunner.execute(module, found.command, found.block), '命令已执行');
-    } else if (action === 'module-placement') {
-      runAndRender(() => setModulePlacement(button.dataset.moduleId, button.dataset.placement), '功能分类已更新');
-    } else if (action === 'maintenance-health-copy') runAndRender(() => maintenance.copyHealthReport(), '完整体检报告已复制');
+    } else if (action === 'module-role') {
+      runAndRender(() => setModuleRole(button.dataset.moduleId, button.dataset.moduleRole), '功能分区已更新');
+    } else if (action === 'maintenance-health-copy') runAndRender(() => maintenance.copyHealthReport(), 'Runtime 体检报告已复制');
     else if (action === 'maintenance-copy') runAndRender(() => maintenance.copySummary(), '简要诊断已复制');
     else if (action === 'receipts-clear') runAndRender(() => maintenance.clearReceipts(), '回执已清空');
     else if (action === 'rollback') runAndRender(() => maintenance.rollbackTo(Number(button.dataset.revision)), '状态已恢复');
@@ -263,7 +327,7 @@ function createApp(options) {
     windowObject.visualViewport.addEventListener('scroll', scheduleFence, { passive: true });
   }
   render();
-  return { render, setNotice, destroy: () => hostElement.remove(), root, shell };
+  return { render, setNotice, captureRuntimeViews, destroy: () => hostElement.remove(), root, shell, hostElement };
 }
 
 module.exports = { createApp, computeFenceStyle };

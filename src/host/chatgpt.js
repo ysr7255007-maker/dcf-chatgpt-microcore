@@ -247,6 +247,7 @@ function createChatGPTHost(windowObject = window, options = {}) {
       conversation_root_found: !!root,
       reply_root_observer_attached: !!rootObserver,
       observed_root_connected: !!(observedRoot && observedRoot.isConnected),
+      observed_root_is_current: !!(observedRoot && root && observedRoot === root),
       active_reply_tracked: !!activeNode,
       active_reply_connected: !!(activeNode && activeNode.isConnected),
       streaming: isStreaming(),

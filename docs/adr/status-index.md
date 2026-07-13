@@ -2,19 +2,20 @@
 
 Updated: 2026-07-13
 
-The status in this file is authoritative. A status line inside an older ADR records its status when written and is historical after a later ADR supersedes it. Centralizing current status prevents every later architecture change from rewriting all historical decision records.
+The status in this file is authoritative. A status line inside an older ADR records its status when written and is historical after a later ADR supersedes it.
 
 ## Current
 
-- `2026-07-13-dcf-package-module-function-role-separation.md` — **accepted**
-- `2026-07-12-dcf-storage-backend-bridge-and-health-report.md` — **accepted**
+- `2026-07-13-dcf-runtime-health-and-folding.md` — **accepted**
 - `2026-07-12-dcf-phase-one-whole-project-rebuild.md` — **accepted**
 - `2026-07-12-dcf-shell-geometry-source-of-truth.md` — **accepted**, retained by phase one
 - viewport-containment-fence ADR — **accepted**, retained by phase one
 
 ## Superseded or partially superseded
 
-- `2026-07-13-dcf-module-visibility-observability.md` — **superseded**; hidden-state observability is retained, but package presence, runtime modules, daily functions, maintenance tools, and hidden entries are now separate concepts
+- `2026-07-13-dcf-package-module-function-role-separation.md` — **partially superseded**; package/runtime/daily/maintenance separation remains, hidden is no longer a role
+- `2026-07-13-dcf-module-visibility-observability.md` — **superseded**; modules remain discoverable and UI density is handled by folding
+- `2026-07-12-dcf-storage-backend-bridge-and-health-report.md` — **partially superseded**; storage bridge remains, full state-dump health reporting is replaced by Runtime deviation reporting
 - `2026-07-09-dcf-release-structure.md` — complete userscript release retained; modular source is now implemented
 - `2026-07-09-dcf-sidebar-ui.md` — persistent low-friction sidebar retained; UI is now a projection
 - `2026-07-09-dcf-ammo-daily-use-and-hot-update.md` — value requirements retained; implementation replaced

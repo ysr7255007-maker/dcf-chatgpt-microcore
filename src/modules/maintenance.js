@@ -3,6 +3,8 @@
 const { CATALOG_STATE_KEY } = require('../core/constants');
 
 function createMaintenanceModule(engine, receiptStore, effectRunner, storage, healthReporter) {
+  let lastHealth = null;
+
   function summary() {
     const root = engine.getRoot();
     const registry = engine.getRegistry();
@@ -19,20 +21,31 @@ function createMaintenanceModule(engine, receiptStore, effectRunner, storage, he
       catalog: storage ? storage.get(CATALOG_STATE_KEY, { last_checked_at: null, last_result: null }) : null
     };
   }
+
   function copySummary() {
     return effectRunner.run({ type: 'clipboard.write', text: JSON.stringify(summary(), null, 2) }, { module: 'maintenance', report: 'summary' });
   }
+
   function healthReport() {
-    return healthReporter ? healthReporter.report() : { schema: 'dcf.health.report.v1', overall: 'error', checks: [{ id: 'health.reporter', status: 'error', summary: '体检器未初始化' }] };
+    lastHealth = healthReporter ? healthReporter.report() : {
+      schema: 'dcf.runtime.health.diff.v1',
+      status: 'error',
+      deviations: [{ code: 'runtime_health_reporter_missing', severity: 'error', expected: 'reporter initialized', actual: 'missing', explanation: 'Boot did not create the Runtime health reporter.' }]
+    };
+    return lastHealth;
   }
+
   function copyHealthReport() {
-    const text = healthReporter ? healthReporter.format() : `<<<DCF_HEALTH_REPORT\n${JSON.stringify(healthReport(), null, 2)}\nDCF_HEALTH_REPORT>>>`;
-    return effectRunner.run({ type: 'clipboard.write', text }, { module: 'maintenance', report: 'health' });
+    const report = healthReport();
+    const text = `<<<DCF_RUNTIME_HEALTH\n${JSON.stringify(report, null, 2)}\nDCF_RUNTIME_HEALTH>>>`;
+    return effectRunner.run({ type: 'clipboard.write', text }, { module: 'maintenance', report: 'runtime-health' });
   }
+
   return {
     summary,
     copySummary,
     healthReport,
+    lastHealthReport: () => lastHealth,
     copyHealthReport,
     receipts: () => receiptStore.list(),
     clearReceipts: () => receiptStore.clear(),

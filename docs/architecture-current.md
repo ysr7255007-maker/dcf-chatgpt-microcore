@@ -1,147 +1,92 @@
 # DCF 当前架构
 
 Updated: 2026-07-13  
-Current release: `0.11.3`
+Current release: `0.11.4`
 
-## 1. Value and engineering dependency
+## 1. 价值与工程关系
 
-DCF exists to improve the user's thinking and dialogue quality through a low-friction language-ammunition loop:
+DCF 的产品价值是低摩擦语言弹药闭环：有价值对话产生可复用语言，自动装填、更新并在后续对话中发射。语言弹药拥有价值主权；通用内核拥有工程结构主权。架构可以重构实现，不能把内部复杂度重新交还给用户。
 
-```text
-valuable dialogue
-→ extract
-→ automatically load
-→ manage / update
-→ insert or send
-→ improve later dialogue
-→ extract again
-```
+## 2. 源码与发布
 
-Language ammunition owns product value: the architecture may change its implementation but may not quietly remove automatic extraction, loading, updating, installation, or low-friction firing. The generic kernel owns engineering structure: ammo is a first-party core module built on the same package, resource, command, transaction, effect, and projection mechanisms available to other modules.
+源码位于 `src/`，由 `scripts/build-userscript.js` 确定性生成一个完整 userscript、meta 和 catalog。禁止运行时远程 JavaScript、eval、分块引擎和 localStorage-as-code。
 
-## 2. Source and release
+## 3. 权威状态与事务
 
-Source is modular under `src/`. `scripts/build-userscript.js` deterministically bundles it into the complete root userscript and metadata files. Tampermonkey still installs one file. Runtime JavaScript download/eval, chunk bootloaders, and local-storage-as-code are not used.
+`dcf.state.root.v1` 是唯一权威状态。GM storage 可用时是唯一权威写后端；page `localStorage` 只作为旧版本迁移输入。
 
-## 3. One authoritative state root and one authoritative backend
-
-`dcf.state.root.v1` is the only authoritative runtime state. It contains package sources, user-owned data/preferences, and minimal system metadata.
-
-When Tampermonkey GM storage is available, GM storage is the sole authoritative write backend. Page `localStorage` is not a second authority. It remains readable only as a bounded migration source for pre-`0.11.1` state.
-
-The following are non-authoritative derived or bounded operational stores:
-
-- `dcf.runtime.registry.v3`: rebuildable projection;
-- `dcf.state.snapshots.v1`: bounded recovery snapshots;
-- `dcf.receipts.v1`: bounded diagnostic/effect receipts;
-- `dcf.ui.session.v1`: disposable UI location;
-- `dcf.catalog.state.v1`: catalog-check status.
-
-Legacy package/user/ops/registry stores are migration inputs only. Old `seenBlocks` and `badBlocks` ledgers are summarized during migration rather than carried into the new authority.
-
-## 4. Unified transaction
-
-All local authoritative changes follow one path:
+所有权威变化统一经过：
 
 ```text
-Intent or typed Artifact
-→ pure candidate transition
-→ root and resource validation
+Intent / typed Artifact
+→ candidate transition
+→ root/resource validation
 → deterministic projection
-→ snapshot previous root
+→ snapshot old root
 → one root commit
-→ publish derived registry
-→ append receipt
+→ derived registry
+→ receipt
 ```
 
-Package install/update/enable/disable/uninstall/revision switch, content upsert/remove, settings, appearance, module-display overrides, and rollback do not maintain separate save or reverse-patch systems. A rejected transition leaves the previous root and projection unchanged.
+包 revision 不可变。用户弹药、设置、外观和产品角色覆盖与包定义分离。
 
-## 5. Packages and resources
+## 4. Transport、Host 与 Effect
 
-Package revisions are immutable. Friendly external package fields compile to stable internal resource claims such as module, Surface, content type, content default, setting default, module display, appearance variable, and style source.
+回复中的 `DCF_AMMO`、`DCF_MODULE_PACK`、手动 JSON 和固定 GitHub catalog 都先解码成 typed artifact，再进入同一事务。
 
-Exclusive conflicts fail before commit. Replacement must be explicit. Package styles keep source identity and may not own `.sh` geometry. User data and preferences override package defaults and survive optional package removal.
+ChatGPT DOM 只由 Host Adapter 接触。它负责当前回复监听、composer、发送、剪贴板、通知和导航变化。回复摄取只观察 `main` / `[role=main]` 的新增节点及当前流式回复，不扫描整页和完整历史。
 
-`dcf.standard.ammo` is required by the product value loop and cannot be disabled or uninstalled through the package manager. Other first-party modules, including the shell adjuster, use ordinary declarative module commands and remain optional.
+本地状态事务与外部 effect 分离。发送、复制或通知失败不能破坏无关权威状态。
 
-## 6. Artifact transports
+## 5. 包、运行模块与产品分区
 
-The same artifact decoder and transaction path accept:
+- **安装包**：在 `包管理` 中管理 revision、启停和卸载。
+- **运行模块**：由启用包贡献并进入 registry 的可执行能力。
+- **日常功能**：主力工作流，进入 `功能`。
+- **维护工具**：探针、诊断、验收、作者、布局与恢复工具，进入 `维护`。
+- **弹药模块**：由独立弹药页承载核心闭环。
 
-- `DCF_AMMO` from a completed assistant reply;
-- `DCF_MODULE_PACK` from a completed assistant reply;
-- package JSON pasted into the package manager;
-- immutable package JSON downloaded from the fixed private-project catalog.
+`hidden` 不再是产品角色。旧包或旧用户状态中的 `hidden:true` 只作为无效兼容残留，不得让运行模块失去入口。所有非弹药运行模块必须在日常或维护分区保留可发现标题。
 
-Artifact identity, not DOM-block history, provides idempotence. Same package revision with different content is rejected.
+界面密度只通过模块卡片展开/折叠处理。折叠状态保存在可丢弃的 `dcf.ui.session.v1.collapsed_modules`；它不进入权威根、不走事务、不修改 `moduleDisplay` 或包 revision。日常模块默认展开，维护模块默认折叠，用户可逐项改变。
 
-## 7. ChatGPT host adapter
+## 6. Runtime 体检边界
 
-Core code does not access ChatGPT DOM. The host adapter owns reply discovery, completion detection, composer insertion/sending, clipboard, notification, navigation changes, and privacy-safe host diagnostics.
+代码逻辑、schema、事务与构建正确性由源码审查、单元测试、集成测试、CI 和浏览器自动化负责。一键体检不重复验证代码本身，而是回答同一份通过测试的代码在用户当前浏览器标签页里实际运行成了什么。
 
-Reply intake has a history-independent cost model:
+`dcf.runtime.health.diff.v1` 从真实 Runtime 观察：
 
-- bind to the stable `main` / `[role=main]` host root, never `document.body`;
-- inspect only mutation `addedNodes`;
-- temporarily observe only the current assistant reply while streaming;
-- decode once after completion;
-- recovery walks backward only until a fixed number of recent assistant replies are found, with a hard visit limit;
-- never read full-page text or enumerate the entire conversation.
+- 当前 userscript Runtime 对象与可见版本；
+- 权威浏览器存储与内存 root；
+- 内存 registry 与真实 Shadow DOM 包/模块入口；
+- host 数量、连接状态、壳体真实矩形及 viewport；
+- ChatGPT conversation root、回复 observer 和 composer；
+- 旧存储桥接结果与最近失败回执。
 
-ChatGPT historical-message virtualization is a separate phase-two module and is not part of phase one.
+体检不输出完整状态百科。健康时只有 `deviations: []`。异常时每条偏差只包含 code、严重度、期望、实际值、最小证据和说明。
 
-## 8. Commands, effects, and receipts
+模块入口检查不复用 UI 的角色分类函数：它直接比较 registry 中全部非弹药模块 ID 与真实日常＋维护 DOM 中出现的模块标题 ID。折叠卡片仍保留标题，因此被视为可发现。
 
-Declarative module commands use one interpreter. Existing top-level commands and `blocks[].commands` remain supported.
+体检不包含对话正文、弹药正文、完整包 payload、命令参数、令牌或认证信息。
 
-Local state transitions and external effects are separate. Composer insert/send, clipboard, and notification go through the host effect runner. Effect failure does not corrupt unrelated authoritative state.
+## 7. 迁移与恢复
 
-Transactions, commands, and effects emit bounded receipts. Conversational bodies, prompts, content, tokens, credentials, and similar values are represented by redacted length/hash summaries. Success remains local and quiet; failures are available for explicit diagnostic copying.
+启动时可读取 0.10.0 package/user/ops 及更早 registry。旧数据以候选合并进入当前 GM root；当前值优先，缺失值补回，每个旧包先验证投影。冲突包必须进入 `system.storage_bridge.skipped`，不能静默消失。
 
-## 9. Package management, runtime modules, and function placement
+回退选择旧 root 快照，并重新经过验证、投影、提交和回执。
 
-DCF no longer uses the word “module” for every layer.
+## 8. 验证边界
 
-- **Installed package**: immutable package and revision state shown in `包管理`.
-- **Runtime module**: executable module contributed by an enabled package and present in the registry projection.
-- **Daily function**: a runtime module placed in the ordinary `功能` view.
-- **Maintenance tool**: a runtime module placed in `维护`, including probes, diagnostics, layout controls, authoring, acceptance, and recovery tools.
-- **Hidden runtime module**: present in the runtime but omitted from both function entry points.
+发布必须通过：
 
-The `功能` view is intentionally limited to daily and primary workflows. Maintenance tools are not mixed into it. The `维护` view contains health, diagnostics, snapshots, receipts, maintenance commands, and function-classification controls. The package-management view never implies where a runtime module is placed.
+- 自动弹药摄取与低摩擦发射；
+- 模块化源码到完整 userscript 的确定性构建；
+- 单一权威根与统一事务；
+- 双存储迁移和桥接幂等；
+- 旧模块命令兼容；
+- 日常/维护角色与折叠状态分离；
+- Runtime 健康报告的真实 DOM 偏差检测和隐私边界；
+- 有界 Host Adapter；
+- catalog、viewport、语法和发布一致性。
 
-UI and health reporting share `module-roles.js` as the only classification source. Known first-party legacy modules receive explicit daily or maintenance roles so generic historical `area: work` and `hidden` defaults cannot distort the current product layout. User-owned `moduleDisplay` overrides can move a runtime module between daily, maintenance, and hidden through the unified transaction path without rewriting its package.
-
-Maintenance exposes privacy-safe `dcf.health.report.v2`. It separately reports installed-package count, runtime-module count, daily-function count, maintenance-tool count, hidden-runtime-module count, each runtime module’s placement and placement source, migration coverage, root/hash/projection integrity, Surfaces, Host Adapter status, and recent failures. It excludes conversation text, ammo bodies, package payloads, command arguments, and authentication data.
-
-Shell geometry has one source of truth in user appearance state and is finally constrained by the actual `visualViewport` and shell rectangle. The shell adjuster is declarative; no second hard-coded adjustment path exists.
-
-## 10. Migration, storage bridge, and recovery
-
-`0.10.0` package/user/ops stores and older registries may exist in page `localStorage`, while `0.11.x` authority lives in GM storage. Boot therefore inspects both backends before runtime initialization.
-
-If a GM root already exists, legacy local data is merged into a candidate root rather than replacing current state. Current values win; missing packages, revisions, ammo, settings, module display and appearance values are recovered. Every missing package is projection-tested before acceptance. Conflicting packages are skipped with explicit reasons in `system.storage_bridge`. The bridge result is recorded and does not replay on every load.
-
-Older registries are converted into synthetic immutable packages plus user-owned state. Geometry-owning legacy CSS is quarantined rather than allowed to break boot.
-
-Rollback selects a previous root snapshot and passes it through the same validation, projection, commit, and receipt path as every other state change.
-
-## 11. Verification boundary
-
-Acceptance requires:
-
-- value loop preserved: automatic ammo intake and low-friction firing work;
-- source modules build to one deterministic userscript;
-- one authoritative state root and one authoritative storage backend;
-- all authoritative writes use the transaction engine;
-- Core has no ChatGPT DOM dependency;
-- reply intake work does not grow with total conversation rounds;
-- legacy localStorage modules/commands and user data survive migration into GM storage;
-- storage bridge is idempotent and records skipped conflicts;
-- package presence, runtime module presence, and function placement are reported separately;
-- UI and health reporting use the same placement resolver;
-- daily functions and maintenance tools remain separate by default;
-- one-click health report can establish cross-layer state without leaking content;
-- GitHub and reply artifacts share the same application path;
-- no runtime remote-code execution;
-- real-browser smoke proves reply → auto-load → fire → composer.
+ChatGPT 历史消息虚拟化仍属于二期。
