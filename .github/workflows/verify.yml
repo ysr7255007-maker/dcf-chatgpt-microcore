@@ -21,7 +21,17 @@ jobs:
         with:
           node-version: '22'
       - run: python scripts/apply-unified-capability-reconciliation.py
-      - run: npm run verify
+      - name: Verify upgraded source
+        shell: bash
+        run: |
+          set +e
+          npm run verify > /tmp/dcf-verify.log 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            tail -n 100 /tmp/dcf-verify.log
+            exit "$status"
+          fi
+          tail -n 20 /tmp/dcf-verify.log
       - run: node --check dcf-chatgpt-microcore.user.js
       - name: Commit upgraded source and generated release
         run: |
