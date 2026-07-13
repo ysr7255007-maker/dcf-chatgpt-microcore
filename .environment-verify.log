@@ -10,7 +10,7 @@
   "ok": true,
   "version": "0.13.0",
   "modules": 24,
-  "bytes": 165376,
+  "bytes": 165429,
   "catalog_packages": 4
 }
 
@@ -26,11 +26,5 @@
   "package_owned_four_views": true,
   "profiles_and_restore_are_environment_transitions": true
 }
-AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
-+ actual - expected
-
-+ 'dcf.environment.reconcile.result.v1'
-- 'dcf.reconcile.result.v1'
-       ^
-
-    at /home/runner/work/dcf-chatgpt-microcore/dcf-chatgpt-microcore/tests/dcf-capability-reconciliation.unit.test.js:33:10
+TypeError: Cannot read properties of undefined (reading 'some')
+    at /home/runner/work/dcf-chatgpt-microcore/dcf-chatgpt-microcore/tests/dcf-capability-reconciliation.unit.test.js:44:44
