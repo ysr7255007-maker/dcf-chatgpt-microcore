@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         DCF ChatGPT Microcore
 // @namespace    https://chatgpt.com/
-// @version      0.11.2
-// @description  DCF modular runtime with storage bridge, one-click health report, visible hidden-module state, bounded reply intake and unified transactions.
+// @version      0.11.3
+// @description  DCF modular runtime with separated daily functions, maintenance tools, package management, accurate health reporting and bounded reply intake.
 // @updateURL    https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.meta.js
 // @downloadURL  https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.user.js
 // @supportURL   https://github.com/ysr7255007-maker/dcf-chatgpt-microcore
@@ -112,7 +112,7 @@ module.exports = {
 "src/core/constants.js":function(module,exports,require){
 'use strict';
 
-const VERSION = '0.11.2';
+const VERSION = '0.11.3';
 const ROOT_KEY = 'dcf.state.root.v1';
 const SNAPSHOT_KEY = 'dcf.state.snapshots.v1';
 const RUNTIME_KEY = 'dcf.runtime.registry.v3';
@@ -1755,6 +1755,88 @@ function createPackageManager(engine, catalog) {
 module.exports = { createPackageManager };
 
 },
+"src/modules/module-roles.js":function(module,exports,require){
+'use strict';
+
+const LEGACY_DAILY_MODULE_IDS = new Set([
+  'dcf.ammo_workbench',
+  'dcf.ammo_workspace.unified',
+  'dcf.language_ammo'
+]);
+
+const LEGACY_MAINTENANCE_MODULE_IDS = new Set([
+  'dcf.ammo_library.dcf_kernel_maintenance',
+  'dcf.block_scanner',
+  'dcf.capability_gap_probe',
+  'dcf.command_runtime_probe',
+  'dcf.feedback_safety_probe',
+  'dcf.kernel_acceptance',
+  'dcf.maintenance_feedback',
+  'dcf.module_authoring',
+  'dcf.runtime_inspector',
+  'dcf.shell_adjuster',
+  'dcf.standard.shell-adjuster',
+  'dcf.store_probe',
+  'dcf.ui_siderail_control',
+  'dcf.ui_visual_control'
+]);
+
+function userDisplay(root, moduleId) {
+  return root && root.user && root.user.moduleDisplay && root.user.moduleDisplay[moduleId] || null;
+}
+
+function projectedDisplay(registry, moduleId) {
+  return registry && registry.moduleDisplay && registry.moduleDisplay[moduleId] || {};
+}
+
+function declaredRole(module, display) {
+  const role = display.role || module.role || null;
+  if (role === 'daily' || role === 'maintenance') return role;
+  const area = display.area || module.area || null;
+  if (area === 'maintenance') return 'maintenance';
+  if (area === 'work' || area === 'primary') return 'daily';
+  return null;
+}
+
+function classifyModule(root, registry, module) {
+  const id = String(module && module.id || '');
+  if (module && module.kind === 'ammo') return { placement: 'ammo', source: 'module-kind' };
+
+  const user = userDisplay(root, id);
+  if (user) {
+    if (user.hidden === true) return { placement: 'hidden', source: 'user' };
+    const userRole = declaredRole(module, user);
+    if (userRole) return { placement: userRole, source: 'user' };
+  }
+
+  if (LEGACY_MAINTENANCE_MODULE_IDS.has(id)) return { placement: 'maintenance', source: 'legacy-product-map' };
+  if (LEGACY_DAILY_MODULE_IDS.has(id)) return { placement: 'daily', source: 'legacy-product-map' };
+
+  const display = projectedDisplay(registry, id);
+  if (display.hidden === true) return { placement: 'hidden', source: 'declaration' };
+  const declared = declaredRole(module, display);
+  if (declared) return { placement: declared, source: 'declaration' };
+  return { placement: 'daily', source: 'default' };
+}
+
+function modulesByPlacement(root, registry) {
+  const result = { ammo: [], daily: [], maintenance: [], hidden: [] };
+  for (const module of registry && registry.modules || []) {
+    const classification = classifyModule(root, registry, module);
+    result[classification.placement].push(module);
+  }
+  for (const modules of Object.values(result)) modules.sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  return result;
+}
+
+module.exports = {
+  LEGACY_DAILY_MODULE_IDS,
+  LEGACY_MAINTENANCE_MODULE_IDS,
+  classifyModule,
+  modulesByPlacement
+};
+
+},
 "src/modules/health.js":function(module,exports,require){
 'use strict';
 
@@ -1762,6 +1844,7 @@ const { VERSION, ROOT_KEY, SNAPSHOT_KEY, RUNTIME_KEY, RECEIPT_KEY, CATALOG_STATE
 const { computeStateHash, validateRoot } = require("src/core/state.js");
 const { hash, isObject, nowIso } = require("src/core/utils.js");
 const { commandList } = require("src/runtime/commands.js");
+const { classifyModule, modulesByPlacement } = require("src/modules/module-roles.js");
 
 function summarizeStoredValue(value) {
   if (value == null) return { present: false };
@@ -1811,7 +1894,7 @@ function legacyInventory(storage, backend) {
       registry: summarizeStoredValue(registry)
     },
     package_ids: packageIds,
-    module_ids: Array.from(moduleIds).sort(),
+    runtime_module_ids: Array.from(moduleIds).sort(),
     ammo_count: ammoCount,
     settings_count: Object.keys(user && user.settings || registry && registry.settings || {}).length,
     module_display_count: Object.keys(user && user.moduleDisplay || registry && registry.moduleDisplay || {}).length
@@ -1840,13 +1923,12 @@ function createHealthReporter(engine, receiptStore, storage, host, requiredPacka
     const receipts = receiptStore.list();
     const snapshots = engine.snapshots();
     const currentPackageIds = Object.keys(root.packages && root.packages.packages || {}).sort();
-    const currentModuleIds = (registry.modules || []).map((module) => String(module.id)).sort();
-    const hiddenModuleIds = (registry.modules || []).filter((module) => registry.moduleDisplay && registry.moduleDisplay[module.id] && registry.moduleDisplay[module.id].hidden === true).map((module) => String(module.id)).sort();
+    const currentRuntimeModuleIds = (registry.modules || []).map((module) => String(module.id)).sort();
+    const placement = modulesByPlacement(root, registry);
     const localLegacy = legacyInventory(storage, 'localStorage');
     const gmInventory = legacyInventory(storage, 'gm');
-    const missingLegacyModules = localLegacy.module_ids.filter((id) => !currentModuleIds.includes(id));
+    const missingLegacyModules = localLegacy.runtime_module_ids.filter((id) => !currentRuntimeModuleIds.includes(id));
     const missingLegacyPackages = localLegacy.package_ids.filter((id) => !currentPackageIds.includes(id));
-    const hiddenLegacyModules = localLegacy.module_ids.filter((id) => hiddenModuleIds.includes(id));
     const rootValidation = validateRoot(root);
     const checks = [];
 
@@ -1865,13 +1947,13 @@ function createHealthReporter(engine, receiptStore, storage, host, requiredPacka
     });
     addCheck('product.required-packages', missingRequired.length ? 'error' : 'ok', missingRequired.length ? '产品核心包缺失或停用' : '产品核心包完整', missingRequired);
 
-    const localLegacyPresent = !!(localLegacy.package_ids.length || localLegacy.module_ids.length || localLegacy.ammo_count || localLegacy.stores.root.present);
+    const localLegacyPresent = !!(localLegacy.package_ids.length || localLegacy.runtime_module_ids.length || localLegacy.ammo_count || localLegacy.stores.root.present);
     if (missingLegacyModules.length || missingLegacyPackages.length) {
-      addCheck('migration.legacy-coverage', 'error', '检测到未进入当前运行态的旧模块或旧包', { missing_module_ids: missingLegacyModules, missing_package_ids: missingLegacyPackages });
+      addCheck('migration.legacy-coverage', 'error', '检测到未进入当前运行态的旧模块或旧包', { missing_runtime_module_ids: missingLegacyModules, missing_package_ids: missingLegacyPackages });
     } else if (localLegacyPresent) {
-      addCheck('migration.legacy-coverage', 'ok', '检测到旧存储，当前运行态已覆盖其模块与包');
+      addCheck('migration.legacy-coverage', 'ok', '检测到旧存储，当前运行态已覆盖其包与运行模块');
     } else {
-      addCheck('migration.legacy-coverage', 'ok', '未检测到需要迁移的旧模块存储');
+      addCheck('migration.legacy-coverage', 'ok', '未检测到需要迁移的旧存储');
     }
 
     if (storage.primaryBackend === 'gm' && localLegacyPresent && !root.system.storage_bridge) {
@@ -1882,9 +1964,11 @@ function createHealthReporter(engine, receiptStore, storage, host, requiredPacka
       addCheck('storage.backend-bridge', 'ok', root.system.storage_bridge ? '旧存储桥已完成' : '当前无需存储桥接');
     }
 
-    addCheck('ui.hidden-modules', hiddenModuleIds.length ? 'info' : 'ok', hiddenModuleIds.length ? `${hiddenModuleIds.length} 个模块已安装但处于隐藏状态` : '没有隐藏模块', {
-      hidden_module_ids: hiddenModuleIds,
-      hidden_legacy_module_ids: hiddenLegacyModules
+    addCheck('ui.module-placement', 'info', `运行态模块 ${currentRuntimeModuleIds.length} 个：日常 ${placement.daily.length}、维护 ${placement.maintenance.length}、隐藏 ${placement.hidden.length}、弹药专用 ${placement.ammo.length}`, {
+      daily_function_ids: placement.daily.map((module) => module.id),
+      maintenance_tool_ids: placement.maintenance.map((module) => module.id),
+      hidden_runtime_module_ids: placement.hidden.map((module) => module.id),
+      ammo_module_ids: placement.ammo.map((module) => module.id)
     });
 
     const hostDiagnostics = host && typeof host.diagnostics === 'function' ? host.diagnostics() : null;
@@ -1902,7 +1986,7 @@ function createHealthReporter(engine, receiptStore, storage, host, requiredPacka
     }, {});
 
     return {
-      schema: 'dcf.health.report.v1',
+      schema: 'dcf.health.report.v2',
       generated_at: nowIso(),
       overall,
       kernel_version: VERSION,
@@ -1938,10 +2022,12 @@ function createHealthReporter(engine, receiptStore, storage, host, requiredPacka
         build_id: registry.build && registry.build.build_id,
         state_revision: registry.state_revision,
         state_hash: registry.state_hash,
-        package_count: currentPackageIds.length,
-        module_count: currentModuleIds.length,
-        visible_module_count: currentModuleIds.length - hiddenModuleIds.length,
-        hidden_module_count: hiddenModuleIds.length,
+        installed_package_count: currentPackageIds.length,
+        runtime_module_count: currentRuntimeModuleIds.length,
+        daily_function_count: placement.daily.length,
+        maintenance_tool_count: placement.maintenance.length,
+        hidden_runtime_module_count: placement.hidden.length,
+        ammo_module_count: placement.ammo.length,
         surface_count: Object.keys(registry.surfaces || {}).length,
         content_type_count: Object.keys(registry.contentTypes || {}).length,
         style_source_count: (registry.appearance && registry.appearance.styles || []).length
@@ -1959,15 +2045,18 @@ function createHealthReporter(engine, receiptStore, storage, host, requiredPacka
           required: requiredPackages.includes(packageId)
         };
       }),
-      modules: (registry.modules || []).map((module) => ({
-        module_id: module.id,
-        title: module.title || null,
-        version: module.version || null,
-        area: registry.moduleDisplay && registry.moduleDisplay[module.id] && registry.moduleDisplay[module.id].area || module.area || 'work',
-        hidden: !!(registry.moduleDisplay && registry.moduleDisplay[module.id] && registry.moduleDisplay[module.id].hidden),
-        command_count: commandList(module).length,
-        provider: registry.build && registry.build.resource_ownership && registry.build.resource_ownership[`module:${module.id}`] || null
-      })),
+      runtime_modules: (registry.modules || []).map((module) => {
+        const classification = classifyModule(root, registry, module);
+        return {
+          module_id: module.id,
+          title: module.title || null,
+          version: module.version || null,
+          placement: classification.placement,
+          placement_source: classification.source,
+          command_count: commandList(module).length,
+          provider: registry.build && registry.build.resource_ownership && registry.build.resource_ownership[`module:${module.id}`] || null
+        };
+      }),
       surfaces: Object.values(registry.surfaces || {}).map((surface) => ({ id: surface.id, title: surface.title || null, area: surface.area || null, kind: surface.kind || null, content_type: surface.content_type || null })),
       user_data: {
         content_counts: Object.fromEntries(Object.entries(root.user.content || {}).map(([type, items]) => [type, Object.keys(isObject(items) ? items : {}).length])),
@@ -1983,13 +2072,12 @@ function createHealthReporter(engine, receiptStore, storage, host, requiredPacka
       host: hostDiagnostics,
       receipts: { count: receipts.length, status_counts: statusCounts, recent_failures: recentFailures },
       comparison: {
-        legacy_local_module_ids: localLegacy.module_ids,
-        current_module_ids: currentModuleIds,
-        missing_legacy_module_ids: missingLegacyModules,
-        hidden_legacy_module_ids: hiddenLegacyModules,
         legacy_local_package_ids: localLegacy.package_ids,
         current_package_ids: currentPackageIds,
-        missing_legacy_package_ids: missingLegacyPackages
+        missing_legacy_package_ids: missingLegacyPackages,
+        legacy_local_runtime_module_ids: localLegacy.runtime_module_ids,
+        current_runtime_module_ids: currentRuntimeModuleIds,
+        missing_legacy_runtime_module_ids: missingLegacyModules
       },
       privacy: {
         conversation_text_included: false,
@@ -2060,6 +2148,7 @@ module.exports = { createMaintenanceModule };
 'use strict';
 
 const { commandList } = require("src/runtime/commands.js");
+const { classifyModule, modulesByPlacement } = require("src/modules/module-roles.js");
 
 function escapeHtml(value) {
   return String(value == null ? '' : value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
@@ -2087,7 +2176,7 @@ function createApp(options) {
       :host{all:initial}.sh{position:fixed;right:12px;bottom:var(--bottom,112px);top:auto;width:var(--w,340px);height:min(var(--h,800px),calc(100vh - 24px));z-index:2147483646;background:#fffffff2;color:#111;border:1px solid #9996;border-radius:14px;box-shadow:0 18px 44px #0002;font:13px system-ui;overflow:hidden;box-sizing:border-box;display:flex;flex-direction:column}
       .sh[data-side=left]{left:12px;right:auto}.sh[data-anchor=top]{top:var(--top,12px);bottom:auto}.sh[data-anchor=bottom]{bottom:var(--bottom,112px);top:auto}
       @media(prefers-color-scheme:dark){.sh{background:#171717ee;color:#eee}}
-      button{border:1px solid #9995;border-radius:9px;background:transparent;color:inherit;padding:6px 8px;cursor:pointer}button:hover{background:#8882}button.danger{border-color:#dc262666}.top{height:42px;flex:0 0 42px;display:flex;align-items:center;gap:6px;padding:6px;border-bottom:1px solid #9993;box-sizing:border-box}.top b{margin-right:auto}.tabs{display:flex;gap:5px}.tabs button.on{background:#2563eb22;border-color:#2563eb66}.body{flex:1;min-height:0;overflow:auto;padding:9px;box-sizing:border-box}.card{border:1px solid #9994;border-radius:12px;background:#8881;padding:9px;margin-bottom:9px;box-sizing:border-box}.name{font-weight:700}.mini{font-size:11px;opacity:.7;word-break:break-all}.actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}textarea,input,select{width:100%;box-sizing:border-box;border:1px solid #9995;border-radius:9px;background:#fff8;color:inherit;padding:7px}textarea{min-height:120px}.notice{padding:6px 9px;border-bottom:1px solid #9993;font-size:12px}.notice:empty{display:none}.row{display:flex;gap:6px;align-items:center}.row>*{min-width:0}.grow{flex:1}.pkg{padding-top:8px;margin-top:8px;border-top:1px solid #9993}.receipt{font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;word-break:break-word;max-height:180px;overflow:auto}.health-ok{border-color:#16a34a66}.health-warning{border-color:#d9770666}.health-error{border-color:#dc262666}.state-pill{font-size:10px;padding:2px 6px;border:1px solid #9995;border-radius:999px}.state-pill.hidden{border-color:#d9770666}.state-pill.visible{border-color:#16a34a66}
+      button{border:1px solid #9995;border-radius:9px;background:transparent;color:inherit;padding:6px 8px;cursor:pointer}button:hover{background:#8882}button.danger{border-color:#dc262666}.top{height:42px;flex:0 0 42px;display:flex;align-items:center;gap:6px;padding:6px;border-bottom:1px solid #9993;box-sizing:border-box}.top b{margin-right:auto}.tabs{display:flex;gap:5px}.tabs button.on{background:#2563eb22;border-color:#2563eb66}.body{flex:1;min-height:0;overflow:auto;padding:9px;box-sizing:border-box}.card{border:1px solid #9994;border-radius:12px;background:#8881;padding:9px;margin-bottom:9px;box-sizing:border-box}.name{font-weight:700}.mini{font-size:11px;opacity:.7;word-break:break-all}.section-title{font-size:12px;font-weight:700;opacity:.8;margin:12px 2px 7px}.actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}textarea,input,select{width:100%;box-sizing:border-box;border:1px solid #9995;border-radius:9px;background:#fff8;color:inherit;padding:7px}textarea{min-height:120px}.notice{padding:6px 9px;border-bottom:1px solid #9993;font-size:12px}.notice:empty{display:none}.row{display:flex;gap:6px;align-items:center}.row>*{min-width:0}.grow{flex:1}.pkg{padding-top:8px;margin-top:8px;border-top:1px solid #9993}.receipt{font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;word-break:break-word;max-height:180px;overflow:auto}.health-ok{border-color:#16a34a66}.health-warning{border-color:#d9770666}.health-error{border-color:#dc262666}.state-pill{font-size:10px;padding:2px 6px;border:1px solid #9995;border-radius:999px}.state-pill.daily{border-color:#16a34a66}.state-pill.maintenance{border-color:#2563eb66}.state-pill.hidden{border-color:#d9770666}
     </style><style id="package-style"></style><aside class="sh"><div class="top"></div><div class="notice"></div><div class="body"></div></aside>`;
   doc.documentElement.appendChild(hostElement);
   const shell = root.querySelector('.sh');
@@ -2097,7 +2186,6 @@ function createApp(options) {
   const packageStyle = root.querySelector('#package-style');
   let tab = storage.get('dcf.ui.session.v1', { tab: 'ammo' }).tab || 'ammo';
   let packageDraft = '';
-  let selectedSurface = storage.get('dcf.ui.session.v1', { selectedSurface: null }).selectedSurface || null;
   let fenceFrame = 0;
 
   function setNotice(text) {
@@ -2126,7 +2214,8 @@ function createApp(options) {
   function renderTop() {
     top.innerHTML = `<b>DCF ${escapeHtml(version)}</b><div class="tabs">
       <button data-tab="ammo" class="${tab === 'ammo' ? 'on' : ''}">弹药</button>
-      <button data-tab="functions" class="${tab === 'functions' ? 'on' : ''}">功能</button><button data-tab="packages" class="${tab === 'packages' ? 'on' : ''}">模块</button>
+      <button data-tab="functions" class="${tab === 'functions' ? 'on' : ''}">功能</button>
+      <button data-tab="packages" class="${tab === 'packages' ? 'on' : ''}">包管理</button>
       <button data-tab="maintenance" class="${tab === 'maintenance' ? 'on' : ''}">维护</button>
     </div>`;
   }
@@ -2142,27 +2231,14 @@ function createApp(options) {
     return engine.getRegistry().moduleDisplay && engine.getRegistry().moduleDisplay[module.id] || {};
   }
 
-  function moduleArea(module) {
-    const display = moduleDisplay(module);
-    return display.area || module.area || 'work';
-  }
-
   function moduleOrder(module) {
     const display = moduleDisplay(module);
     return Number(display.order != null ? display.order : module.order != null ? module.order : 1000);
   }
 
-  function isModuleHidden(module) {
-    return moduleDisplay(module).hidden === true;
-  }
-
-  function visibleModules(modules) {
-    return modules.filter((module) => !isModuleHidden(module)).sort((a, b) => moduleOrder(a) - moduleOrder(b) || String(a.id).localeCompare(String(b.id)));
-  }
-
-  function renderModuleCards(modules) {
-    modules = visibleModules(modules);
-    if (!modules.length) return '<div class="card mini">暂无可见模块功能</div>';
+  function renderModuleCards(modules, emptyText) {
+    modules = modules.slice().sort((a, b) => moduleOrder(a) - moduleOrder(b) || String(a.id).localeCompare(String(b.id)));
+    if (!modules.length) return `<div class="card mini">${escapeHtml(emptyText || '暂无功能')}</div>`;
     return modules.map((module) => {
       const display = moduleDisplay(module);
       const entries = commandList(module);
@@ -2175,42 +2251,33 @@ function createApp(options) {
     }).join('');
   }
 
-  function hiddenModules() {
-    return engine.getRegistry().modules.filter((module) => module.kind !== 'ammo' && isModuleHidden(module)).sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  function placementLabel(placement) {
+    if (placement === 'daily') return '日常';
+    if (placement === 'maintenance') return '维护';
+    return '隐藏';
   }
 
-  function renderVisibilityManager() {
-    const modules = engine.getRegistry().modules.filter((module) => module.kind !== 'ammo').slice().sort((a, b) => String(a.id).localeCompare(String(b.id)));
-    const hidden = modules.filter(isModuleHidden);
+  function renderPlacementManager() {
+    const registry = engine.getRegistry();
+    const currentRoot = engine.getRoot();
+    const modules = registry.modules.filter((module) => module.kind !== 'ammo').slice().sort((a, b) => String(a.id).localeCompare(String(b.id)));
     const rows = modules.map((module) => {
-      const hiddenState = isModuleHidden(module);
       const display = moduleDisplay(module);
-      return `<div class="pkg row" data-visibility-module-id="${escapeHtml(module.id)}"><span class="grow"><span class="name">${escapeHtml(display.title || module.title || module.id)}</span><br><span class="mini">${escapeHtml(module.id)} · ${escapeHtml(module.version || '')}</span></span><span class="state-pill ${hiddenState ? 'hidden' : 'visible'}">${hiddenState ? '隐藏' : '显示'}</span><button data-action="module-visibility-toggle" data-module-id="${escapeHtml(module.id)}">${hiddenState ? '恢复显示' : '隐藏'}</button></div>`;
+      const classification = classifyModule(currentRoot, registry, module);
+      const placement = classification.placement;
+      return `<div class="pkg" data-placement-module-id="${escapeHtml(module.id)}"><div class="row"><span class="grow"><span class="name">${escapeHtml(display.title || module.title || module.id)}</span><br><span class="mini">${escapeHtml(module.id)} · ${escapeHtml(classification.source)}</span></span><span class="state-pill ${escapeHtml(placement)}">${escapeHtml(placementLabel(placement))}</span></div><div class="actions"><button data-action="module-placement" data-module-id="${escapeHtml(module.id)}" data-placement="daily">日常功能</button><button data-action="module-placement" data-module-id="${escapeHtml(module.id)}" data-placement="maintenance">维护工具</button><button data-action="module-placement" data-module-id="${escapeHtml(module.id)}" data-placement="hidden">隐藏</button></div></div>`;
     }).join('');
-    return `<div class="card"><div class="name">模块显示状态</div><div class="mini">已安装不等于当前显示。隐藏模块仍在运行态中，不会丢失；这里可以明确查看并恢复显示。</div><div class="actions">${hidden.length ? `<button data-action="module-show-all-hidden">全部恢复显示（${hidden.length}）</button>` : '<span class="mini">当前没有隐藏模块</span>'}</div>${rows}</div>`;
+    return `<div class="card"><div class="name">功能分类管理</div><div class="mini">包是否安装、模块是否进入运行态、以及它显示在日常功能还是维护工具中，是三个不同状态。这里仅修改用户自己的显示分类，不改写模块包。</div>${rows}</div>`;
   }
 
   function renderFunctions() {
-    const registry = engine.getRegistry();
-    const hidden = hiddenModules();
-    const surfaces = Object.values(registry.surfaces || {}).filter((surface) => surface.id !== 'dcf.ammo' && surface.content_type !== 'ammo' && surface.area !== 'maintenance').sort((a, b) => Number(a.order || 1000) - Number(b.order || 1000));
-    if (surfaces.length && !surfaces.some((surface) => surface.id === selectedSurface)) selectedSurface = surfaces[0].id;
-    const surface = surfaces.find((entry) => entry.id === selectedSurface) || null;
-    const modules = registry.modules.filter((module) => {
-      if (module.kind === 'ammo' || moduleArea(module) === 'maintenance') return false;
-      if (!surface) return true;
-      const display = moduleDisplay(module);
-      if (display.surface_id || module.surface_id) return (display.surface_id || module.surface_id) === surface.id;
-      return !surface.area || moduleArea(module) === surface.area;
-    });
-    const hiddenNotice = hidden.length ? `<div class="card health-warning"><div class="name">${hidden.length} 个模块已安装但隐藏</div><div class="mini">它们没有丢失，只是不进入当前功能视图。</div><div class="actions"><button data-action="module-visibility-open">管理显示状态</button><button data-action="module-show-all-hidden">全部恢复显示</button></div></div>` : '';
-    const rail = surfaces.length ? `<div class="card actions">${surfaces.map((entry) => `<button data-action="surface-select" data-surface-id="${escapeHtml(entry.id)}" class="${entry.id === selectedSurface ? 'on' : ''}">${escapeHtml(entry.title || entry.id)}</button>`).join('')}</div>` : '';
-    body.innerHTML = hiddenNotice + rail + renderModuleCards(modules);
+    const groups = modulesByPlacement(engine.getRoot(), engine.getRegistry());
+    body.innerHTML = `<div class="card"><div class="name">日常功能</div><div class="mini">这里只保留日常使用和主力工作流；诊断、探针、布局调节和开发工具统一放在维护页。</div></div>${renderModuleCards(groups.daily, '暂无日常功能')}`;
   }
 
   function renderPackages() {
     const entries = packageManager.packages();
-    body.innerHTML = `<div class="card"><div class="name">安装模块包</div><div class="mini">粘贴完整 dcf.module_pack.v1 JSON；对话与 GitHub 更新仍会自动进入同一事务。</div><textarea data-role="package-json">${escapeHtml(packageDraft)}</textarea><div class="actions"><button data-action="package-install">安装</button><button data-action="package-update">检查 GitHub 更新</button></div></div>` + entries.map((entry) => {
+    body.innerHTML = `<div class="card"><div class="name">安装包管理</div><div class="mini">这里显示的是已安装包和版本，不代表它一定作为功能卡片出现在日常功能页。</div><textarea data-role="package-json">${escapeHtml(packageDraft)}</textarea><div class="actions"><button data-action="package-install">安装包</button><button data-action="package-update">检查 GitHub 更新</button></div></div>` + entries.map((entry) => {
       const revisions = Object.keys(entry.revisions || {}).sort();
       const required = packageManager.isRequired(entry.package_id);
       return `<div class="card"><div class="name">${escapeHtml(entry.package_id)}${required ? ' · 核心' : ''}</div><div class="mini">active ${escapeHtml(entry.active_revision)} · ${entry.enabled === false ? 'disabled' : 'enabled'}</div><div class="actions">${required ? '' : `<button data-action="package-toggle" data-id="${escapeHtml(entry.package_id)}">${entry.enabled === false ? '启用' : '停用'}</button>`}<select data-role="package-revision" data-id="${escapeHtml(entry.package_id)}">${revisions.map((revision) => `<option ${revision === entry.active_revision ? 'selected' : ''}>${escapeHtml(revision)}</option>`).join('')}</select><button data-action="package-switch" data-id="${escapeHtml(entry.package_id)}">切换</button>${required ? '' : `<button data-action="package-uninstall" data-id="${escapeHtml(entry.package_id)}" class="danger">卸载</button>`}</div></div>`;
@@ -2220,15 +2287,17 @@ function createApp(options) {
   function renderMaintenance() {
     const summary = maintenance.summary();
     const health = maintenance.healthReport();
-    const issues = (health.checks || []).filter((item) => item.status !== 'ok');
+    const issues = (health.checks || []).filter((item) => item.status !== 'ok' && item.status !== 'info');
     const receipts = maintenance.receipts().slice(-8).reverse();
     const snapshots = maintenance.snapshots().slice().reverse();
+    const groups = modulesByPlacement(engine.getRoot(), engine.getRegistry());
     const healthText = issues.length ? issues.map((item) => `${item.status.toUpperCase()} · ${item.summary}`).join('\n') : '全部关键检查通过';
-    body.innerHTML = `<div class="card health-${escapeHtml(health.overall || 'warning')}"><div class="name">一键体检 · ${(health.overall || 'warning').toUpperCase()}</div><div class="mini">覆盖双存储后端、旧模块迁移、权威根、运行投影、包、模块、Surface、宿主监听与失败回执。报告不包含对话正文和弹药正文。</div><div class="receipt">${escapeHtml(healthText)}</div><div class="actions"><button data-action="maintenance-health-copy">一键体检并复制</button></div></div>
-      ${renderVisibilityManager()}
+    body.innerHTML = `<div class="card health-${escapeHtml(health.overall || 'warning')}"><div class="name">一键体检 · ${(health.overall || 'warning').toUpperCase()}</div><div class="mini">分别核对安装包、运行模块、日常功能、维护工具和隐藏项，不再把它们统称为“模块显示”。</div><div class="receipt">${escapeHtml(healthText)}</div><div class="actions"><button data-action="maintenance-health-copy">一键体检并复制</button></div></div>
+      <div class="section-title">维护工具</div>${renderModuleCards(groups.maintenance, '暂无维护工具')}
+      ${renderPlacementManager()}
       <div class="card"><div class="name">运行状态</div><div class="receipt">${escapeHtml(JSON.stringify(summary, null, 2))}</div><div class="actions"><button data-action="maintenance-copy">复制简要诊断</button><button data-action="receipts-clear">清空回执</button></div></div>
       <div class="card"><div class="name">最近回执</div>${receipts.length ? receipts.map((item) => `<div class="receipt pkg">${escapeHtml(JSON.stringify(item, null, 2))}</div>`).join('') : '<div class="mini">暂无回执</div>'}</div>
-      <div class="card"><div class="name">状态快照</div>${snapshots.length ? snapshots.map((item) => `<div class="pkg row"><span class="grow mini">r${item.revision} · ${escapeHtml(item.reason)}</span><button data-action="rollback" data-revision="${item.revision}">恢复</button></div>`).join('') : '<div class="mini">暂无快照</div>'}</div>` + renderModuleCards(engine.getRegistry().modules.filter((module) => moduleArea(module) === 'maintenance'));
+      <div class="card"><div class="name">状态快照</div>${snapshots.length ? snapshots.map((item) => `<div class="pkg row"><span class="grow mini">r${item.revision} · ${escapeHtml(item.reason)}</span><button data-action="rollback" data-revision="${item.revision}">恢复</button></div>`).join('') : '<div class="mini">暂无快照</div>'}</div>`;
   }
 
   function applyAppearance() {
@@ -2278,19 +2347,16 @@ function createApp(options) {
     applyAppearance();
   }
 
-  function setModuleHidden(moduleId, hidden) {
+  function setModulePlacement(moduleId, placement) {
     const current = engine.getRoot().user.moduleDisplay && engine.getRoot().user.moduleDisplay[moduleId] || {};
-    return engine.setUserPath(['moduleDisplay', moduleId], Object.assign({}, current, { hidden: !!hidden }));
-  }
-
-  function showAllHiddenModules() {
-    const hidden = hiddenModules();
-    if (!hidden.length) return { status: 'ignored', reason: 'no-hidden-modules' };
-    return engine.transact({ type: 'module-display.show-all', module_ids: hidden.map((module) => module.id) }, (candidate) => {
-      candidate.user.moduleDisplay = candidate.user.moduleDisplay || {};
-      for (const module of hidden) candidate.user.moduleDisplay[module.id] = Object.assign({}, candidate.user.moduleDisplay[module.id] || {}, { hidden: false });
-      candidate.user.revision += 1;
-    });
+    const next = Object.assign({}, current);
+    if (placement === 'hidden') next.hidden = true;
+    else {
+      next.hidden = false;
+      next.role = placement;
+      next.area = placement === 'maintenance' ? 'maintenance' : 'work';
+    }
+    return engine.setUserPath(['moduleDisplay', moduleId], next);
   }
 
   root.addEventListener('input', (event) => {
@@ -2302,23 +2368,11 @@ function createApp(options) {
     if (!button) return;
     if (button.dataset.tab) {
       tab = button.dataset.tab;
-      storage.set('dcf.ui.session.v1', { tab, selectedSurface });
+      storage.set('dcf.ui.session.v1', { tab });
       render();
       return;
     }
     const action = button.dataset.action;
-    if (action === 'surface-select') {
-      selectedSurface = button.dataset.surfaceId;
-      storage.set('dcf.ui.session.v1', { tab, selectedSurface });
-      render();
-      return;
-    }
-    if (action === 'module-visibility-open') {
-      tab = 'maintenance';
-      storage.set('dcf.ui.session.v1', { tab, selectedSurface });
-      render();
-      return;
-    }
     const card = button.closest('[data-ammo-id]');
     const item = card ? ammo.items().find((entry) => entry.id === card.dataset.ammoId) : null;
     if (action === 'ammo-extract') runAndRender(() => ammo.requestExtract(), '提取请求已发送');
@@ -2329,12 +2383,12 @@ function createApp(options) {
     else if (action === 'ammo-copy' && item) runAndRender(() => ammo.copy(item), '已复制');
     else if (action === 'ammo-update' && item) runAndRender(() => ammo.requestUpdate(item), '更新请求已发送');
     else if (action === 'ammo-delete' && item) runAndRender(() => engine.removeContent('ammo', item.id), '已删除');
-    else if (action === 'package-install') runAndRender(() => packageManager.installJson(packageDraft), '模块已安装');
+    else if (action === 'package-install') runAndRender(() => packageManager.installJson(packageDraft), '安装包已安装');
     else if (action === 'package-update') runAndRender(() => packageManager.checkUpdates(true), '更新检查完成');
     else if (action === 'package-toggle') {
       const entry = packageManager.packages().find((pkg) => pkg.package_id === button.dataset.id);
-      runAndRender(() => packageManager.setEnabled(button.dataset.id, entry && entry.enabled === false), '模块状态已更新');
-    } else if (action === 'package-uninstall') runAndRender(() => packageManager.uninstall(button.dataset.id), '模块已卸载');
+      runAndRender(() => packageManager.setEnabled(button.dataset.id, entry && entry.enabled === false), '安装包状态已更新');
+    } else if (action === 'package-uninstall') runAndRender(() => packageManager.uninstall(button.dataset.id), '安装包已卸载');
     else if (action === 'package-switch') {
       const select = Array.from(root.querySelectorAll('select[data-role="package-revision"]')).find((entry) => entry.dataset.id === button.dataset.id);
       runAndRender(() => packageManager.switchRevision(button.dataset.id, select.value), '版本已切换');
@@ -2342,11 +2396,9 @@ function createApp(options) {
       const module = engine.getRegistry().modules.find((entry) => entry.id === button.dataset.moduleId);
       const found = module && commandList(module).find((entry) => String(entry.command.id) === String(button.dataset.commandId));
       if (module && found) runAndRender(() => commandRunner.execute(module, found.command, found.block), '命令已执行');
-    } else if (action === 'module-visibility-toggle') {
-      const module = engine.getRegistry().modules.find((entry) => entry.id === button.dataset.moduleId);
-      if (module) runAndRender(() => setModuleHidden(module.id, !isModuleHidden(module)), isModuleHidden(module) ? '模块已恢复显示' : '模块已隐藏');
-    } else if (action === 'module-show-all-hidden') runAndRender(showAllHiddenModules, '所有隐藏模块已恢复显示');
-    else if (action === 'maintenance-health-copy') runAndRender(() => maintenance.copyHealthReport(), '完整体检报告已复制');
+    } else if (action === 'module-placement') {
+      runAndRender(() => setModulePlacement(button.dataset.moduleId, button.dataset.placement), '功能分类已更新');
+    } else if (action === 'maintenance-health-copy') runAndRender(() => maintenance.copyHealthReport(), '完整体检报告已复制');
     else if (action === 'maintenance-copy') runAndRender(() => maintenance.copySummary(), '简要诊断已复制');
     else if (action === 'receipts-clear') runAndRender(() => maintenance.clearReceipts(), '回执已清空');
     else if (action === 'rollback') runAndRender(() => maintenance.rollbackTo(Number(button.dataset.revision)), '状态已恢复');
