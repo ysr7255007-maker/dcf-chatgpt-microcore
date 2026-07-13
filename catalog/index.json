@@ -1,6 +1,6 @@
 {
   "schema": "dcf.catalog.v1",
-  "generated_by_version": "0.11.1",
+  "generated_by_version": "0.11.2",
   "packages": [
     {
       "package_id": "dcf.standard.ammo",
