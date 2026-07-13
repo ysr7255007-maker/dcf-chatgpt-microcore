@@ -4,7 +4,7 @@ DCF is a personally maintained ChatGPT Tampermonkey system whose value goal is a
 
 ## Current architecture
 
-DCF `0.11.2` separates the product goal from the engineering dependency:
+DCF `0.11.3` separates the product goal from the engineering dependency:
 
 ```text
 language-ammunition loop
@@ -27,9 +27,17 @@ intent or artifact
 
 ChatGPT replies and the private GitHub catalog are transports. They decode typed artifacts and enter the same transaction engine. DCF observes only newly added/current assistant replies; it does not rescan the whole conversation history.
 
-When GM storage is available it is the authoritative backend. A boot-time bridge inspects legacy page `localStorage` and safely recovers missing pre-`0.11.1` packages, modules, ammunition, settings, display data, and appearance values. The maintenance page and Tampermonkey menu provide **一键体检并复制**, which emits a privacy-safe `dcf.health.report.v1` covering both storage backends, migration coverage, root/projection integrity, packages, modules, Surfaces, Host Adapter status, and recent failures.
+When GM storage is available it is the authoritative backend. A boot-time bridge inspects legacy page `localStorage` and safely recovers missing pre-`0.11.1` packages, runtime modules, ammunition, settings, display data, and appearance values.
 
-Installed state and display state are separate. Hidden modules remain installed and executable in the runtime projection. The Functions view reports when modules are hidden, and Maintenance exposes the full visibility inventory with per-module and one-click restore controls.
+The UI and health report distinguish:
+
+- installed packages in **包管理**;
+- runtime modules in the registry;
+- daily functions in **功能**;
+- probes, diagnostics, authoring, layout and recovery tools in **维护**;
+- runtime modules intentionally hidden from both entry points.
+
+Both UI and `dcf.health.report.v2` use the same module-role resolver, so package presence and function placement cannot be confused. User placement changes are stored as `moduleDisplay` overrides and never rewrite immutable package revisions.
 
 See `docs/architecture-current.md` for the current structure and `docs/adr/status-index.md` for the canonical ADR status.
 
@@ -39,4 +47,4 @@ See `docs/architecture-current.md` for the current structure and `docs/adr/statu
 npm run verify
 ```
 
-This builds the complete `.user.js`, generates the catalog, and verifies state transactions, resource conflicts, dual-backend migration, legacy commands, health-report privacy, hidden-module observability, bounded reply intake, automatic artifact application, catalog updates, viewport containment, release integrity, and deterministic output.
+This builds the complete `.user.js`, generates the catalog, and verifies state transactions, resource conflicts, dual-backend migration, package/runtime/function separation, legacy daily/maintenance classification, health-report privacy, bounded reply intake, automatic artifact application, catalog updates, viewport containment, release integrity, and deterministic output.

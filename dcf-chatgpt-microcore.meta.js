@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         DCF ChatGPT Microcore
 // @namespace    https://chatgpt.com/
-// @version      0.11.2
-// @description  DCF modular runtime with storage bridge, one-click health report, visible hidden-module state, bounded reply intake and unified transactions.
+// @version      0.11.3
+// @description  DCF modular runtime with separated daily functions, maintenance tools, package management, accurate health reporting and bounded reply intake.
 // @updateURL    https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.meta.js
 // @downloadURL  https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.user.js
 // @supportURL   https://github.com/ysr7255007-maker/dcf-chatgpt-microcore

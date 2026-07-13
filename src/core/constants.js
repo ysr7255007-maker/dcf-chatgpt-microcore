@@ -1,6 +1,6 @@
 'use strict';
 
-const VERSION = '0.11.2';
+const VERSION = '0.11.3';
 const ROOT_KEY = 'dcf.state.root.v1';
 const SNAPSHOT_KEY = 'dcf.state.snapshots.v1';
 const RUNTIME_KEY = 'dcf.runtime.registry.v3';

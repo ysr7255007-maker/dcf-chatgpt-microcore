@@ -55,14 +55,18 @@ const reporter = createHealthReporter(engine, receipts, storage, host, REQUIRED_
 const report = reporter.report();
 const serialized = JSON.stringify(report);
 
-assert.strictEqual(report.schema, 'dcf.health.report.v1');
+assert.strictEqual(report.schema, 'dcf.health.report.v2');
 assert.strictEqual(report.overall, 'ok');
 assert.strictEqual(report.storage.primary_backend, 'gm');
 assert(report.storage.bridge, 'storage bridge missing from report');
-assert(report.comparison.current_module_ids.includes('legacy.tools'), 'legacy module missing from current inventory');
-assert.deepStrictEqual(report.comparison.missing_legacy_module_ids, []);
+assert(report.comparison.current_runtime_module_ids.includes('legacy.tools'), 'legacy module missing from runtime inventory');
+assert.deepStrictEqual(report.comparison.missing_legacy_runtime_module_ids, []);
 assert(report.packages.some((item) => item.package_id === 'legacy.tools'));
-assert(report.modules.some((item) => item.module_id === 'legacy.tools' && item.command_count === 1));
+assert(report.runtime_modules.some((item) => item.module_id === 'legacy.tools' && item.command_count === 1 && item.placement === 'daily'));
+assert(report.projection.installed_package_count >= 3);
+assert(report.projection.runtime_module_count >= 3);
+assert(report.projection.daily_function_count >= 1);
+assert(report.projection.maintenance_tool_count >= 1);
 assert.strictEqual(report.user_data.content_counts.ammo, 1);
 assert(!serialized.includes('SECRET-AMMO-BODY'), 'ammo body leaked into health report');
 assert(!serialized.includes('SECRET-COMMAND-TEXT'), 'command payload leaked into health report');
@@ -70,4 +74,4 @@ assert.strictEqual(report.privacy.conversation_text_included, false);
 assert(reporter.format().startsWith('<<<DCF_HEALTH_REPORT\n'));
 assert(reporter.format().endsWith('\nDCF_HEALTH_REPORT>>>'));
 
-console.log(JSON.stringify({ ok: true, health_inventory: true, storage_comparison: true, migration_coverage: true, host_diagnostics: true, privacy_redaction: true }, null, 2));
+console.log(JSON.stringify({ ok: true, package_inventory: true, runtime_module_inventory: true, placement_inventory: true, migration_coverage: true, host_diagnostics: true, privacy_redaction: true }, null, 2));
