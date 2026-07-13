@@ -21,7 +21,7 @@ jobs:
         with:
           node-version: '22'
       - run: python scripts/apply-conversation-environment-architecture.py
-      - name: Preserve compatibility and immutable package identities
+      - name: Preserve compatibility, immutable identities, and presentation coverage
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -40,6 +40,11 @@ jobs:
           text = text.replace("pack_id: 'dcf.ui.package-management',\n    revision: '1.1.0',\n    title: '环境构成管理',\n    description: '提供可自更新的中文能力构成总览、revision 控制和工件安装入口。'", "pack_id: 'dcf.ui.package-management',\n    revision: '1.0.0',\n    title: '包管理界面',\n    description: '提供可自更新的中文包总览、版本控制和安装入口。'")
           text = text.replace("kind: 'composition',\n        projection: 'environment:capabilities',\n        tab_label: '构成',\n        title: '期望环境构成'", "kind: 'package-management',\n        projection: 'environment:capabilities',\n        tab_label: '包管理',\n        title: '安装包管理'")
           packages.write_text(text)
+
+          manager = Path('src/modules/package-manager.js')
+          text = manager.read_text()
+          text = text.replace("  else if (viewTitles.some(hasCjk)) description = `提供「${viewTitles.filter(hasCjk).slice(0, 2).join('、')}」环境视图。`;\n  else if (moduleTitles.some(hasCjk))", "  else if (viewTitles.some(hasCjk)) description = `提供「${viewTitles.filter(hasCjk).slice(0, 2).join('、')}」环境视图。`;\n  else if (surfaceTitles.some(hasCjk)) description = `提供「${surfaceTitles.filter(hasCjk).slice(0, 2).join('、')}」界面入口。`;\n  else if (contentTitles.some(hasCjk)) description = `提供「${contentTitles.filter(hasCjk).slice(0, 2).join('、')}」内容类型。`;\n  else if (moduleTitles.some(hasCjk))")
+          manager.write_text(text)
           PY
       - name: Verify upgraded source
         shell: bash
@@ -47,7 +52,7 @@ jobs:
           set +e
           npm run verify > /tmp/dcf-verify.log 2>&1
           status=$?
-          tail -n 200 /tmp/dcf-verify.log > .environment-verify.log
+          tail -n 220 /tmp/dcf-verify.log > .environment-verify.log
           exit "$status"
       - name: Publish failure evidence
         if: failure()
