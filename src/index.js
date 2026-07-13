@@ -36,20 +36,25 @@ function ensureProductBaseline(root) {
 }
 
 function boot(api = globalThis) {
+  const windowObject = api.window || (typeof window !== 'undefined' ? window : null);
   const storage = createStorage(api);
   const receiptStore = createReceiptStore(storage);
   let initialRoot = loadOrMigrate(storage, STANDARD_PACKS);
   initialRoot = ensureProductBaseline(initialRoot);
   const engine = createTransactionEngine(storage, receiptStore, { initialRoot });
   engine.initialize();
-  const host = createChatGPTHost(api.window || window);
+  const host = createChatGPTHost(windowObject);
   const effects = createEffectRunner(host, receiptStore);
   const catalog = createCatalogTransport(storage, engine, api);
   const ammo = createAmmoModule(engine, effects);
   const packageManager = createPackageManager(engine, catalog);
-  const health = createHealthReporter(engine, receiptStore, storage, host, REQUIRED_PRODUCT_PACKAGES);
-  const maintenance = createMaintenanceModule(engine, receiptStore, effects, storage, health);
   let app = null;
+  const health = createHealthReporter(engine, receiptStore, storage, host, REQUIRED_PRODUCT_PACKAGES, {
+    windowObject,
+    getApp: () => app,
+    getRuntime: () => api.__DCF_RUNTIME__ || null
+  });
+  const maintenance = createMaintenanceModule(engine, receiptStore, effects, storage, health);
   const commandRunner = createCommandRunner(engine, effects, receiptStore, () => {
     if (!app || !app.shell) return null;
     const rect = app.shell.getBoundingClientRect();
@@ -74,11 +79,11 @@ function boot(api = globalThis) {
 
   if (typeof api.GM_registerMenuCommand === 'function') {
     api.GM_registerMenuCommand('DCF：检查模块更新', () => catalog.check({ force: true }).then(() => app.render()));
-    api.GM_registerMenuCommand('DCF：一键体检并复制', () => maintenance.copyHealthReport());
+    api.GM_registerMenuCommand('DCF：一键 Runtime 体检并复制', () => maintenance.copyHealthReport());
     api.GM_registerMenuCommand('DCF：复制简要诊断', () => maintenance.copySummary());
   }
 
-  api.__DCF_RUNTIME__ = { version: VERSION, engine, host, app, catalog, receiptStore, health };
+  api.__DCF_RUNTIME__ = { version: VERSION, engine, host, app, catalog, receiptStore, health, maintenance };
   return api.__DCF_RUNTIME__;
 }
 
