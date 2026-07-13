@@ -1,0 +1,36 @@
+
+> dcf-chatgpt-microcore@0.13.0 verify
+> npm run build && npm test
+
+
+> dcf-chatgpt-microcore@0.13.0 build
+> node scripts/build-userscript.js
+
+{
+  "ok": true,
+  "version": "0.13.0",
+  "modules": 24,
+  "bytes": 165376,
+  "catalog_packages": 4
+}
+
+> dcf-chatgpt-microcore@0.13.0 test
+> node tests/dcf-conversation-environment.unit.test.js && node tests/dcf-capability-reconciliation.unit.test.js && node tests/dcf-declarative-ui-package.unit.test.js && node tests/dcf-core-architecture.unit.test.js && node tests/dcf-artifact-transaction.unit.test.js && node tests/dcf-command-runtime.unit.test.js && node tests/dcf-migration.unit.test.js && node tests/dcf-health-report.unit.test.js && node tests/dcf-module-visibility.unit.test.js && node tests/dcf-package-management-ui.unit.test.js && node tests/dcf-host-bounded-intake.unit.test.js && node tests/dcf-catalog.unit.test.js && node tests/dcf-viewport-fence.unit.test.js && node tests/dcf-release.integration.test.js && node tests/dcf-build-determinism.unit.test.js
+
+{
+  "ok": true,
+  "environment_facade": true,
+  "unified_environment_intents": true,
+  "environment_reconciler_path": true,
+  "finite_resource_graph": true,
+  "package_owned_four_views": true,
+  "profiles_and_restore_are_environment_transitions": true
+}
+AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
++ actual - expected
+
++ 'dcf.environment.reconcile.result.v1'
+- 'dcf.reconcile.result.v1'
+       ^
+
+    at /home/runner/work/dcf-chatgpt-microcore/dcf-chatgpt-microcore/tests/dcf-capability-reconciliation.unit.test.js:33:10
