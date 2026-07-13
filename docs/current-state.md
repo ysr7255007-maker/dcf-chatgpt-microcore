@@ -16,9 +16,9 @@ Updated: 2026-07-13
 
 ## 当前版本
 
-当前候选版本：`0.12.0`
+当前候选版本：`0.13.0`
 
-`0.11.4` 保留了 0.11.3 已正确完成的包管理、日常功能和维护工具分区，移除错误的 hidden 产品语义，并把体检重建为真实浏览器 Runtime 偏差报告。`0.11.5` 修正 Runtime DOM 入口采样误报。`0.11.6` 聚焦包管理的中文可读性和紧凑总览，不改变包身份、事务、迁移或 Runtime 架构。
+`0.11.4` 保留包管理、日常功能和维护工具分区，移除错误的 hidden 产品语义，并把体检重建为真实浏览器 Runtime 偏差报告。`0.11.5` 修正 Runtime DOM 入口采样误报。`0.11.6` 聚焦包管理中文可读性和紧凑总览。`0.12.0` 统一按值/按引用能力包更新。`0.13.0` 将系统整体收拢为期望对话环境、typed intent、有限资源族、环境投影和 Profile/恢复架构。
 
 ## 0.11.4 Runtime 体检与折叠模型
 
@@ -67,23 +67,23 @@ Updated: 2026-07-13
 
 - `npm run verify`;
 - `node --check dcf-chatgpt-microcore.user.js`;
-- package presentation derives stable Chinese titles and descriptions without changing package identity;
-- package version, switch, enable/disable and uninstall controls remain operational in one compact band;
-- legacy hidden metadata remains discoverable;
-- daily/maintenance roles and fold state remain separate;
-- folding never changes authoritative state;
-- healthy Runtime report is diff-only;
-- duplicate host, storage/memory divergence, missing real DOM entry, stale observer, missing composer and recent failures produce explicit deviations;
-- Runtime report preserves privacy;
-- dual-backend bridge, bounded Host Adapter, catalog, viewport and deterministic release tests.
+- Environment Snapshot derives from the single root and current registry;
+- persistent production controls route through Environment Reconciler;
+- content/action/view/style/policy resource graph has stable ownership and observation contracts;
+- all four main views are package-owned while Core retains safe fallback rendering;
+- Profiles do not copy user ammo bodies and activation/restore remain atomic environment transitions;
+- package presentation remains readable without changing immutable package identity;
+- legacy hidden metadata remains discoverable and fold state remains disposable UI session;
+- healthy Runtime report remains diff-only and privacy filtered;
+- dual-backend bridge, bounded Host Adapter, catalog, viewport and deterministic release tests remain green.
 
 ## User checkpoint after release
 
-1. update Tampermonkey to `0.11.6` and refresh ChatGPT;
-2. open `包管理` and confirm each package uses a readable Chinese title and one-line function description;
-3. confirm the English package ID remains visible only as a smaller technical identifier;
-4. confirm single-version packages show a compact version label, while multi-version packages keep version selection and `切换`;
-5. confirm `启用/停用`、`切换`、`卸载` stay together in the package operation band and the page can be scanned globally;
+1. update Tampermonkey to `0.13.0` and refresh ChatGPT;
+2. confirm the four tabs remain available and use package-provided labels/order;
+3. open `维护 -> 环境 Profile`，保存一个当前环境，修改发射方式或界面组织后再激活该 Profile，确认恢复但弹药正文未被复制或覆盖；
+4. run a module command that changes shell appearance and confirm it still applies normally;
+5. open `包管理` and confirm existing package names, compact controls and immutable revisions remain intact;
 6. run `维护 -> 一键 Runtime 体检` and paste the complete `DCF_RUNTIME_HEALTH` block if deviations are present.
 
 ## Deferred to phase two
@@ -102,8 +102,10 @@ ChatGPT historical-message virtualization, turn-window rendering, DOM/memory das
 ## 0.13.0 期望对话环境
 
 - 新增只读 `dcf.environment.snapshot.v1`，不改变单一权威根。
-- 持久变化统一为 `dcf.intent.v1` Environment Intent。
+- 持久变化统一为 `dcf.intent.v1` Environment Intent；一次性 Host Effect 继续独立。
 - Package Reconciler 提升为 Environment Reconciler；包、内容、偏好、界面组织、Profile 和恢复共享迁移链路。
+- 生产入口中的包管理、弹药增删、设置、外观、模块分区、Profile 和恢复全部经 Reconciler，不保留业务旁路。
 - registry 输出 content/action/view/style/policy 资源图与观察契约。
-- 弹药、功能、构成、维护成为包拥有的四种环境投影。
+- 弹药、功能、包管理、维护成为包拥有的四种环境投影。
 - Environment Profile 保存包选择、政策和产品组织，不复制用户弹药正文。
+- Runtime API 的 `environment` 是动态只读 Facade，不是启动时静态快照。
