@@ -55,9 +55,9 @@ function classifyModule(root, registry, module) {
   if (LEGACY_DAILY_MODULE_IDS.has(id)) return { placement: 'daily', source: 'legacy-product-map' };
 
   const display = projectedDisplay(registry, id);
+  if (display.hidden === true) return { placement: 'hidden', source: 'declaration' };
   const declared = declaredRole(module, display);
   if (declared) return { placement: declared, source: 'declaration' };
-  if (display.hidden === true) return { placement: 'hidden', source: 'declaration' };
   return { placement: 'daily', source: 'default' };
 }
 
