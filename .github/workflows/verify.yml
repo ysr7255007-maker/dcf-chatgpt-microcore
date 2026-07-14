@@ -20,13 +20,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Apply stateful command feedback
+      - name: Apply release and package state contracts
         run: |
           gzip -dc scripts/stateful-step1.py.gz > /tmp/stateful-step1.py
-          gzip -dc scripts/stateful-step2.py.gz > /tmp/stateful-step2.py
-          gzip -dc scripts/stateful-step3.py.gz > /tmp/stateful-step3.py
           python /tmp/stateful-step1.py
+      - name: Apply UI state renderer and Runtime wiring
+        run: |
+          gzip -dc scripts/stateful-step2.py.gz > /tmp/stateful-step2.py
           python /tmp/stateful-step2.py
+      - name: Apply state feedback documentation
+        run: |
+          gzip -dc scripts/stateful-step3.py.gz > /tmp/stateful-step3.py
           python /tmp/stateful-step3.py
       - run: npm run verify
       - run: node --check dcf-chatgpt-microcore.user.js
