@@ -27,6 +27,14 @@ function createEffectRunner(host, receiptStore, performanceController) {
         if (!performanceController) throw new Error('conversation performance controller unavailable');
         const report = `<<<DCF_CONVERSATION_PERFORMANCE\n${JSON.stringify(performanceController.diagnostics(), null, 2)}\nDCF_CONVERSATION_PERFORMANCE>>>`;
         result = await host.copy(report);
+      } else if (effect.type === 'conversation.performance.attribution.start') {
+        if (!performanceController) throw new Error('conversation performance controller unavailable');
+        result = performanceController.startAttribution({ duration_ms: Number(effect.duration_ms || 60000) });
+      } else if (effect.type === 'conversation.performance.attribution.report') {
+        if (!performanceController) throw new Error('conversation performance controller unavailable');
+        const attribution = effect.finish === false ? performanceController.attributionReport() : performanceController.finishAttribution('manual');
+        const report = `<<<DCF_CONVERSATION_PERFORMANCE_ATTRIBUTION\n${JSON.stringify(attribution, null, 2)}\nDCF_CONVERSATION_PERFORMANCE_ATTRIBUTION>>>`;
+        result = await host.copy(report);
       } else throw new Error(`unsupported effect ${effect.type}`);
       receiptStore.append({ schema: 'dcf.effect.receipt.v1', effect: safeEffect(effect), context, status: 'ok', result, duration_ms: Date.now() - started });
       return { ok: true, result };
