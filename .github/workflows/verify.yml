@@ -5,17 +5,29 @@ on:
   push:
     branches:
       - main
+      - feature/canonical-module-supersession
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   verify:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: feature/canonical-module-supersession
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - run: python scripts/apply-module-supersession-upgrade.py
       - run: npm run verify
       - run: node --check dcf-chatgpt-microcore.user.js
+      - name: Commit implementation and generated release artifacts
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add README.md package.json src tests docs dcf-chatgpt-microcore.user.js dcf-chatgpt-microcore.meta.js catalog
+          git diff --cached --quiet || git commit -m 'Implement canonical module supersession and consolidate ammo workbenches'
+          git push origin HEAD:feature/canonical-module-supersession
