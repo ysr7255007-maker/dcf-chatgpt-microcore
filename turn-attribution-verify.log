@@ -1,0 +1,65 @@
+
+> dcf-chatgpt-microcore@0.18.0 test
+> node tests/dcf-ammo-protocol.unit.test.js && node tests/dcf-module-supersession.unit.test.js && node tests/dcf-supersession-health.unit.test.js && node tests/dcf-conversation-performance.unit.test.js && node tests/dcf-performance-attribution.unit.test.js && node tests/dcf-conversation-turn-attribution.unit.test.js && node tests/dcf-conversation-environment.unit.test.js && node tests/dcf-capability-reconciliation.unit.test.js && node tests/dcf-declarative-ui-package.unit.test.js && node tests/dcf-core-architecture.unit.test.js && node tests/dcf-artifact-transaction.unit.test.js && node tests/dcf-command-runtime.unit.test.js && node tests/dcf-migration.unit.test.js && node tests/dcf-health-report.unit.test.js && node tests/dcf-module-visibility.unit.test.js && node tests/dcf-package-management-ui.unit.test.js && node tests/dcf-host-bounded-intake.unit.test.js && node tests/dcf-catalog.unit.test.js && node tests/dcf-viewport-fence.unit.test.js && node tests/dcf-release.integration.test.js && node tests/dcf-build-determinism.unit.test.js
+
+{
+  "ok": true,
+  "lightweight_invocation_marker": true,
+  "contextual_reinterpretation_protocol": true,
+  "substantive_update_contract": true,
+  "package_owned_protocol_policy": true,
+  "raw_copy_preserved": true
+}
+{
+  "ok": true,
+  "exact_id_supersession": true,
+  "fallback_preserved": true,
+  "conflicts_rejected": true,
+  "canonical_ammo_workbench": true,
+  "direct_create_edit_search": true,
+  "historical_packages_folded": true
+}
+{
+  "ok": true,
+  "superseded_legacy_module_is_not_a_health_gap": true,
+  "folded_packages_remain_observable": true
+}
+{
+  "ok": true,
+  "safe_render_skipping": true,
+  "reversible_window_mode": true,
+  "streaming_aware": true,
+  "batch_reveal": true,
+  "long_task_observation": true,
+  "no_react_node_removal": true,
+  "reconciled_policy": true,
+  "no_idle_full_rescan": true,
+  "streaming_safe_manual_reveal": true,
+  "style_restoration_exercised": true,
+  "long_animation_frame_attribution": true
+}
+node:assert:150
+  throw new AssertionError(obj);
+  ^
+
+AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+'1.2.0' !== '1.1.0'
+
+    at Object.<anonymous> (/home/runner/work/dcf-chatgpt-microcore/dcf-chatgpt-microcore/tests/dcf-performance-attribution.unit.test.js:56:8)
+    at Module._compile (node:internal/modules/cjs/loader:1781:14)
+    at Object..js (node:internal/modules/cjs/loader:1913:10)
+    at Module.load (node:internal/modules/cjs/loader:1505:32)
+    at Function._load (node:internal/modules/cjs/loader:1309:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)
+    at node:internal/main/run_main_module:36:49 {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: '1.2.0',
+  expected: '1.1.0',
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+
+Node.js v22.23.1
