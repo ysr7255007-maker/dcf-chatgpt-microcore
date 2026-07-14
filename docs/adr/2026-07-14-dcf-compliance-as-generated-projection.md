@@ -21,6 +21,14 @@ DCF 当前把正式性分散在源码、生成 userscript、Catalog、包 revisi
 - AI 的职责改为实现功能、填写最小 change manifest、处理无法自动判定的例外和解释失败；合规工具负责派生、检查和生成正式材料。
 - 快速修改路径允许先修改最小源码和相关测试，随后一次命令自动补齐所有适用合规产物并拒绝不一致提交。
 
+## Execution and location
+
+- 合规逻辑及其模板必须随仓库版本化，放在 `scripts/` 和必要的机器可读配置中；网页沙箱、Codex 工作区或本地 checkout 只是临时执行器，不保存唯一规则。
+- GitHub Actions 是独立复验层：PR 和 main push 在干净 checkout 中执行合规检查、构建与测试，避免依赖某个 AI 会话声称已经完成。
+- 初期 Action 保持只读，只校验生成物和文档投影是否需要更新；需要自动补齐时，优先由有仓库 checkout 的执行器运行同一脚本并提交结果。
+- 只有只读模式仍造成明显摩擦时，才考虑让受限 GitHub Action 对同仓库分支自动提交生成结果；不得为此引入通用工作流平台或新的长期状态。
+- ChatGPT 的 GitHub 连接器可用于读取和修改文件、创建分支/提交/PR、观察 CI 结果和处理失败，但它不是 shell 执行环境，不能成为运行任意仓库脚本的唯一实现。
+
 ## Intended workflow
 
 ```text
@@ -53,6 +61,41 @@ DCF 当前把正式性分散在源码、生成 userscript、Catalog、包 revisi
 - PR summary 的事实部分；
 - ADR 索引生成和链接有效性；
 - 复杂度预算，包括手写源码增长、触及层数、状态新增和变更扩散面。
+
+## Initial compliance audit
+
+### 保留为强制保护
+
+- 源码与生成发布物分离并确定性构建；
+- 自动测试、userscript 语法检查和 GitHub 独立 CI；
+- 单一权威状态、可恢复提交、用户数据与包默认值分离；
+- Host 有界观察、禁止远程 JavaScript 和隐私边界；
+- 真正改变长期架构决策时保留 ADR。
+
+### 改为自动生成或自动校验
+
+- 版本号、Catalog、hash、package revision 与 userscript/meta 一致性；
+- README、architecture-current 和 current-state 中的当前版本、包、模块、命令、测试与发布事实；
+- ADR status index；
+- PR 的文件变化、测试结果、生成物与兼容性事实；
+- 快速修改是否越界到 Core、持久状态、公共契约或迁移。
+
+### 当前偏多或重复
+
+- README、architecture-current、current-state、basic consensus 和 maintenance skill 同时复述当前架构；
+- README 和 current-state 按版本重复保存已经由 ADR、Git 历史和 release diff 表达的变化；
+- maintenance skill 同时承担操作纪律、架构说明、产品共识和版本新增规则；
+- 普通局部修复被要求同步多份长期文档并新增 ADR；
+- PR summary 由 AI 手工重述测试和生成物事实。
+
+### 建议收缩后的职责
+
+- `README.md`：产品入口、安装/构建命令和稳定边界；
+- `architecture-current.md`：一份当前结构解释，机器事实使用生成块；
+- `current-state.md`：只保存当前未完成事项、浏览器现场和下一步，不保存完整版本史；
+- `dcf-maintenance-skill.md`：只保存维护动作与升级判定，不复述完整架构；
+- `dcf-basic-consensus-prompt.md`：只保存价值目标和少量不可违背边界；
+- ADR：只保存真实决策及其变化；status index 自动生成。
 
 ## Reconsideration condition
 
