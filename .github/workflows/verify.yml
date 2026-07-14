@@ -20,24 +20,21 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Apply release and package state contracts
+      - name: Apply stateful command feedback
         run: |
           gzip -dc scripts/stateful-step1.py.gz > scripts/.stateful-step1.py
-          python scripts/.stateful-step1.py
-      - name: Apply UI state renderer and Runtime wiring
-        run: |
           gzip -dc scripts/stateful-step2.py.gz > scripts/.stateful-step2.py
-          python scripts/.stateful-step2.py
-      - name: Apply state feedback documentation
-        run: |
           gzip -dc scripts/stateful-step3.py.gz > scripts/.stateful-step3.py
+          python scripts/.stateful-step1.py
+          python scripts/.stateful-step2.py
           python scripts/.stateful-step3.py
-      - run: npm run verify
-      - run: node --check dcf-chatgpt-microcore.user.js
-      - name: Commit implementation and generated artifacts
+      - name: Build and persist candidate
         run: |
+          npm run build
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add README.md package.json src tests docs dcf-chatgpt-microcore.user.js dcf-chatgpt-microcore.meta.js catalog
           git diff --cached --quiet || git commit -m 'Add visible state feedback to stateful controls'
           git push origin HEAD:feature/stateful-command-feedback
+      - run: npm test
+      - run: node --check dcf-chatgpt-microcore.user.js
