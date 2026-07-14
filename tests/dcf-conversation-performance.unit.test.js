@@ -43,6 +43,8 @@ assert(commandSource.includes('conversation.performance.configure'));
 assert(commandSource.includes("path: ['preferences', 'conversation_performance']"), 'performance mode bypasses Environment Reconciler');
 const effectSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'runtime', 'effects.js'), 'utf8');
 assert(effectSource.includes('DCF_CONVERSATION_PERFORMANCE'));
+const healthSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'modules', 'health.js'), 'utf8');
+assert(healthSource.includes('performanceExpected && !performanceState'), 'health requires the controller even when its package is absent');
 
 console.log(JSON.stringify({
   ok: true,
