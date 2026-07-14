@@ -79,6 +79,7 @@ function createHealthReporter(engine, receiptStore, storage, host, requiredPacka
     const registry = engine.getRegistry();
     const runtimeObject = typeof runtime.getRuntime === 'function' ? runtime.getRuntime() : null;
     const app = typeof runtime.getApp === 'function' ? runtime.getApp() : null;
+    const performanceState = typeof runtime.getPerformance === 'function' ? runtime.getPerformance() : null;
     const deviations = [];
 
     function add(code, severity, subject, expected, actual, evidence, explanation) {
@@ -100,6 +101,11 @@ function createHealthReporter(engine, receiptStore, storage, host, requiredPacka
       add('runtime_global_missing', 'error', '__DCF_RUNTIME__', 'the current userscript instance publishes its runtime object', 'missing', null, 'The browser page does not expose the runtime object created at the end of DCF boot.');
     } else if (runtimeObject.version !== VERSION) {
       add('runtime_version_mismatch', 'error', '__DCF_RUNTIME__.version', VERSION, runtimeObject.version || null, null, 'The in-memory runtime and the installed userscript source are not the same version.');
+    }
+    if (!performanceState) {
+      add('runtime_conversation_performance_missing', 'error', 'conversation-performance', 'the current Runtime exposes the long-conversation performance controller', 'missing', null, 'The required performance package exists without its trusted Host controller.');
+    } else if (performanceState.mode !== 'off' && performanceState.turn_count >= performanceState.activation_turns && !performanceState.content_visibility_supported) {
+      add('runtime_content_visibility_unsupported', 'warning', 'conversation-performance', 'the browser supports content-visibility:auto', false, { mode: performanceState.mode }, 'The safe rendering optimization cannot be applied by this browser; window mode remains reversible but may provide less benefit.');
     }
 
     if (ui) {
@@ -198,7 +204,11 @@ function createHealthReporter(engine, receiptStore, storage, host, requiredPacka
         version: VERSION,
         route_kind: hostDiagnostics && hostDiagnostics.route_kind || null,
         primary_backend: storage.primaryBackend,
-        current_tab: ui && ui.current_tab || null
+        current_tab: ui && ui.current_tab || null,
+        conversation_performance: performanceState ? {
+          mode: performanceState.mode, turn_count: performanceState.turn_count, optimized_count: performanceState.optimized_count, hidden_count: performanceState.hidden_count,
+          selector_strategy: performanceState.selector_strategy, long_tasks_60s: performanceState.long_tasks_60s, long_task_duration_ms_60s: performanceState.long_task_duration_ms_60s
+        } : null
       },
       deviations,
       privacy: {
@@ -206,7 +216,8 @@ function createHealthReporter(engine, receiptStore, storage, host, requiredPacka
         ammo_bodies_included: false,
         package_payloads_included: false,
         command_arguments_included: false,
-        authentication_data_included: false
+        authentication_data_included: false,
+        message_bodies_included: false
       }
     };
   }

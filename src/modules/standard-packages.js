@@ -1,6 +1,6 @@
 'use strict';
 
-const REQUIRED_PRODUCT_PACKAGES = ['dcf.standard.ammo', 'dcf.ui.package-management', 'dcf.ui.runtime-workspace'];
+const REQUIRED_PRODUCT_PACKAGES = ['dcf.standard.ammo', 'dcf.ui.package-management', 'dcf.ui.runtime-workspace', 'dcf.standard.conversation-performance'];
 
 const STANDARD_PACKS = [
   {
@@ -70,6 +70,37 @@ const STANDARD_PACKS = [
       styles: [{ id: 'package-management-compact', css: '.package-list.density-compact .package-card{padding:7px 0}.package-list.density-compact .package-description{line-height:1.3}' }]
     },
     modules: []
+  },
+  {
+    schema: 'dcf.module_pack.v1',
+    pack_id: 'dcf.standard.conversation-performance',
+    revision: '1.0.0',
+    title: '长对话减负',
+    description: '降低 ChatGPT 长对话的浏览器渲染负担，并提供可逆的历史消息窗口。',
+    contributes: {
+      policies: {
+        conversation_performance: {
+          mode: 'safe', activation_turns: 24, keep_recent: 40, reveal_batch: 20,
+          settle_ms: 1000, top_reveal_px: 220, intrinsic_block_px: 480
+        }
+      },
+      module_display: { 'dcf.standard.conversation-performance': { area: 'work', role: 'daily', order: 40 } }
+    },
+    modules: [{
+      id: 'dcf.standard.conversation-performance', title: '长对话减负', version: '1.0.0', kind: 'conversation-performance',
+      blocks: [
+        { id: 'mode', title: '减负模式', commands: [
+          { id: 'safe', label: '透明减负（推荐）', steps: [{ call: 'conversation.performance.configure', with: { mode: 'safe' } }] },
+          { id: 'window40', label: '窗口化：最近 40 条', steps: [{ call: 'conversation.performance.configure', with: { mode: 'window', keep_recent: 40 } }] },
+          { id: 'window20', label: '窗口化：最近 20 条', steps: [{ call: 'conversation.performance.configure', with: { mode: 'window', keep_recent: 20 } }] },
+          { id: 'off', label: '恢复全部并关闭', steps: [{ call: 'conversation.performance.configure', with: { mode: 'off' } }] }
+        ] },
+        { id: 'history', title: '历史消息与观察', commands: [
+          { id: 'reveal', label: '展开上一批', steps: [{ call: 'conversation.performance.reveal' }] },
+          { id: 'report', label: '复制性能摘要', steps: [{ call: 'conversation.performance.report' }] }
+        ] }
+      ]
+    }]
   },
   {
     schema: 'dcf.module_pack.v1',

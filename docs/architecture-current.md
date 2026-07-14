@@ -1,7 +1,7 @@
 # DCF 当前架构
 
 Updated: 2026-07-14  
-Current release: `0.15.0`
+Current release: `0.16.0`
 
 ## 1. 价值与工程关系
 
@@ -135,3 +135,21 @@ ChatGPT 历史消息虚拟化仍属于二期。
 `dcf.standard.ammo@1.3.0` 将 `dcf.ammo_workbench`、`dcf.ammo_workspace.unified`、`dcf.language_ammo` 收口到 `dcf.ammo.module`。正式语言弹药工作台同时提供提取、新建、编辑、查找、语境化发射、复制、实质更新和删除；因此退出的是过渡入口，不是仍未接管的能力。
 
 Runtime 体检把显式替代视为可解释的退出，不再将其误报为迁移投影缺口；包视图观察同时统计主列表与折叠历史区。
+
+
+## 13. 长对话浏览器减负（0.16.0）
+
+社区应对长对话卡顿的实践主要分为两层：浏览器原生的 `content-visibility` 离屏跳过，以及把旧消息节点替换成占位符的激进虚拟化。前者能跳过离屏内容的布局和绘制，并在 `auto` 模式下保留查找、键盘导航与可访问性；后者减负更强，但会把 React 管理节点移出 DOM，存在恢复、流式输出和宿主更新冲突。
+
+DCF 采用分级治理：
+
+- 默认 `safe`：达到 24 个消息 turn 后，仅对稳定的顶层 turn 应用 `content-visibility:auto` 与 `contain-intrinsic-size`；
+- 显式 `window`：用户选择保留最近 40 或 20 条，旧 turn 仅被可逆地设为不参与显示，不被删除、替换、克隆或改写；
+- 流式输出期间不执行窗口重排，静默期后再协调；
+- 滚动到顶部自动展开一批，也可从 DCF 功能页手动展开或恢复全部；
+- 所有持久模式选择写入 `preferences.conversation_performance`，经 Environment Reconciler 原子提交；Host controller 只是确定性执行投影；
+- Runtime 观察只记录 turn 数、隐藏数、选择器策略、执行耗时和最近 60 秒 long-task 聚合，不读取或输出消息正文。
+
+该能力只处理浏览器端布局/绘制与交互负担。模型上下文压缩、对话总长度上限、服务端首 token 延迟、网络或第三方扩展冲突仍属于其他问题。
+
+Research basis: MDN `content-visibility` documentation; web.dev rendering guidance; community projects `povariha123/chatgpt-long-chat-lag-fix` and `YashRana738/GptOptimum`.

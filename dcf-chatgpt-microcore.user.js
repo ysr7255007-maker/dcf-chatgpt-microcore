@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DCF ChatGPT Microcore
 // @namespace    https://chatgpt.com/
-// @version      0.15.0
+// @version      0.16.0
 // @description  DCF conversation-environment runtime with unified intents, resources, profiles, reconciliation and independent Runtime observation.
 // @updateURL    https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.meta.js
 // @downloadURL  https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.user.js
@@ -112,7 +112,7 @@ module.exports = {
 "src/core/constants.js":function(module,exports,require){
 'use strict';
 
-const VERSION = '0.15.0';
+const VERSION = '0.16.0';
 const ROOT_KEY = 'dcf.state.root.v1';
 const SNAPSHOT_KEY = 'dcf.state.snapshots.v1';
 const RUNTIME_KEY = 'dcf.runtime.registry.v3';
@@ -1544,7 +1544,7 @@ function safeEffect(effect) {
   return copy;
 }
 
-function createEffectRunner(host, receiptStore) {
+function createEffectRunner(host, receiptStore, performanceController) {
   async function run(effect, context = {}) {
     const started = Date.now();
     try {
@@ -1553,7 +1553,14 @@ function createEffectRunner(host, receiptStore) {
       else if (effect.type === 'composer.send') result = await host.insertComposer(String(effect.text || ''), { send: true });
       else if (effect.type === 'clipboard.write') result = await host.copy(String(effect.text || ''));
       else if (effect.type === 'notification') result = await host.notify(String(effect.text || 'DCF'));
-      else throw new Error(`unsupported effect ${effect.type}`);
+      else if (effect.type === 'conversation.performance.reveal') {
+        if (!performanceController) throw new Error('conversation performance controller unavailable');
+        result = performanceController.revealPreviousBatch();
+      } else if (effect.type === 'conversation.performance.report') {
+        if (!performanceController) throw new Error('conversation performance controller unavailable');
+        const report = `<<<DCF_CONVERSATION_PERFORMANCE\n${JSON.stringify(performanceController.diagnostics(), null, 2)}\nDCF_CONVERSATION_PERFORMANCE>>>`;
+        result = await host.copy(report);
+      } else throw new Error(`unsupported effect ${effect.type}`);
       receiptStore.append({ schema: 'dcf.effect.receipt.v1', effect: safeEffect(effect), context, status: 'ok', result, duration_ms: Date.now() - started });
       return { ok: true, result };
     } catch (error) {
@@ -1642,6 +1649,13 @@ function createCommandRunner(engine, effectRunner, receiptStore, shellObserver, 
       result = environmentIntent({ type: 'environment.resource.upsert', resource_type: String(args.type || 'ammo'), resource_id: String(item.id || ''), source: { module_id: context.module_id, command_id: context.command_id } }, { value: item });
     } else if (call === 'content.remove') {
       result = environmentIntent({ type: 'environment.resource.remove', resource_type: String(args.type || 'ammo'), resource_id: String(args.id || ''), source: { module_id: context.module_id, command_id: context.command_id } });
+    } else if (call === 'conversation.performance.configure') {
+      const current = clone(engine.getRoot().user.preferences && engine.getRoot().user.preferences.conversation_performance || engine.getRegistry().policies && engine.getRegistry().policies.conversation_performance || {});
+      result = environmentIntent({ type: 'environment.user.set', path: ['preferences', 'conversation_performance'], source: { module_id: context.module_id, command_id: context.command_id } }, { value: Object.assign(current, args) });
+    } else if (call === 'conversation.performance.reveal') {
+      result = await effectRunner.run({ type: 'conversation.performance.reveal' }, context);
+    } else if (call === 'conversation.performance.report') {
+      result = await effectRunner.run({ type: 'conversation.performance.report' }, context);
     } else if (call === 'composer.replace' || call === 'composer.insert') {
       result = await effectRunner.run({ type: 'composer.insert', text: String(args.text || '') }, context);
     } else if (call === 'composer.send') {
@@ -2046,7 +2060,7 @@ module.exports = { createChatGPTHost };
 "src/modules/standard-packages.js":function(module,exports,require){
 'use strict';
 
-const REQUIRED_PRODUCT_PACKAGES = ['dcf.standard.ammo', 'dcf.ui.package-management', 'dcf.ui.runtime-workspace'];
+const REQUIRED_PRODUCT_PACKAGES = ['dcf.standard.ammo', 'dcf.ui.package-management', 'dcf.ui.runtime-workspace', 'dcf.standard.conversation-performance'];
 
 const STANDARD_PACKS = [
   {
@@ -2116,6 +2130,37 @@ const STANDARD_PACKS = [
       styles: [{ id: 'package-management-compact', css: '.package-list.density-compact .package-card{padding:7px 0}.package-list.density-compact .package-description{line-height:1.3}' }]
     },
     modules: []
+  },
+  {
+    schema: 'dcf.module_pack.v1',
+    pack_id: 'dcf.standard.conversation-performance',
+    revision: '1.0.0',
+    title: '长对话减负',
+    description: '降低 ChatGPT 长对话的浏览器渲染负担，并提供可逆的历史消息窗口。',
+    contributes: {
+      policies: {
+        conversation_performance: {
+          mode: 'safe', activation_turns: 24, keep_recent: 40, reveal_batch: 20,
+          settle_ms: 1000, top_reveal_px: 220, intrinsic_block_px: 480
+        }
+      },
+      module_display: { 'dcf.standard.conversation-performance': { area: 'work', role: 'daily', order: 40 } }
+    },
+    modules: [{
+      id: 'dcf.standard.conversation-performance', title: '长对话减负', version: '1.0.0', kind: 'conversation-performance',
+      blocks: [
+        { id: 'mode', title: '减负模式', commands: [
+          { id: 'safe', label: '透明减负（推荐）', steps: [{ call: 'conversation.performance.configure', with: { mode: 'safe' } }] },
+          { id: 'window40', label: '窗口化：最近 40 条', steps: [{ call: 'conversation.performance.configure', with: { mode: 'window', keep_recent: 40 } }] },
+          { id: 'window20', label: '窗口化：最近 20 条', steps: [{ call: 'conversation.performance.configure', with: { mode: 'window', keep_recent: 20 } }] },
+          { id: 'off', label: '恢复全部并关闭', steps: [{ call: 'conversation.performance.configure', with: { mode: 'off' } }] }
+        ] },
+        { id: 'history', title: '历史消息与观察', commands: [
+          { id: 'reveal', label: '展开上一批', steps: [{ call: 'conversation.performance.reveal' }] },
+          { id: 'report', label: '复制性能摘要', steps: [{ call: 'conversation.performance.report' }] }
+        ] }
+      ]
+    }]
   },
   {
     schema: 'dcf.module_pack.v1',
@@ -2649,6 +2694,7 @@ function createHealthReporter(engine, receiptStore, storage, host, requiredPacka
     const registry = engine.getRegistry();
     const runtimeObject = typeof runtime.getRuntime === 'function' ? runtime.getRuntime() : null;
     const app = typeof runtime.getApp === 'function' ? runtime.getApp() : null;
+    const performanceState = typeof runtime.getPerformance === 'function' ? runtime.getPerformance() : null;
     const deviations = [];
 
     function add(code, severity, subject, expected, actual, evidence, explanation) {
@@ -2670,6 +2716,11 @@ function createHealthReporter(engine, receiptStore, storage, host, requiredPacka
       add('runtime_global_missing', 'error', '__DCF_RUNTIME__', 'the current userscript instance publishes its runtime object', 'missing', null, 'The browser page does not expose the runtime object created at the end of DCF boot.');
     } else if (runtimeObject.version !== VERSION) {
       add('runtime_version_mismatch', 'error', '__DCF_RUNTIME__.version', VERSION, runtimeObject.version || null, null, 'The in-memory runtime and the installed userscript source are not the same version.');
+    }
+    if (!performanceState) {
+      add('runtime_conversation_performance_missing', 'error', 'conversation-performance', 'the current Runtime exposes the long-conversation performance controller', 'missing', null, 'The required performance package exists without its trusted Host controller.');
+    } else if (performanceState.mode !== 'off' && performanceState.turn_count >= performanceState.activation_turns && !performanceState.content_visibility_supported) {
+      add('runtime_content_visibility_unsupported', 'warning', 'conversation-performance', 'the browser supports content-visibility:auto', false, { mode: performanceState.mode }, 'The safe rendering optimization cannot be applied by this browser; window mode remains reversible but may provide less benefit.');
     }
 
     if (ui) {
@@ -2768,7 +2819,11 @@ function createHealthReporter(engine, receiptStore, storage, host, requiredPacka
         version: VERSION,
         route_kind: hostDiagnostics && hostDiagnostics.route_kind || null,
         primary_backend: storage.primaryBackend,
-        current_tab: ui && ui.current_tab || null
+        current_tab: ui && ui.current_tab || null,
+        conversation_performance: performanceState ? {
+          mode: performanceState.mode, turn_count: performanceState.turn_count, optimized_count: performanceState.optimized_count, hidden_count: performanceState.hidden_count,
+          selector_strategy: performanceState.selector_strategy, long_tasks_60s: performanceState.long_tasks_60s, long_task_duration_ms_60s: performanceState.long_task_duration_ms_60s
+        } : null
       },
       deviations,
       privacy: {
@@ -2776,7 +2831,8 @@ function createHealthReporter(engine, receiptStore, storage, host, requiredPacka
         ammo_bodies_included: false,
         package_payloads_included: false,
         command_arguments_included: false,
-        authentication_data_included: false
+        authentication_data_included: false,
+        message_bodies_included: false
       }
     };
   }
@@ -3327,6 +3383,7 @@ const { createEffectRunner } = require("src/runtime/effects.js");
 const { createCommandRunner } = require("src/runtime/commands.js");
 const { createCapabilityReconciler } = require("src/runtime/reconciler.js");
 const { createChatGPTHost } = require("src/host/chatgpt.js");
+const { createConversationPerformanceController } = require("src/host/conversation-performance.js");
 const { STANDARD_PACKS, REQUIRED_PRODUCT_PACKAGES } = require("src/modules/standard-packages.js");
 const { createAmmoModule } = require("src/modules/ammo.js");
 const { createCatalogTransport } = require("src/modules/catalog.js");
@@ -3367,19 +3424,25 @@ function boot(api = globalThis) {
   const engine = createTransactionEngine(storage, receiptStore, { initialRoot });
   engine.initialize();
   const host = createChatGPTHost(windowObject);
-  const effects = createEffectRunner(host, receiptStore);
+  const conversationPerformance = createConversationPerformanceController(windowObject, { findConversationRoot: host.findConversationRoot, isStreaming: host.isStreaming });
+  conversationPerformance.syncPolicy(engine.getRegistry().policies && engine.getRegistry().policies.conversation_performance || {});
+  const effects = createEffectRunner(host, receiptStore, conversationPerformance);
   const catalog = createCatalogTransport(storage, engine, api);
   const ammo = createAmmoModule(engine, effects);
   let app = null;
   const reconciler = createCapabilityReconciler(engine, catalog, receiptStore, {
-    onCommitted: () => { if (app) app.render(); }
+    onCommitted: () => {
+      conversationPerformance.syncPolicy(engine.getRegistry().policies && engine.getRegistry().policies.conversation_performance || {});
+      if (app) app.render();
+    }
   });
   catalog.setApplyResolved((resolved) => reconciler.applyResolved(resolved));
   const packageManager = createPackageManager(engine, catalog, reconciler);
   const health = createHealthReporter(engine, receiptStore, storage, host, REQUIRED_PRODUCT_PACKAGES, {
     windowObject,
     getApp: () => app,
-    getRuntime: () => api.__DCF_RUNTIME__ || null
+    getRuntime: () => api.__DCF_RUNTIME__ || null,
+    getPerformance: () => conversationPerformance.diagnostics()
   });
   const maintenance = createMaintenanceModule(engine, receiptStore, effects, storage, health, reconciler);
   const commandRunner = createCommandRunner(engine, effects, receiptStore, () => {
@@ -3414,7 +3477,7 @@ function boot(api = globalThis) {
     api.GM_registerMenuCommand('DCF：复制简要诊断', () => maintenance.copySummary());
   }
 
-  const runtime = { version: VERSION, engine, getEnvironment: () => engine.getEnvironment(), host, app, catalog, reconciler, receiptStore, health, maintenance };
+  const runtime = { version: VERSION, engine, getEnvironment: () => engine.getEnvironment(), host, conversationPerformance, app, catalog, reconciler, receiptStore, health, maintenance };
   Object.defineProperty(runtime, 'environment', { enumerable: true, get: () => engine.getEnvironment() });
   api.__DCF_RUNTIME__ = runtime;
   return runtime;
