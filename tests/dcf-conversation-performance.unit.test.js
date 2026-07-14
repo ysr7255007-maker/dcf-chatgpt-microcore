@@ -122,7 +122,7 @@ assert(source.includes("display', 'none', 'important"), 'windowed rendering cont
 assert(source.includes('PerformanceObserver'), 'long-task observation missing');
 assert(source.includes('isStreaming()'), 'streaming guard missing');
 assert(source.includes('revealPreviousBatch'), 'batch reveal missing');
-assert(source.includes('if (routeChanged || rootChanged) scheduleApply(0);'), 'route safety poll still performs periodic full reconciliation');
+assert(source.includes("if (routeChanged || rootChanged) scheduleApply(0, routeChanged ? 'route' : 'root-change');"), 'route safety poll still performs periodic full reconciliation');
 assert(!source.includes('force: options.automatic !== true'), 'manual reveal bypasses the streaming guard');
 assert(!source.includes('.replaceWith('), 'controller replaces ChatGPT-managed nodes');
 assert(!source.includes('.removeChild('), 'controller removes ChatGPT-managed nodes');
