@@ -27,6 +27,7 @@ The status in this file is authoritative. A status line inside an older ADR reco
 
 ## Proposed
 
+- `2026-07-14-dcf-compliance-as-generated-projection.md` — **proposed**; make formal compliance an automatic projection from authoritative facts so fast changes stay protected without hand-maintaining parallel documents
 - `2026-07-14-dcf-architecture-complexity-budget.md` — **proposed**; freeze further platformization, judge architecture by marginal change cost, and audit every coordination layer for simplification
 - `2026-07-14-dcf-cross-platform-memory-system.md` — **proposed**; platform-neutral canonical memory store with bounded per-platform projections, pending real multi-platform validation
 
