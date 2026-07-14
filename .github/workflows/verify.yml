@@ -5,17 +5,29 @@ on:
   push:
     branches:
       - main
+      - fix/bootstrap-package-auto-sync
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   verify:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: fix/bootstrap-package-auto-sync
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - run: python scripts/apply-bootstrap-sync-docs.py
       - run: npm run verify
       - run: node --check dcf-chatgpt-microcore.user.js
+      - name: Commit documentation and generated artifacts
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add README.md docs/current-state.md docs/dcf-maintenance-skill.md dcf-chatgpt-microcore.user.js dcf-chatgpt-microcore.meta.js catalog
+          git diff --cached --quiet || git commit -m 'Document bootstrap package synchronization closure'
+          git push origin HEAD:fix/bootstrap-package-auto-sync
