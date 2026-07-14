@@ -1,33 +1,21 @@
 name: DCF Verify
 
 on:
+  pull_request:
   push:
     branches:
-      - feature/stateful-command-feedback
+      - main
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   verify:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: feature/stateful-command-feedback
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Capture verification
-        run: |
-          set +e
-          npm run verify > stateful-verify.log 2>&1
-          status=$?
-          cat stateful-verify.log
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add stateful-verify.log dcf-chatgpt-microcore.user.js dcf-chatgpt-microcore.meta.js catalog
-          git commit -m 'Capture stateful feedback regression failure' || true
-          git push origin HEAD:feature/stateful-command-feedback
-          exit $status
+      - run: npm run verify
+      - run: node --check dcf-chatgpt-microcore.user.js
