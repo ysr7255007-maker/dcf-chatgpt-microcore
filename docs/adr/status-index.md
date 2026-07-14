@@ -27,7 +27,7 @@ The status in this file is authoritative. A status line inside an older ADR reco
 
 ## Proposed
 
-- `2026-07-14-dcf-compliance-as-generated-projection.md` — **proposed**; keep judgment and review with the maintaining AI while repository scripts and GitHub Actions generate derived materials, execute commands and return evidence
+- `2026-07-14-dcf-compliance-as-generated-projection.md` — **proposed**; automation performs mechanical maintenance and exposes evidence, while format conformity is never treated as proof that the implementation route or architecture is correct
 - `2026-07-14-dcf-architecture-complexity-budget.md` — **proposed**; freeze further platformization, judge architecture by marginal change cost, and audit every coordination layer for simplification
 - `2026-07-14-dcf-cross-platform-memory-system.md` — **proposed**; platform-neutral canonical memory store with bounded per-platform projections, pending real multi-platform validation
 
