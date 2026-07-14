@@ -1,7 +1,6 @@
 name: DCF Verify
 
 on:
-  pull_request:
   push:
     branches:
       - feature/stateful-command-feedback
@@ -20,24 +19,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Apply release and package state contracts
+      - name: Capture step one failure
         run: |
+          set +e
           gzip -dc scripts/stateful-step1.py.gz > /tmp/stateful-step1.py
-          python /tmp/stateful-step1.py
-      - name: Apply UI state renderer and Runtime wiring
-        run: |
-          gzip -dc scripts/stateful-step2.py.gz > /tmp/stateful-step2.py
-          python /tmp/stateful-step2.py
-      - name: Apply state feedback documentation
-        run: |
-          gzip -dc scripts/stateful-step3.py.gz > /tmp/stateful-step3.py
-          python /tmp/stateful-step3.py
-      - run: npm run verify
-      - run: node --check dcf-chatgpt-microcore.user.js
-      - name: Commit implementation and generated artifacts
-        run: |
+          python /tmp/stateful-step1.py > stateful-step1.log 2>&1
+          status=$?
+          cat stateful-step1.log
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add README.md package.json src tests docs dcf-chatgpt-microcore.user.js dcf-chatgpt-microcore.meta.js catalog
-          git diff --cached --quiet || git commit -m 'Add visible state feedback to stateful controls'
+          git add stateful-step1.log
+          git commit -m 'Capture stateful step one failure' || true
           git push origin HEAD:feature/stateful-command-feedback
+          exit $status
