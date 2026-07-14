@@ -3,7 +3,7 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
-const { normalizePerformancePolicy, planTurnWindow } = require('../src/host/conversation-performance');
+const { createConversationPerformanceController, normalizePerformancePolicy, planTurnWindow } = require('../src/host/conversation-performance');
 const { STANDARD_PACKS, REQUIRED_PRODUCT_PACKAGES } = require('../src/modules/standard-packages');
 
 assert.deepStrictEqual(planTurnWindow(100, 40, 0), { turn_count: 100, hidden_count: 60, visible_start: 60, visible_count: 40 });
@@ -19,6 +19,96 @@ assert.strictEqual(policy.settle_ms, 200);
 policy = normalizePerformancePolicy({ mode: 'unknown' });
 assert.strictEqual(policy.mode, 'safe');
 
+
+function fakeStyle(initial = {}) {
+  const values = new Map(Object.entries(initial).map(([name, value]) => [name, { value, priority: '' }]));
+  return {
+    getPropertyValue(name) { return values.has(name) ? values.get(name).value : ''; },
+    getPropertyPriority(name) { return values.has(name) ? values.get(name).priority : ''; },
+    setProperty(name, value, priority = '') { values.set(name, { value: String(value), priority: String(priority) }); },
+    removeProperty(name) { values.delete(name); }
+  };
+}
+
+function fakeTurn(index, scroll) {
+  return {
+    nodeType: 1,
+    isConnected: true,
+    parentElement: scroll,
+    dataset: {},
+    style: fakeStyle(index === 0 ? { display: 'grid' } : {}),
+    contains(other) { return other === this; },
+    querySelector() { return null; }
+  };
+}
+
+const scroll = {
+  parentElement: null,
+  scrollHeight: 6000,
+  clientHeight: 800,
+  scrollTop: 5200,
+  addEventListener() {},
+  removeEventListener() {}
+};
+const turns = Array.from({ length: 60 }, (_, index) => fakeTurn(index, scroll));
+const root = {
+  isConnected: true,
+  querySelectorAll(selector) {
+    if (selector.includes('conversation-turn')) return turns;
+    return [];
+  }
+};
+const body = {};
+scroll.parentElement = body;
+let streaming = false;
+const queued = [];
+class FakeMutationObserver { observe() {} disconnect() {} }
+const fakeDocument = { body, documentElement: {}, scrollingElement: scroll };
+const fakeWindow = {
+  document: fakeDocument,
+  location: { href: 'https://chatgpt.com/c/example', pathname: '/c/example' },
+  MutationObserver: FakeMutationObserver,
+  CSS: { supports: () => true },
+  getComputedStyle(node) { return { overflowY: node === scroll ? 'auto' : 'visible' }; },
+  setTimeout(callback) { queued.push(callback); return queued.length; },
+  clearTimeout() {},
+  setInterval() { return 1; },
+  clearInterval() {},
+  requestAnimationFrame(callback) { callback(); return 1; }
+};
+const controller = createConversationPerformanceController(fakeWindow, {
+  findConversationRoot: () => root,
+  isStreaming: () => streaming
+});
+controller.syncPolicy({ mode: 'safe', activation_turns: 24, keep_recent: 40, reveal_batch: 20 });
+let runtime = controller.applyNow();
+assert.strictEqual(runtime.optimized_count, 60);
+assert.strictEqual(runtime.hidden_count, 0);
+assert(turns.every((turn) => turn.style.getPropertyValue('content-visibility') === 'auto'));
+assert.strictEqual(turns[0].style.getPropertyValue('display'), 'grid');
+
+controller.syncPolicy({ mode: 'window', activation_turns: 24, keep_recent: 40, reveal_batch: 20 });
+runtime = controller.applyNow();
+assert.strictEqual(runtime.hidden_count, 20);
+assert(turns.slice(0, 20).every((turn) => turn.style.getPropertyValue('display') === 'none'));
+assert(turns.slice(20).every((turn) => turn.style.getPropertyValue('display') !== 'none'));
+assert(turns.every((turn) => turn.isConnected), 'window mode detached a ChatGPT turn');
+
+streaming = true;
+runtime = controller.revealPreviousBatch();
+assert.strictEqual(runtime.hidden_count, 20, 'manual reveal changed the window during streaming');
+streaming = false;
+runtime = controller.applyNow();
+assert.strictEqual(runtime.hidden_count, 0, 'queued reveal intent was not applied after streaming');
+
+controller.syncPolicy({ mode: 'off' });
+runtime = controller.applyNow();
+assert.strictEqual(runtime.hidden_count, 0);
+assert(turns.every((turn) => turn.style.getPropertyValue('content-visibility') === ''));
+assert.strictEqual(turns[0].style.getPropertyValue('display'), 'grid', 'original inline display was not restored');
+assert(turns.slice(1).every((turn) => turn.style.getPropertyValue('display') === ''));
+controller.destroy();
+
 const pack = STANDARD_PACKS.find((item) => item.pack_id === 'dcf.standard.conversation-performance');
 assert(pack, 'conversation performance package missing');
 assert(REQUIRED_PRODUCT_PACKAGES.includes(pack.pack_id), 'conversation performance package is not in product baseline');
@@ -33,6 +123,8 @@ assert(source.includes("display', 'none', 'important"), 'windowed rendering cont
 assert(source.includes('PerformanceObserver'), 'long-task observation missing');
 assert(source.includes('isStreaming()'), 'streaming guard missing');
 assert(source.includes('revealPreviousBatch'), 'batch reveal missing');
+assert(source.includes('if (routeChanged || rootChanged) scheduleApply(0);'), 'route safety poll still performs periodic full reconciliation');
+assert(!source.includes('force: options.automatic !== true'), 'manual reveal bypasses the streaming guard');
 assert(!source.includes('.replaceWith('), 'controller replaces ChatGPT-managed nodes');
 assert(!source.includes('.removeChild('), 'controller removes ChatGPT-managed nodes');
 assert(!source.includes('.remove()'), 'controller removes ChatGPT-managed nodes');
@@ -54,5 +146,8 @@ console.log(JSON.stringify({
   batch_reveal: true,
   long_task_observation: true,
   no_react_node_removal: true,
-  reconciled_policy: true
+  reconciled_policy: true,
+  no_idle_full_rescan: true,
+  streaming_safe_manual_reveal: true,
+  style_restoration_exercised: true
 }, null, 2));

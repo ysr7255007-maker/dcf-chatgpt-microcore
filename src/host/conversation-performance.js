@@ -224,10 +224,10 @@ function createConversationPerformanceController(windowObject = window, options 
     }, Math.max(0, Number(delay) || 0));
   }
 
-  function revealPreviousBatch(options = {}) {
+  function revealPreviousBatch() {
     if (policy.mode !== 'window' || !lastHiddenCount) return diagnostics();
     revealedOlder += policy.reveal_batch;
-    return applyNow({ preserveTop: true, force: options.automatic !== true });
+    return applyNow({ preserveTop: true });
   }
 
   function attachRoot() {
@@ -266,7 +266,8 @@ function createConversationPerformanceController(windowObject = window, options 
     if (!routeTimer) {
       routeTimer = windowObject.setInterval(() => {
         const href = String(windowObject.location && windowObject.location.href || '');
-        if (href !== lastHref) {
+        const routeChanged = href !== lastHref;
+        if (routeChanged) {
           lastHref = href;
           restoreAllManaged();
           revealedOlder = 0;
@@ -274,8 +275,10 @@ function createConversationPerformanceController(windowObject = window, options 
           observer = null;
           observedRoot = null;
         }
+        const previousRoot = observedRoot;
         attachRoot();
-        scheduleApply();
+        const rootChanged = observedRoot !== previousRoot;
+        if (routeChanged || rootChanged) scheduleApply(0);
       }, 1200);
     }
   }

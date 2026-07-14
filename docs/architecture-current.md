@@ -153,3 +153,5 @@ DCF 采用分级治理：
 该能力只处理浏览器端布局/绘制与交互负担。模型上下文压缩、对话总长度上限、服务端首 token 延迟、网络或第三方扩展冲突仍属于其他问题。
 
 Research basis: MDN `content-visibility` documentation; web.dev rendering guidance; community projects `povariha123/chatgpt-long-chat-lag-fix` and `YashRana738/GptOptimum`.
+
+性能控制器不按固定频率重扫对话。MutationObserver 负责内容变化，低频 URL/root 轮询只在导航或根节点替换时触发一次重新协调；手动与自动历史展开都服从流式输出保护。

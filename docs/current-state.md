@@ -158,3 +158,5 @@ ChatGPT historical-message virtualization, turn-window rendering, DOM/memory das
 - Runtime health 增加 mode、turn/optimized/hidden 数和 60 秒 long-task 聚合，不包含消息正文。
 - 该功能不解决模型上下文、服务器延迟、服务中断或第三方扩展冲突。
 - 用户浏览器尚未完成 0.16.0 的现场性能与兼容验收。
+
+- 0.16.0 合并前审计已取消空闲状态下的固定频率全量重扫；手动展开历史也不再绕过流式保护。
