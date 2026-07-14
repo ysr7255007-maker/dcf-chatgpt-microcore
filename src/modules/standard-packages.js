@@ -74,7 +74,7 @@ const STANDARD_PACKS = [
   {
     schema: 'dcf.module_pack.v1',
     pack_id: 'dcf.standard.conversation-performance',
-    revision: '1.2.0',
+    revision: '1.3.0',
     title: '长对话减负',
     description: '降低 ChatGPT 长对话的浏览器渲染负担，并按一次完整问答归因主线程阻塞。',
     contributes: {
@@ -87,21 +87,21 @@ const STANDARD_PACKS = [
       module_display: { 'dcf.standard.conversation-performance': { area: 'work', role: 'daily', order: 40 } }
     },
     modules: [{
-      id: 'dcf.standard.conversation-performance', title: '长对话减负', version: '1.2.0', kind: 'conversation-performance',
+      id: 'dcf.standard.conversation-performance', title: '长对话减负', version: '1.3.0', kind: 'conversation-performance',
       blocks: [
         { id: 'mode', title: '减负模式', commands: [
-          { id: 'safe', label: '透明减负（推荐）', steps: [{ call: 'conversation.performance.configure', with: { mode: 'safe' } }] },
-          { id: 'window40', label: '窗口化：最近 40 条', steps: [{ call: 'conversation.performance.configure', with: { mode: 'window', keep_recent: 40 } }] },
-          { id: 'window20', label: '窗口化：最近 20 条', steps: [{ call: 'conversation.performance.configure', with: { mode: 'window', keep_recent: 20 } }] },
-          { id: 'off', label: '恢复全部并关闭', steps: [{ call: 'conversation.performance.configure', with: { mode: 'off' } }] }
+          { id: 'safe', label: '透明减负（推荐）', ui_state: { source: 'runtime', path: ['conversation_performance'], matches: { mode: 'safe' }, state: 'selected', label: '透明减负 · 已开启' }, steps: [{ call: 'conversation.performance.configure', with: { mode: 'safe' } }] },
+          { id: 'window40', label: '窗口化：最近 40 条', ui_state: { source: 'runtime', path: ['conversation_performance'], matches: { mode: 'window', keep_recent: 40 }, state: 'selected', label: '最近 40 条 · 已开启' }, steps: [{ call: 'conversation.performance.configure', with: { mode: 'window', keep_recent: 40 } }] },
+          { id: 'window20', label: '窗口化：最近 20 条', ui_state: { source: 'runtime', path: ['conversation_performance'], matches: { mode: 'window', keep_recent: 20 }, state: 'selected', label: '最近 20 条 · 已开启' }, steps: [{ call: 'conversation.performance.configure', with: { mode: 'window', keep_recent: 20 } }] },
+          { id: 'off', label: '恢复全部并关闭', ui_state: { source: 'runtime', path: ['conversation_performance'], matches: { mode: 'off' }, state: 'selected', label: '长对话减负 · 已关闭' }, steps: [{ call: 'conversation.performance.configure', with: { mode: 'off' } }] }
         ] },
         { id: 'history', title: '历史消息与观察', commands: [
           { id: 'reveal', label: '展开上一批', steps: [{ call: 'conversation.performance.reveal' }] },
           { id: 'report', label: '复制性能摘要', steps: [{ call: 'conversation.performance.report' }] }
         ] },
         { id: 'attribution', title: '问答轮次归因', commands: [
-          { id: 'turn_attribution_arm', label: '记录下一轮问答', steps: [{ call: 'conversation.performance.turn.arm' }] },
-          { id: 'turn_attribution_copy', label: '复制本轮归因报告', steps: [{ call: 'conversation.performance.turn.report', with: { finish: false } }] },
+          { id: 'turn_attribution_arm', label: '记录下一轮问答', ui_state: { source: 'runtime', path: ['conversation_turn_attribution', 'status'], cases: { armed: { state: 'armed', label: '记录下一轮问答 · 等待发送' }, running: { state: 'running', label: '本轮问答 · 记录中' } } }, steps: [{ call: 'conversation.performance.turn.arm' }] },
+          { id: 'turn_attribution_copy', label: '复制本轮归因报告', ui_state: { source: 'runtime', path: ['conversation_turn_attribution', 'status'], cases: { complete: { state: 'complete', label: '复制本轮归因报告 · 可复制' } } }, steps: [{ call: 'conversation.performance.turn.report', with: { finish: false } }] },
           { id: 'turn_attribution_finish', label: '手动结束并复制', steps: [{ call: 'conversation.performance.turn.report', with: { finish: true } }] }
         ] }
       ]

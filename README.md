@@ -4,7 +4,7 @@ DCF is a personally maintained ChatGPT Tampermonkey system whose value goal is a
 
 ## Current architecture
 
-DCF `0.18.1` keeps a generic modular kernel under the first-party language-ammunition product goal. Source is modular, while Tampermonkey still installs one complete userscript.
+DCF `0.18.2` keeps a generic modular kernel under the first-party language-ammunition product goal. Source is modular, while Tampermonkey still installs one complete userscript.
 
 One authoritative state root changes only through the unified transaction path:
 
@@ -78,3 +78,8 @@ DCF `0.18.0` replaces the fixed 60-second diagnostic as the primary workflow wit
 ## Bootstrap/package upgrade closure
 
 DCF `0.18.1` closes the gap between userscript upgrades and package activation. On a detected kernel-version transition, the bootstrap installs and activates newer embedded revisions of required first-party packages through the authoritative root, then performs an immediate Catalog check without the normal six-hour throttle. Previous revisions remain immutable and available, while same-version manual rollback choices survive later reloads.
+
+
+## Stateful command feedback
+
+DCF `0.18.2` adds a finite declarative `ui_state` contract for commands whose current state can be observed reliably. Selected modes, armed diagnostics, running diagnostics and completed reports receive distinct color, a status dot, updated wording and `aria-pressed`; one-shot actions remain visually neutral. The question-answer attribution controls refresh in place when send/reply lifecycle events change, avoiding a full panel rerender. Current module roles, the active environment Profile and the ammo firing mode use the same visible-state convention.

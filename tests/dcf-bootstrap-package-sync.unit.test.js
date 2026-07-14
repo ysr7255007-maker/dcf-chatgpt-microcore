@@ -25,9 +25,9 @@ assert.strictEqual(
 
 const upgraded = ensureProductBaseline(root, { bootstrapChanged: true, previousKernelVersion: '0.17.0' });
 const performanceEntry = upgraded.packages.packages['dcf.standard.conversation-performance'];
-assert.strictEqual(performanceEntry.active_revision, '1.2.0', 'bootstrap upgrade did not activate the embedded required package revision');
+assert.strictEqual(performanceEntry.active_revision, '1.3.0', 'bootstrap upgrade did not activate the embedded required package revision');
 assert(performanceEntry.revisions['1.1.0'], 'previous package revision was discarded');
-assert(performanceEntry.revisions['1.2.0'], 'embedded current package revision was not installed');
+assert(performanceEntry.revisions['1.3.0'], 'embedded current package revision was not installed');
 assert.strictEqual(performanceEntry.source.kind, 'embedded-standard-bootstrap-sync');
 assert(upgraded.revision > root.revision, 'bootstrap package synchronization did not create a new authoritative revision');
 
