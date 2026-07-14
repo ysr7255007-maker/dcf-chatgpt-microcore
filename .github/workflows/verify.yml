@@ -1,6 +1,7 @@
 name: DCF Verify
 
 on:
+  pull_request:
   push:
     branches:
       - feature/stateful-command-feedback
