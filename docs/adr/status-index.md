@@ -22,6 +22,10 @@ The status in this file is authoritative. A status line inside an older ADR reco
 - `2026-07-12-dcf-shell-geometry-source-of-truth.md` — **accepted**, retained by phase one
 - viewport-containment-fence ADR — **accepted**, retained by phase one
 
+## Proposed
+
+- `2026-07-14-dcf-cross-platform-memory-system.md` — **proposed**; platform-neutral canonical memory store with bounded per-platform projections, pending real multi-platform validation
+
 ## Superseded or partially superseded
 
 - `2026-07-13-dcf-package-module-function-role-separation.md` — **partially superseded**; package/runtime/daily/maintenance separation remains, hidden is no longer a role
