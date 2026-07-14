@@ -1,10 +1,8 @@
 name: DCF Verify
 
 on:
-  pull_request:
   push:
     branches:
-      - main
       - fix/bootstrap-package-auto-sync
 
 permissions:
