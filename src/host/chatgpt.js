@@ -93,7 +93,8 @@ function createChatGPTHost(windowObject = window, options = {}) {
       const text = readReplyText(node);
       disconnectActive();
       if (!text || processedNodes.has(node)) return;
-      processedNodes.add(node);       if (typeof onReplyComplete === 'function') onReplyComplete({ node, text, source, completed_at: nowIso(), at_epoch_ms: Date.now(), quiet_ms: quietMs });
+      processedNodes.add(node);
+      if (typeof onReplyComplete === 'function') onReplyComplete({ node, text, source, completed_at: nowIso(), at_epoch_ms: Date.now(), quiet_ms: quietMs });
     }, quietMs);
   }
 
@@ -169,7 +170,8 @@ function createChatGPTHost(windowObject = window, options = {}) {
       const href = String(windowObject.location && windowObject.location.href || '');
       if (href === lastUrl) return;
       lastUrl = href;
-      stopReplyObserver();       startReplyObserver(callback, observerOptions);
+      stopReplyObserver();
+      startReplyObserver(callback, observerOptions);
     }, 1200);
     return () => stopReplyObserver();
   }

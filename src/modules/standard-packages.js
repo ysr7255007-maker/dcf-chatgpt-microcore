@@ -101,7 +101,8 @@ const STANDARD_PACKS = [
         ] },
         { id: 'attribution', title: '问答轮次归因', commands: [
           { id: 'turn_attribution_arm', label: '记录下一轮问答', steps: [{ call: 'conversation.performance.turn.arm' }] },
-          { id: 'turn_attribution_copy', label: '结束并复制本轮报告', steps: [{ call: 'conversation.performance.turn.report', with: { finish: true } }] }
+          { id: 'turn_attribution_copy', label: '复制本轮归因报告', steps: [{ call: 'conversation.performance.turn.report', with: { finish: false } }] },
+          { id: 'turn_attribution_finish', label: '手动结束并复制', steps: [{ call: 'conversation.performance.turn.report', with: { finish: true } }] }
         ] }
       ]
     }]

@@ -57,6 +57,7 @@ assert.strictEqual(pack.revision, '1.2.0');
 const commandIds = pack.modules[0].blocks.flatMap((block) => block.commands).map((command) => command.id);
 assert(commandIds.includes('turn_attribution_arm'));
 assert(commandIds.includes('turn_attribution_copy'));
+assert(commandIds.includes('turn_attribution_finish'));
 
 const controllerSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'host', 'conversation-performance.js'), 'utf8');
 for (const marker of ['long-animation-frame', 'forcedStyleAndLayoutDuration', 'durationThreshold: 16', 'layout-shift', 'timeline_start_ms', 'acceptsAttributionEntry']) assert(controllerSource.includes(marker), `missing attribution marker ${marker}`);

@@ -73,7 +73,8 @@ const pack = STANDARD_PACKS.find((item) => item.pack_id === 'dcf.standard.conver
 assert.strictEqual(pack.revision, '1.2.0');
 const commands = pack.modules[0].blocks.flatMap((block) => block.commands);
 assert(commands.some((command) => command.id === 'turn_attribution_arm' && command.label === '记录下一轮问答'));
-assert(commands.some((command) => command.id === 'turn_attribution_copy' && command.label === '结束并复制本轮报告'));
+assert(commands.some((command) => command.id === 'turn_attribution_copy' && command.label === '复制本轮归因报告' && command.steps[0].with.finish === false));
+assert(commands.some((command) => command.id === 'turn_attribution_finish' && command.label === '手动结束并复制' && command.steps[0].with.finish === true));
 
 const indexSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.js'), 'utf8');
 assert(indexSource.includes('host.startSendObserver'));
@@ -81,4 +82,4 @@ assert(indexSource.includes('conversationTurnAttribution.onReplyComplete'));
 const effectSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'runtime', 'effects.js'), 'utf8');
 assert(effectSource.includes('DCF_CONVERSATION_TURN_ATTRIBUTION'));
 
-console.log(JSON.stringify({ ok: true, armed_before_send: true, send_boundary: true, first_reply_phase: true, automatic_reply_completion: true, manual_recovery: true, no_message_text: true }, null, 2));
+console.log(JSON.stringify({ ok: true, armed_before_send: true, send_boundary: true, first_reply_phase: true, automatic_reply_completion: true, normal_copy_does_not_finish: true, manual_recovery: true, no_message_text: true }, null, 2));
