@@ -33,15 +33,15 @@ jobs:
           text = text.replace('"       startReplyObserver(callback, observerOptions);"', '"startReplyObserver(callback, observerOptions);"')
           path.write_text(text, encoding='utf-8')
           PY
-      - name: Apply turn attribution upgrade
-        run: python scripts/apply-conversation-turn-attribution.py
-      - run: npm run verify
-      - run: node --check dcf-chatgpt-microcore.user.js
-      - name: Commit implementation and generated release artifacts
+      - name: Run and capture integration
         run: |
+          set +e
+          python scripts/apply-conversation-turn-attribution.py > turn-attribution-integration.log 2>&1
+          status=$?
+          cat turn-attribution-integration.log
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git rm -f turn-attribution-integration.log || true
-          git add README.md package.json scripts/build-userscript.js scripts/apply-conversation-turn-attribution.py src tests docs dcf-chatgpt-microcore.user.js dcf-chatgpt-microcore.meta.js catalog
-          git diff --cached --quiet || git commit -m 'Implement conversation-turn performance attribution'
+          git add turn-attribution-integration.log
+          git commit -m 'Capture remaining turn attribution integration failure' || true
           git push origin HEAD:feature/conversation-turn-attribution
+          exit $status
