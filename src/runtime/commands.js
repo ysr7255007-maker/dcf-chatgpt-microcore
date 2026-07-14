@@ -83,6 +83,10 @@ function createCommandRunner(engine, effectRunner, receiptStore, shellObserver, 
       result = await effectRunner.run({ type: 'conversation.performance.attribution.start', duration_ms: Number(args.duration_ms || 60000) }, context);
     } else if (call === 'conversation.performance.attribution.report') {
       result = await effectRunner.run({ type: 'conversation.performance.attribution.report', finish: args.finish !== false }, context);
+    } else if (call === 'conversation.performance.turn.arm') {
+      result = await effectRunner.run({ type: 'conversation.performance.turn.arm' }, context);
+    } else if (call === 'conversation.performance.turn.report') {
+      result = await effectRunner.run({ type: 'conversation.performance.turn.report', finish: args.finish !== false }, context);
     } else if (call === 'composer.replace' || call === 'composer.insert') {
       result = await effectRunner.run({ type: 'composer.insert', text: String(args.text || '') }, context);
     } else if (call === 'composer.send') {

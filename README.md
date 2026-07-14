@@ -4,7 +4,7 @@ DCF is a personally maintained ChatGPT Tampermonkey system whose value goal is a
 
 ## Current architecture
 
-DCF `0.17.0` keeps a generic modular kernel under the first-party language-ammunition product goal. Source is modular, while Tampermonkey still installs one complete userscript.
+DCF `0.18.0` keeps a generic modular kernel under the first-party language-ammunition product goal. Source is modular, while Tampermonkey still installs one complete userscript.
 
 One authoritative state root changes only through the unified transaction path:
 
@@ -68,3 +68,8 @@ DCF `0.16.0` adds a trusted Host-side conversation performance governor owned by
 ## Runtime performance attribution
 
 DCF `0.17.0` upgrades the long-conversation controller from counting Long Tasks to bounded, user-started attribution sessions. A 60-second session observes Long Animation Frames, script entry points, forced style/layout time, Event Timing interaction delay, layout shifts, traditional Long Tasks, DOM mutation counts and DCF's own reconciliation duration. Script URLs are reduced to hostname plus the final path components with query strings and fragments removed; event targets, DOM text, message bodies and stacks are never collected. Extension isolated-world work may not appear in LoAF script attribution, so DCF self-work is measured separately and unknown/cross-origin work remains explicit.
+
+
+## Conversation-turn attribution
+
+DCF `0.18.0` replaces the fixed 60-second diagnostic as the primary workflow with a question-answer turn boundary. **记录下一轮问答** only arms the collector. The actual Runtime sample begins on the next captured send interaction, records the first assistant DOM activity, and closes automatically after the reply is no longer streaming and remains quiet. The report separates send-to-first-reply activity from reply-activity-to-completion, while keeping a long timeout and manual finish as recovery paths. No user or assistant message text is retained.

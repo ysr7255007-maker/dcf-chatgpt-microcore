@@ -16,5 +16,9 @@ assert(source.includes('findRecentAssistantNodes(root, recoveryCount)'), 'bounde
 assert(source.includes('hardVisitLimit'), 'recovery traversal lacks a hard bound');
 assert(source.includes("return doc.querySelector('main')"), 'host adapter does not bind to a stable bounded root');
 assert(!source.includes('cursor.querySelector'), 'root discovery scans growing conversation subtrees');
+assert(source.includes("doc.addEventListener('click', sendClickHandler, true)"), 'send click is not captured at the interaction boundary');
+assert(source.includes("doc.addEventListener('keydown', sendKeyHandler, true)"), 'Enter-to-send is not captured');
+assert(source.includes('onReplyStart'), 'first assistant activity is not exposed');
+assert(!source.includes('message_text'), 'send observer retains message text');
 
 console.log(JSON.stringify({ ok: true, no_body_observer: true, mutation_local_discovery: true, active_reply_only: true, bounded_recovery: true }, null, 2));

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DCF ChatGPT Microcore
 // @namespace    https://chatgpt.com/
-// @version      0.17.0
+// @version      0.18.0
 // @description  DCF conversation-environment runtime with unified intents, resources, profiles, reconciliation and independent Runtime observation.
 // @updateURL    https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.meta.js
 // @downloadURL  https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.user.js
@@ -112,7 +112,7 @@ module.exports = {
 "src/core/constants.js":function(module,exports,require){
 'use strict';
 
-const VERSION = '0.17.0';
+const VERSION = '0.18.0';
 const ROOT_KEY = 'dcf.state.root.v1';
 const SNAPSHOT_KEY = 'dcf.state.snapshots.v1';
 const RUNTIME_KEY = 'dcf.runtime.registry.v3';
@@ -1545,7 +1545,7 @@ function safeEffect(effect) {
   return copy;
 }
 
-function createEffectRunner(host, receiptStore, performanceController) {
+function createEffectRunner(host, receiptStore, performanceController, turnAttribution) {
   async function run(effect, context = {}) {
     const started = Date.now();
     try {
@@ -1568,6 +1568,16 @@ function createEffectRunner(host, receiptStore, performanceController) {
         if (!performanceController) throw new Error('conversation performance controller unavailable');
         const attribution = effect.finish === false ? performanceController.attributionReport() : performanceController.finishAttribution('manual');
         const report = `<<<DCF_CONVERSATION_PERFORMANCE_ATTRIBUTION\n${JSON.stringify(attribution, null, 2)}\nDCF_CONVERSATION_PERFORMANCE_ATTRIBUTION>>>`;
+        result = await host.copy(report);
+      } else if (effect.type === 'conversation.performance.turn.arm') {
+        if (!turnAttribution) throw new Error('conversation turn attribution unavailable');
+        result = turnAttribution.arm();
+      } else if (effect.type === 'conversation.performance.turn.report') {
+        if (!turnAttribution) throw new Error('conversation turn attribution unavailable');
+        const attribution = effect.finish === false ? turnAttribution.report() : turnAttribution.finishAndReport('manual');
+        const report = `<<<DCF_CONVERSATION_TURN_ATTRIBUTION
+${JSON.stringify(attribution, null, 2)}
+DCF_CONVERSATION_TURN_ATTRIBUTION>>>`;
         result = await host.copy(report);
       } else throw new Error(`unsupported effect ${effect.type}`);
       receiptStore.append({ schema: 'dcf.effect.receipt.v1', effect: safeEffect(effect), context, status: 'ok', result, duration_ms: Date.now() - started });
@@ -1669,6 +1679,10 @@ function createCommandRunner(engine, effectRunner, receiptStore, shellObserver, 
       result = await effectRunner.run({ type: 'conversation.performance.attribution.start', duration_ms: Number(args.duration_ms || 60000) }, context);
     } else if (call === 'conversation.performance.attribution.report') {
       result = await effectRunner.run({ type: 'conversation.performance.attribution.report', finish: args.finish !== false }, context);
+    } else if (call === 'conversation.performance.turn.arm') {
+      result = await effectRunner.run({ type: 'conversation.performance.turn.arm' }, context);
+    } else if (call === 'conversation.performance.turn.report') {
+      result = await effectRunner.run({ type: 'conversation.performance.turn.report', finish: args.finish !== false }, context);
     } else if (call === 'composer.replace' || call === 'composer.insert') {
       result = await effectRunner.run({ type: 'composer.insert', text: String(args.text || '') }, context);
     } else if (call === 'composer.send') {
@@ -1802,6 +1816,11 @@ function createChatGPTHost(windowObject = window, options = {}) {
   let activeNode = null;
   let quietTimer = null;
   let onReplyComplete = null;
+  let onReplyStart = null;
+  let onSend = null;
+  let sendClickHandler = null;
+  let sendKeyHandler = null;
+  let lastSendSignalAt = 0;
   let lastUrl = String(windowObject.location && windowObject.location.href || '');
   let urlTimer = null;
   let rootLocatorTimer = null;
@@ -1878,8 +1897,7 @@ function createChatGPTHost(windowObject = window, options = {}) {
       const text = readReplyText(node);
       disconnectActive();
       if (!text || processedNodes.has(node)) return;
-      processedNodes.add(node);
-      if (typeof onReplyComplete === 'function') onReplyComplete({ node, text, source, completed_at: nowIso() });
+      processedNodes.add(node);       if (typeof onReplyComplete === 'function') onReplyComplete({ node, text, source, completed_at: nowIso(), at_epoch_ms: Date.now(), quiet_ms: quietMs });
     }, quietMs);
   }
 
@@ -1892,6 +1910,7 @@ function createChatGPTHost(windowObject = window, options = {}) {
     }
     disconnectActive();
     activeNode = normalized;
+    if (typeof onReplyStart === 'function') onReplyStart({ source, started_at: nowIso(), at_epoch_ms: Date.now(), timeline_ms: windowObject.performance && typeof windowObject.performance.now === 'function' ? windowObject.performance.now() : 0 });
     activeObserver = new windowObject.MutationObserver(() => scheduleCompletion(normalized, source));
     activeObserver.observe(normalized, { childList: true, subtree: true, characterData: true });
     scheduleCompletion(normalized, source);
@@ -1946,15 +1965,15 @@ function createChatGPTHost(windowObject = window, options = {}) {
     attempt();
   }
 
-  function startReplyObserver(callback) {
+  function startReplyObserver(callback, observerOptions = {}) {
     onReplyComplete = callback;
+    onReplyStart = typeof observerOptions.onReplyStart === 'function' ? observerOptions.onReplyStart : null;
     scheduleRootAttach();
     urlTimer = windowObject.setInterval(() => {
       const href = String(windowObject.location && windowObject.location.href || '');
       if (href === lastUrl) return;
       lastUrl = href;
-      stopReplyObserver();
-      startReplyObserver(callback);
+      stopReplyObserver();       startReplyObserver(callback, observerOptions);
     }, 1200);
     return () => stopReplyObserver();
   }
@@ -1997,6 +2016,54 @@ function createChatGPTHost(windowObject = window, options = {}) {
     if (!button || button.disabled) throw new Error('ChatGPT send button not available');
     button.click();
     return { inserted: true, sent: true };
+  }
+
+
+  function eventTimelineMs(event) {
+    const raw = Number(event && event.timeStamp);
+    const perf = windowObject.performance;
+    if (Number.isFinite(raw) && raw >= 0) {
+      if (raw > 1e12 && perf && Number.isFinite(Number(perf.timeOrigin))) return Math.max(0, raw - Number(perf.timeOrigin));
+      return raw;
+    }
+    return perf && typeof perf.now === 'function' ? perf.now() : 0;
+  }
+
+  function emitSend(kind, event) {
+    if (typeof onSend !== 'function') return;
+    const epoch = Date.now();
+    if (epoch - lastSendSignalAt < 250) return;
+    lastSendSignalAt = epoch;
+    onSend({ kind, at: nowIso(), at_epoch_ms: epoch, timeline_ms: eventTimelineMs(event) });
+  }
+
+  function startSendObserver(callback) {
+    stopSendObserver();
+    onSend = callback;
+    sendClickHandler = (event) => {
+      const target = event && event.target instanceof windowObject.Element ? event.target : null;
+      const button = target && target.closest('[data-testid="send-button"],button[aria-label*="Send" i],button[aria-label*="发送"]');
+      if (button && !button.disabled) emitSend('click', event);
+    };
+    sendKeyHandler = (event) => {
+      if (!event || event.key !== 'Enter' || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey || event.isComposing) return;
+      const input = composer();
+      const target = event.target instanceof windowObject.Element ? event.target : null;
+      if (!input || !target || !(target === input || input.contains(target))) return;
+      const button = doc.querySelector('[data-testid="send-button"],button[aria-label*="Send" i],button[aria-label*="发送"]');
+      if (button && !button.disabled) emitSend('enter', event);
+    };
+    doc.addEventListener('click', sendClickHandler, true);
+    doc.addEventListener('keydown', sendKeyHandler, true);
+    return () => stopSendObserver();
+  }
+
+  function stopSendObserver() {
+    if (sendClickHandler) doc.removeEventListener('click', sendClickHandler, true);
+    if (sendKeyHandler) doc.removeEventListener('keydown', sendKeyHandler, true);
+    sendClickHandler = null;
+    sendKeyHandler = null;
+    onSend = null;
   }
 
   async function copy(text) {
@@ -2048,14 +2115,16 @@ function createChatGPTHost(windowObject = window, options = {}) {
       observer_scope: 'conversation-root-added-nodes + current-reply',
       recovery_count: recoveryCount,
       quiet_ms: quietMs,
-      root_locator_pending: !!rootLocatorTimer,
-      url_watch_active: !!urlTimer
+      root_locator_pending: !!rootLocatorTimer,       url_watch_active: !!urlTimer,
+       send_observer_attached: !!(sendClickHandler && sendKeyHandler)
     };
   }
 
   return {
     startReplyObserver,
     stopReplyObserver,
+    startSendObserver,
+    stopSendObserver,
     findConversationRoot,
     findRecentAssistantNodes,
     readReplyText,
@@ -2154,7 +2223,7 @@ function emptyAttributionEntries() {
 
 function createAttributionSession(context = {}) {
   const startedEpoch = Number(context.started_epoch_ms || Date.now());
-  const durationMs = clamp(context.duration_ms, 10000, 180000, 60000);
+  const durationMs = clamp(context.duration_ms, 10000, 900000, 60000);
   return {
     schema: 'dcf.conversation-performance.attribution-session.v1',
     session_id: String(context.session_id || `perf-${startedEpoch.toString(36)}-${Math.random().toString(36).slice(2, 8)}`),
@@ -2744,15 +2813,15 @@ function createConversationPerformanceController(windowObject = window, options 
     attributionTimer = null;
     attribution = createAttributionSession({
       duration_ms: options.duration_ms,
-      timeline_start_ms: windowObject.performance && typeof windowObject.performance.now === 'function' ? windowObject.performance.now() : 0,
-      context: {
+      timeline_start_ms: options.timeline_start_ms != null ? Number(options.timeline_start_ms) : (windowObject.performance && typeof windowObject.performance.now === 'function' ? windowObject.performance.now() : 0),
+      context: Object.assign({
         route_kind: routeKind(),
         mode: policy.mode,
         turn_count: lastTurnCount,
         hidden_count: lastHiddenCount,
         selector_strategy: selectorStrategy,
         streaming_at_start: !!isStreaming()
-      }
+      }, options.context || {})
     });
     attributionTimer = windowObject.setTimeout(() => finishAttribution('duration'), attribution.duration_ms);
     return attributionStatus();
@@ -2906,6 +2975,185 @@ module.exports = {
 };
 
 },
+"src/host/conversation-turn-attribution.js":function(module,exports,require){
+'use strict';
+
+const { nowIso } = require("src/core/utils.js");
+
+function finite(value, fallback = null) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function createConversationTurnAttribution(performanceController, options = {}) {
+  if (!performanceController) throw new Error('performance controller required');
+  const windowObject = options.windowObject || globalThis;
+  const maxDurationMs = Math.min(900000, Math.max(30000, Number(options.max_duration_ms || 600000)));
+  let timeoutTimer = null;
+  let turn = idleTurn();
+
+  function idleTurn() {
+    return {
+      schema: 'dcf.conversation-performance.turn-session.v1',
+      status: 'idle',
+      armed_at: null,
+      armed_epoch_ms: null,
+      sent_at: null,
+      sent_epoch_ms: null,
+      send_timeline_ms: null,
+      send_signal: null,
+      reply_started_at: null,
+      reply_started_epoch_ms: null,
+      reply_source: null,
+      reply_completed_at: null,
+      reply_completed_epoch_ms: null,
+      completion_quiet_ms: null,
+      finished_at: null,
+      finished_epoch_ms: null,
+      finish_reason: null
+    };
+  }
+
+  function clearTimer() {
+    if (timeoutTimer && windowObject.clearTimeout) windowObject.clearTimeout(timeoutTimer);
+    timeoutTimer = null;
+  }
+
+  function snapshot() {
+    return {
+      schema: 'dcf.conversation-performance.turn-status.v1',
+      status: turn.status,
+      armed_at: turn.armed_at,
+      sent_at: turn.sent_at,
+      reply_started_at: turn.reply_started_at,
+      reply_completed_at: turn.reply_completed_at,
+      finish_reason: turn.finish_reason,
+      send_signal: turn.send_signal,
+      remaining_ms: turn.status === 'running' && turn.sent_epoch_ms ? Math.max(0, maxDurationMs - (Date.now() - turn.sent_epoch_ms)) : 0
+    };
+  }
+
+  function arm() {
+    if (turn.status === 'running') return Object.assign({ accepted: false, reason: 'turn-already-running' }, snapshot());
+    clearTimer();
+    const epoch = Date.now();
+    turn = idleTurn();
+    turn.status = 'armed';
+    turn.armed_at = nowIso();
+    turn.armed_epoch_ms = epoch;
+    return Object.assign({ accepted: true }, snapshot());
+  }
+
+  function onSend(signal = {}) {
+    if (turn.status !== 'armed') return Object.assign({ accepted: false, reason: 'not-armed' }, snapshot());
+    const epoch = finite(signal.at_epoch_ms, Date.now());
+    const timeline = finite(signal.timeline_ms, windowObject.performance && typeof windowObject.performance.now === 'function' ? windowObject.performance.now() : 0);
+    turn.status = 'running';
+    turn.sent_at = signal.at || nowIso();
+    turn.sent_epoch_ms = epoch;
+    turn.send_timeline_ms = timeline;
+    turn.send_signal = String(signal.kind || 'unknown').slice(0, 40);
+    performanceController.startAttribution({
+      duration_ms: maxDurationMs,
+      timeline_start_ms: timeline,
+      context: {
+        attribution_scope: 'conversation-turn',
+        boundary: 'send-to-reply-complete',
+        send_signal: turn.send_signal
+      }
+    });
+    clearTimer();
+    if (windowObject.setTimeout) timeoutTimer = windowObject.setTimeout(() => finish('timeout'), maxDurationMs);
+    return Object.assign({ accepted: true }, snapshot());
+  }
+
+  function onReplyStart(meta = {}) {
+    if (turn.status !== 'running' || turn.reply_started_epoch_ms) return Object.assign({ accepted: false }, snapshot());
+    turn.reply_started_at = meta.started_at || nowIso();
+    turn.reply_started_epoch_ms = finite(meta.at_epoch_ms, Date.now());
+    turn.reply_source = String(meta.source || 'live').slice(0, 40);
+    return Object.assign({ accepted: true }, snapshot());
+  }
+
+  function finish(reason = 'manual') {
+    if (turn.status === 'idle' || turn.status === 'complete' || turn.status === 'cancelled') return snapshot();
+    clearTimer();
+    const epoch = Date.now();
+    if (turn.status === 'armed') {
+      turn.status = 'cancelled';
+      turn.finish_reason = reason === 'manual' ? 'cancelled-before-send' : String(reason || 'cancelled');
+    } else {
+      performanceController.finishAttribution(reason);
+      turn.status = 'complete';
+      turn.finish_reason = String(reason || 'manual');
+    }
+    turn.finished_at = nowIso();
+    turn.finished_epoch_ms = epoch;
+    return snapshot();
+  }
+
+  function onReplyComplete(meta = {}) {
+    if (turn.status !== 'running') return Object.assign({ accepted: false, completed: false }, snapshot());
+    turn.reply_completed_at = meta.completed_at || nowIso();
+    turn.reply_completed_epoch_ms = finite(meta.at_epoch_ms, Date.now());
+    turn.completion_quiet_ms = finite(meta.quiet_ms, null);
+    finish('reply-complete');
+    return Object.assign({ accepted: true, completed: true }, snapshot());
+  }
+
+  function report() {
+    const hasSend = !!turn.sent_epoch_ms;
+    const base = hasSend ? performanceController.attributionReport() : { available: false, status: turn.status };
+    const endEpoch = turn.reply_completed_epoch_ms || turn.finished_epoch_ms || (turn.status === 'running' ? Date.now() : null);
+    const totalMs = hasSend && endEpoch ? Math.max(0, endEpoch - turn.sent_epoch_ms) : null;
+    const waitMs = hasSend && turn.reply_started_epoch_ms ? Math.max(0, turn.reply_started_epoch_ms - turn.sent_epoch_ms) : null;
+    const activeMs = turn.reply_started_epoch_ms && endEpoch ? Math.max(0, endEpoch - turn.reply_started_epoch_ms) : null;
+    return Object.assign({}, base, {
+      schema: 'dcf.conversation-performance.turn-attribution.v1',
+      performance_schema: base.schema || null,
+      scope: 'send-to-reply-complete',
+      turn_boundary: {
+        status: turn.status,
+        armed_at: turn.armed_at,
+        sent_at: turn.sent_at,
+        send_signal: turn.send_signal,
+        reply_started_at: turn.reply_started_at,
+        reply_source: turn.reply_source,
+        reply_completed_at: turn.reply_completed_at,
+        finished_at: turn.finished_at,
+        finish_reason: turn.finish_reason,
+        total_ms: totalMs,
+        send_to_first_reply_activity_ms: waitMs,
+        first_reply_activity_to_complete_ms: activeMs,
+        completion_detection_quiet_ms: turn.completion_quiet_ms
+      },
+      interpretation_limits: (base.interpretation_limits || []).concat([
+        'The turn begins at the captured send interaction and ends when DCF detects the assistant reply as quiet and no longer streaming.',
+        'Reply completion detection may lag the final visible token by the reported quiet window.',
+        'Waiting for first reply activity includes backend, network, scheduling and any page work before the first assistant DOM activity; the browser Runtime cannot separate those server-side causes.'
+      ]),
+      privacy: Object.assign({}, base.privacy || {}, {
+        user_message_text_included: false,
+        assistant_message_text_included: false
+      })
+    });
+  }
+
+  function finishAndReport(reason = 'manual') {
+    finish(reason);
+    return report();
+  }
+
+  function destroy() {
+    clearTimer();
+  }
+
+  return { arm, onSend, onReplyStart, onReplyComplete, finish, report, finishAndReport, status: snapshot, destroy };
+}
+
+module.exports = { createConversationTurnAttribution };
+
+},
 "src/modules/standard-packages.js":function(module,exports,require){
 'use strict';
 
@@ -2983,9 +3231,9 @@ const STANDARD_PACKS = [
   {
     schema: 'dcf.module_pack.v1',
     pack_id: 'dcf.standard.conversation-performance',
-    revision: '1.1.0',
+    revision: '1.2.0',
     title: '长对话减负',
-    description: '降低 ChatGPT 长对话的浏览器渲染负担，并通过 Runtime 诊断归因主线程阻塞。',
+    description: '降低 ChatGPT 长对话的浏览器渲染负担，并按一次完整问答归因主线程阻塞。',
     contributes: {
       policies: {
         conversation_performance: {
@@ -2996,7 +3244,7 @@ const STANDARD_PACKS = [
       module_display: { 'dcf.standard.conversation-performance': { area: 'work', role: 'daily', order: 40 } }
     },
     modules: [{
-      id: 'dcf.standard.conversation-performance', title: '长对话减负', version: '1.1.0', kind: 'conversation-performance',
+      id: 'dcf.standard.conversation-performance', title: '长对话减负', version: '1.2.0', kind: 'conversation-performance',
       blocks: [
         { id: 'mode', title: '减负模式', commands: [
           { id: 'safe', label: '透明减负（推荐）', steps: [{ call: 'conversation.performance.configure', with: { mode: 'safe' } }] },
@@ -3008,9 +3256,9 @@ const STANDARD_PACKS = [
           { id: 'reveal', label: '展开上一批', steps: [{ call: 'conversation.performance.reveal' }] },
           { id: 'report', label: '复制性能摘要', steps: [{ call: 'conversation.performance.report' }] }
         ] },
-        { id: 'attribution', title: '主线程归因诊断', commands: [
-          { id: 'attribution60', label: '开始 60 秒归因诊断', steps: [{ call: 'conversation.performance.attribution.start', with: { duration_ms: 60000 } }] },
-          { id: 'attribution_copy', label: '结束并复制归因报告', steps: [{ call: 'conversation.performance.attribution.report', with: { finish: true } }] }
+        { id: 'attribution', title: '问答轮次归因', commands: [
+          { id: 'turn_attribution_arm', label: '记录下一轮问答', steps: [{ call: 'conversation.performance.turn.arm' }] },
+          { id: 'turn_attribution_copy', label: '结束并复制本轮报告', steps: [{ call: 'conversation.performance.turn.report', with: { finish: true } }] }
         ] }
       ]
     }]
@@ -3680,7 +3928,8 @@ function createHealthReporter(engine, receiptStore, storage, host, requiredPacka
           mode: performanceState.mode, turn_count: performanceState.turn_count, optimized_count: performanceState.optimized_count, hidden_count: performanceState.hidden_count,
           selector_strategy: performanceState.selector_strategy, long_tasks_60s: performanceState.long_tasks_60s, long_task_duration_ms_60s: performanceState.long_task_duration_ms_60s,
           long_animation_frame_supported: performanceState.long_animation_frame_supported, event_timing_supported: performanceState.event_timing_supported,
-          layout_shift_supported: performanceState.layout_shift_supported, attribution_status: performanceState.attribution && performanceState.attribution.status || 'not-started'
+          layout_shift_supported: performanceState.layout_shift_supported, attribution_status: performanceState.attribution && performanceState.attribution.status || 'not-started',
+          turn_attribution_status: performanceState.turn_attribution && performanceState.turn_attribution.status || 'idle'
         } : null
       },
       deviations,
@@ -4242,6 +4491,7 @@ const { createCommandRunner } = require("src/runtime/commands.js");
 const { createCapabilityReconciler } = require("src/runtime/reconciler.js");
 const { createChatGPTHost } = require("src/host/chatgpt.js");
 const { createConversationPerformanceController } = require("src/host/conversation-performance.js");
+const { createConversationTurnAttribution } = require("src/host/conversation-turn-attribution.js");
 const { STANDARD_PACKS, REQUIRED_PRODUCT_PACKAGES } = require("src/modules/standard-packages.js");
 const { createAmmoModule } = require("src/modules/ammo.js");
 const { createCatalogTransport } = require("src/modules/catalog.js");
@@ -4284,7 +4534,8 @@ function boot(api = globalThis) {
   const host = createChatGPTHost(windowObject);
   const conversationPerformance = createConversationPerformanceController(windowObject, { findConversationRoot: host.findConversationRoot, isStreaming: host.isStreaming });
   conversationPerformance.syncPolicy(engine.getRegistry().policies && engine.getRegistry().policies.conversation_performance || {});
-  const effects = createEffectRunner(host, receiptStore, conversationPerformance);
+  const conversationTurnAttribution = createConversationTurnAttribution(conversationPerformance, { windowObject });
+  const effects = createEffectRunner(host, receiptStore, conversationPerformance, conversationTurnAttribution);
   const catalog = createCatalogTransport(storage, engine, api);
   const ammo = createAmmoModule(engine, effects);
   let app = null;
@@ -4300,7 +4551,7 @@ function boot(api = globalThis) {
     windowObject,
     getApp: () => app,
     getRuntime: () => api.__DCF_RUNTIME__ || null,
-    getPerformance: () => conversationPerformance.diagnostics()
+    getPerformance: () => Object.assign({}, conversationPerformance.diagnostics(), { turn_attribution: conversationTurnAttribution.status() })
   });
   const maintenance = createMaintenanceModule(engine, receiptStore, effects, storage, health, reconciler);
   const commandRunner = createCommandRunner(engine, effects, receiptStore, () => {
@@ -4324,8 +4575,13 @@ function boot(api = globalThis) {
     if (changed || decoded.errors.length) app.render();
   }
 
+  host.startSendObserver((signal) => conversationTurnAttribution.onSend(signal));
   host.startReplyObserver((reply) => {
+    const completed = conversationTurnAttribution.onReplyComplete({ source: reply.source, completed_at: reply.completed_at, at_epoch_ms: reply.at_epoch_ms, quiet_ms: reply.quiet_ms });
+    if (completed.completed && app) { app.setNotice('本轮问答归因已完成，可复制报告'); app.render(); }
     processReply(reply).catch((error) => receiptStore.append({ schema: 'dcf.receipt.v1', intent: { type: 'reply.reconcile' }, status: 'rejected', stage: 'runtime', error: String(error && error.message || error) }));
+  }, {
+    onReplyStart: (meta) => conversationTurnAttribution.onReplyStart(meta)
   });
   api.setTimeout(() => catalog.check().then((result) => { if (result && result.applied && result.applied.length) { app.setNotice('DCF 能力包已自动协调到最新版本'); app.render(); } }), 1600);
 
@@ -4335,7 +4591,7 @@ function boot(api = globalThis) {
     api.GM_registerMenuCommand('DCF：复制简要诊断', () => maintenance.copySummary());
   }
 
-  const runtime = { version: VERSION, engine, getEnvironment: () => engine.getEnvironment(), host, conversationPerformance, app, catalog, reconciler, receiptStore, health, maintenance };
+  const runtime = { version: VERSION, engine, getEnvironment: () => engine.getEnvironment(), host, conversationPerformance, conversationTurnAttribution, app, catalog, reconciler, receiptStore, health, maintenance };
   Object.defineProperty(runtime, 'environment', { enumerable: true, get: () => engine.getEnvironment() });
   api.__DCF_RUNTIME__ = runtime;
   return runtime;

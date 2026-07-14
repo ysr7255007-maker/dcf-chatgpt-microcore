@@ -1,0 +1,144 @@
+{
+  "schema": "dcf.module_pack.v1",
+  "pack_id": "dcf.standard.conversation-performance",
+  "revision": "1.2.0",
+  "title": "长对话减负",
+  "description": "降低 ChatGPT 长对话的浏览器渲染负担，并按一次完整问答归因主线程阻塞。",
+  "contributes": {
+    "policies": {
+      "conversation_performance": {
+        "mode": "safe",
+        "activation_turns": 24,
+        "keep_recent": 40,
+        "reveal_batch": 20,
+        "settle_ms": 1000,
+        "top_reveal_px": 220,
+        "intrinsic_block_px": 480
+      }
+    },
+    "module_display": {
+      "dcf.standard.conversation-performance": {
+        "area": "work",
+        "role": "daily",
+        "order": 40
+      }
+    }
+  },
+  "modules": [
+    {
+      "id": "dcf.standard.conversation-performance",
+      "title": "长对话减负",
+      "version": "1.2.0",
+      "kind": "conversation-performance",
+      "blocks": [
+        {
+          "id": "mode",
+          "title": "减负模式",
+          "commands": [
+            {
+              "id": "safe",
+              "label": "透明减负（推荐）",
+              "steps": [
+                {
+                  "call": "conversation.performance.configure",
+                  "with": {
+                    "mode": "safe"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "window40",
+              "label": "窗口化：最近 40 条",
+              "steps": [
+                {
+                  "call": "conversation.performance.configure",
+                  "with": {
+                    "mode": "window",
+                    "keep_recent": 40
+                  }
+                }
+              ]
+            },
+            {
+              "id": "window20",
+              "label": "窗口化：最近 20 条",
+              "steps": [
+                {
+                  "call": "conversation.performance.configure",
+                  "with": {
+                    "mode": "window",
+                    "keep_recent": 20
+                  }
+                }
+              ]
+            },
+            {
+              "id": "off",
+              "label": "恢复全部并关闭",
+              "steps": [
+                {
+                  "call": "conversation.performance.configure",
+                  "with": {
+                    "mode": "off"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "history",
+          "title": "历史消息与观察",
+          "commands": [
+            {
+              "id": "reveal",
+              "label": "展开上一批",
+              "steps": [
+                {
+                  "call": "conversation.performance.reveal"
+                }
+              ]
+            },
+            {
+              "id": "report",
+              "label": "复制性能摘要",
+              "steps": [
+                {
+                  "call": "conversation.performance.report"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "attribution",
+          "title": "问答轮次归因",
+          "commands": [
+            {
+              "id": "turn_attribution_arm",
+              "label": "记录下一轮问答",
+              "steps": [
+                {
+                  "call": "conversation.performance.turn.arm"
+                }
+              ]
+            },
+            {
+              "id": "turn_attribution_copy",
+              "label": "结束并复制本轮报告",
+              "steps": [
+                {
+                  "call": "conversation.performance.turn.report",
+                  "with": {
+                    "finish": true
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

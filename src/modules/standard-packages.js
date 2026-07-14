@@ -74,9 +74,9 @@ const STANDARD_PACKS = [
   {
     schema: 'dcf.module_pack.v1',
     pack_id: 'dcf.standard.conversation-performance',
-    revision: '1.1.0',
+    revision: '1.2.0',
     title: '长对话减负',
-    description: '降低 ChatGPT 长对话的浏览器渲染负担，并通过 Runtime 诊断归因主线程阻塞。',
+    description: '降低 ChatGPT 长对话的浏览器渲染负担，并按一次完整问答归因主线程阻塞。',
     contributes: {
       policies: {
         conversation_performance: {
@@ -87,7 +87,7 @@ const STANDARD_PACKS = [
       module_display: { 'dcf.standard.conversation-performance': { area: 'work', role: 'daily', order: 40 } }
     },
     modules: [{
-      id: 'dcf.standard.conversation-performance', title: '长对话减负', version: '1.1.0', kind: 'conversation-performance',
+      id: 'dcf.standard.conversation-performance', title: '长对话减负', version: '1.2.0', kind: 'conversation-performance',
       blocks: [
         { id: 'mode', title: '减负模式', commands: [
           { id: 'safe', label: '透明减负（推荐）', steps: [{ call: 'conversation.performance.configure', with: { mode: 'safe' } }] },
@@ -99,9 +99,9 @@ const STANDARD_PACKS = [
           { id: 'reveal', label: '展开上一批', steps: [{ call: 'conversation.performance.reveal' }] },
           { id: 'report', label: '复制性能摘要', steps: [{ call: 'conversation.performance.report' }] }
         ] },
-        { id: 'attribution', title: '主线程归因诊断', commands: [
-          { id: 'attribution60', label: '开始 60 秒归因诊断', steps: [{ call: 'conversation.performance.attribution.start', with: { duration_ms: 60000 } }] },
-          { id: 'attribution_copy', label: '结束并复制归因报告', steps: [{ call: 'conversation.performance.attribution.report', with: { finish: true } }] }
+        { id: 'attribution', title: '问答轮次归因', commands: [
+          { id: 'turn_attribution_arm', label: '记录下一轮问答', steps: [{ call: 'conversation.performance.turn.arm' }] },
+          { id: 'turn_attribution_copy', label: '结束并复制本轮报告', steps: [{ call: 'conversation.performance.turn.report', with: { finish: true } }] }
         ] }
       ]
     }]

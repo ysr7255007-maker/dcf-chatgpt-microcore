@@ -112,10 +112,10 @@ controller.destroy();
 const pack = STANDARD_PACKS.find((item) => item.pack_id === 'dcf.standard.conversation-performance');
 assert(pack, 'conversation performance package missing');
 assert(REQUIRED_PRODUCT_PACKAGES.includes(pack.pack_id), 'conversation performance package is not in product baseline');
-assert.strictEqual(pack.revision, '1.1.0');
+assert.strictEqual(pack.revision, '1.2.0');
 assert.strictEqual(pack.contributes.policies.conversation_performance.mode, 'safe');
 const commands = pack.modules[0].blocks.flatMap((block) => block.commands).map((command) => command.id);
-for (const id of ['safe', 'window40', 'window20', 'off', 'reveal', 'report', 'attribution60', 'attribution_copy']) assert(commands.includes(id), `missing performance command ${id}`);
+for (const id of ['safe', 'window40', 'window20', 'off', 'reveal', 'report', 'turn_attribution_arm', 'turn_attribution_copy']) assert(commands.includes(id), `missing performance command ${id}`);
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'host', 'conversation-performance.js'), 'utf8');
 assert(source.includes("content-visibility', 'auto"), 'safe content-visibility mode missing');
