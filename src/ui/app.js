@@ -331,7 +331,7 @@ function createApp(options) {
     const views = {};
     try {
       tab = 'packages'; render();
-      views.packages = { entry_ids: collectIds('[data-runtime-section="packages"] [data-package-id]', 'data-package-id') };
+      views.packages = { entry_ids: collectIds('[data-package-id]', 'data-package-id') };
       tab = 'functions'; render();
       views.functions = {
         module_ids: collectIds('[data-runtime-section="daily"] > details.module-card[data-module-id]', 'data-module-id'),

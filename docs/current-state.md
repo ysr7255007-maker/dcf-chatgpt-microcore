@@ -145,3 +145,5 @@ ChatGPT historical-message virtualization, turn-window rendering, DOM/memory das
 - 旧包不会静默删除，而是折叠进包管理的“已替代历史包”，保留显式卸载和恢复出口。
 - 替代只按声明的稳定 ID 生效，名称相似的其他模块不受影响；自动提取、格式化等未确认等价的独立能力继续保留。
 - 用户浏览器尚未完成 0.15.0 的 Runtime 现场验收。
+
+- 0.15.0 体检观察已同步理解模块替代关系，且折叠历史包仍计入真实包视图覆盖。

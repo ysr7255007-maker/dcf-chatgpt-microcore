@@ -2718,8 +2718,9 @@ function createHealthReporter(engine, receiptStore, storage, host, requiredPacka
     const unexplainedLegacyPackages = legacy.package_ids.filter((id) => !currentPackageIds.includes(id) && !skipped.has(id));
     if (unexplainedLegacyPackages.length) add('runtime_storage_bridge_gap', 'error', 'legacy-packages', 'every legacy package is migrated or has an explicit skip record', unexplainedLegacyPackages, { bridge_present: !!(root.system && root.system.storage_bridge) }, 'The actual browser still contains legacy packages that neither reached the current root nor received an explicit conflict explanation.');
     const enabledPackageIds = new Set(Object.entries(root.packages && root.packages.packages || {}).filter(([, entry]) => entry && entry.enabled !== false).map(([id]) => id));
-    const legacyModulesMissingFromPresentPackages = legacy.module_providers.filter((item) => enabledPackageIds.has(item.package_id) && !currentRuntimeModuleIds.includes(item.module_id));
-    if (legacyModulesMissingFromPresentPackages.length) add('runtime_legacy_module_projection_gap', 'error', 'legacy-runtime-modules', 'modules from migrated active packages enter the current runtime registry', legacyModulesMissingFromPresentPackages, null, 'The package exists in the current browser state, but one or more of its legacy modules did not reach the running registry.');
+    const supersededModuleIds = new Set(Object.keys(registry && registry.moduleSupersession && registry.moduleSupersession.entries || {}));
+    const legacyModulesMissingFromPresentPackages = legacy.module_providers.filter((item) => enabledPackageIds.has(item.package_id) && !currentRuntimeModuleIds.includes(item.module_id) && !supersededModuleIds.has(item.module_id));
+    if (legacyModulesMissingFromPresentPackages.length) add('runtime_legacy_module_projection_gap', 'error', 'legacy-runtime-modules', 'modules from migrated active packages enter the current runtime registry or have an explicit active supersession', legacyModulesMissingFromPresentPackages, null, 'The package exists in the current browser state, but one or more of its legacy modules neither reached the running registry nor have an explicit active replacement.');
 
     const expectedDiscoverableModules = sortedUnique((registry && registry.modules || []).filter((module) => module.kind !== 'ammo').map((module) => module.id));
     if (ui && ui.views) {
@@ -3193,7 +3194,7 @@ function createApp(options) {
     const views = {};
     try {
       tab = 'packages'; render();
-      views.packages = { entry_ids: collectIds('[data-runtime-section="packages"] [data-package-id]', 'data-package-id') };
+      views.packages = { entry_ids: collectIds('[data-package-id]', 'data-package-id') };
       tab = 'functions'; render();
       views.functions = {
         module_ids: collectIds('[data-runtime-section="daily"] > details.module-card[data-module-id]', 'data-module-id'),

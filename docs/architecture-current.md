@@ -133,3 +133,5 @@ ChatGPT 历史消息虚拟化仍属于二期。
 包不会因替代而被自动删除。只有当一个包的全部运行模块均已被替代，且没有其他独立 content/view/style/policy 资源时，它才从包管理主列表移入折叠的“已替代历史包”区域。
 
 `dcf.standard.ammo@1.3.0` 将 `dcf.ammo_workbench`、`dcf.ammo_workspace.unified`、`dcf.language_ammo` 收口到 `dcf.ammo.module`。正式语言弹药工作台同时提供提取、新建、编辑、查找、语境化发射、复制、实质更新和删除；因此退出的是过渡入口，不是仍未接管的能力。
+
+Runtime 体检把显式替代视为可解释的退出，不再将其误报为迁移投影缺口；包视图观察同时统计主列表与折叠历史区。

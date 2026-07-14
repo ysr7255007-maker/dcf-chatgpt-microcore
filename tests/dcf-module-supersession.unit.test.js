@@ -48,7 +48,7 @@ const conflict = resolveModuleSupersession([{ id: 'new-a', supersedes: ['old'] }
 assert.strictEqual(conflict.ok, false, 'conflicting replacements were accepted');
 
 const appSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'ui', 'app.js'), 'utf8');
-for (const marker of ['ammo-new', 'ammo-edit', 'ammo-search', 'saveAmmoDraft', 'package-history', 'supersededPackages']) assert(appSource.includes(marker), `workbench consolidation missing ${marker}`);
+for (const marker of ['ammo-new', 'ammo-edit', 'ammo-search', 'saveAmmoDraft', 'package-history', 'supersededPackages', "collectIds('[data-package-id]'"]) assert(appSource.includes(marker), `workbench consolidation missing ${marker}`);
 
 console.log(JSON.stringify({
   ok: true,
