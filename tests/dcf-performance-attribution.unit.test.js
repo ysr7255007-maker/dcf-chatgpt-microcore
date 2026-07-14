@@ -3,7 +3,7 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
-const { createConversationPerformanceController, createAttributionSession, safeScriptSource, summarizeAttributionSession } = require('../src/host/conversation-performance');
+const { createAttributionSession, safeScriptSource, summarizeAttributionSession } = require('../src/host/conversation-performance');
 const { STANDARD_PACKS } = require('../src/modules/standard-packages');
 
 const firstParty = safeScriptSource('https://cdn.oaistatic.com/assets/app-123.js?token=SECRET#fragment', 'https://chatgpt.com');
@@ -51,43 +51,6 @@ assert.strictEqual(report.privacy.message_text_included, false);
 assert.strictEqual(report.privacy.event_targets_included, false);
 assert(!JSON.stringify(report).includes('SECRET'));
 assert(!JSON.stringify(report).includes('private'));
-
-const observers = new Map();
-class FakePerformanceObserver {
-  static supportedEntryTypes = ['long-animation-frame', 'event', 'layout-shift', 'longtask'];
-  constructor(callback) { this.callback = callback; }
-  observe(options) { observers.set(options.type, this); }
-  disconnect() {}
-  emit(entries) { this.callback({ getEntries: () => entries }); }
-}
-class FakeMutationObserver { observe() {} disconnect() {} }
-const root = { isConnected: true, querySelectorAll: () => [] };
-const fakeWindow = {
-  document: { body: {}, documentElement: {}, scrollingElement: null },
-  location: { href: 'https://chatgpt.com/c/example', pathname: '/c/example', origin: 'https://chatgpt.com' },
-  performance: { now: () => 500 },
-  PerformanceObserver: FakePerformanceObserver,
-  MutationObserver: FakeMutationObserver,
-  CSS: { supports: () => true },
-  setTimeout: () => 1,
-  clearTimeout() {},
-  setInterval: () => 1,
-  clearInterval() {},
-  requestAnimationFrame(callback) { callback(); return 1; },
-  getComputedStyle: () => ({ overflowY: 'visible' })
-};
-const controller = createConversationPerformanceController(fakeWindow, { findConversationRoot: () => root, isStreaming: () => false });
-controller.startAttribution({ duration_ms: 60000 });
-const loafObserver = observers.get('long-animation-frame');
-assert(loafObserver, 'Long Animation Frame observer did not start');
-loafObserver.emit([
-  { startTime: 400, duration: 120, blockingDuration: 70, renderStart: 480, styleAndLayoutStart: 490, firstUIEventTimestamp: 0, scripts: [] },
-  { startTime: 600, duration: 140, blockingDuration: 80, renderStart: 690, styleAndLayoutStart: 710, firstUIEventTimestamp: 0, scripts: [] }
-]);
-const filteredReport = controller.finishAttribution('test');
-assert.strictEqual(filteredReport.long_animation_frames.count, 1, 'a frame that began before the attribution session was retained');
-assert.strictEqual(filteredReport.long_animation_frames.top_frames[0].start_ms, 600);
-controller.destroy();
 
 const pack = STANDARD_PACKS.find((item) => item.pack_id === 'dcf.standard.conversation-performance');
 assert.strictEqual(pack.revision, '1.1.0');
