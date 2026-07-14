@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "/home/runner/work/dcf-chatgpt-microcore/dcf-chatgpt-microcore/scripts/apply-conversation-turn-attribution.py", line 73, in <module>
+    exec(compile(source, SOURCE_PATH, 'exec'), namespace, namespace)
+  File "scripts/apply-conversation-turn-attribution.py", line 32, in <module>
+    raise RuntimeError(f'{label}: expected one match, found exact={count}, whitespace={len(matches)}')
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "scripts/apply-conversation-turn-attribution.py", line 25, in replace_once
+    count = text.count(old)
+        ^^^^^^^^^^^^^^^^^^^^
+RuntimeError: runtime version: expected one match, found exact=0, whitespace=0
