@@ -8,40 +8,15 @@ on:
       - feature/conversation-turn-attribution
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   verify:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: feature/conversation-turn-attribution
-          fetch-depth: 50
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: python scripts/apply-conversation-turn-attribution.py
-      - run: npm run build
-      - name: Commit candidate source and generated artifacts
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git rm -f turn-attribution-integration.log || true
-          git add README.md package.json scripts/build-userscript.js scripts/apply-conversation-turn-attribution.py src tests docs dcf-chatgpt-microcore.user.js dcf-chatgpt-microcore.meta.js catalog
-          git diff --cached --quiet || git commit -m 'Implement conversation-turn performance attribution candidate'
-          git push origin HEAD:feature/conversation-turn-attribution
-      - name: Run and capture regression verification
-        run: |
-          set +e
-          npm test > turn-attribution-verify.log 2>&1
-          status=$?
-          cat turn-attribution-verify.log
-          if [ $status -ne 0 ]; then
-            git add turn-attribution-verify.log
-            git commit -m 'Capture turn attribution regression failure' || true
-            git push origin HEAD:feature/conversation-turn-attribution
-          fi
-          exit $status
+      - run: npm run verify
       - run: node --check dcf-chatgpt-microcore.user.js
