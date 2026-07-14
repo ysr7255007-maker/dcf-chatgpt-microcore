@@ -18,47 +18,18 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: feature/conversation-turn-attribution
+          fetch-depth: 50
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Make integration matching whitespace-tolerant
+      - run: python scripts/apply-conversation-turn-attribution.py
+      - run: npm run verify
+      - run: node --check dcf-chatgpt-microcore.user.js
+      - name: Commit implementation and generated release artifacts
         run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('scripts/apply-conversation-turn-attribution.py')
-          text = path.read_text(encoding='utf-8')
-          text = text.replace('from pathlib import Path\n', 'from pathlib import Path\nimport re\n', 1)
-          old = '''def replace_once(text, old, new, label):
-    count = text.count(old)
-    if count != 1:
-        raise RuntimeError(f'{label}: expected one match, found {count}')
-    return text.replace(old, new, 1)
-'''
-          new = '''def replace_once(text, old, new, label):
-    count = text.count(old)
-    if count == 1:
-        return text.replace(old, new, 1)
-    parts = re.split(r'(\\s+)', old)
-    pattern = ''.join(r'\\s+' if part.isspace() else re.escape(part) for part in parts if part)
-    matches = list(re.finditer(pattern, text))
-    if len(matches) != 1:
-        raise RuntimeError(f'{label}: expected one match, found exact={count}, whitespace={len(matches)}')
-    match = matches[0]
-    return text[:match.start()] + new + text[match.end():]
-'''
-          if old not in text:
-            raise SystemExit('replace_once definition not found')
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
-          PY
-      - name: Run and capture integration
-        run: |
-          set +e
-          python scripts/apply-conversation-turn-attribution.py > turn-attribution-integration.log 2>&1
-          status=$?
-          cat turn-attribution-integration.log
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add turn-attribution-integration.log
-          git commit -m 'Capture structural turn attribution integration failure' || true
+          git rm -f turn-attribution-integration.log || true
+          git add README.md package.json scripts/build-userscript.js scripts/apply-conversation-turn-attribution.py src tests docs dcf-chatgpt-microcore.user.js dcf-chatgpt-microcore.meta.js catalog
+          git diff --cached --quiet || git commit -m 'Implement conversation-turn performance attribution'
           git push origin HEAD:feature/conversation-turn-attribution
-          exit $status
