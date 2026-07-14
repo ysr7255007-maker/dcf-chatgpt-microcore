@@ -21,17 +21,27 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Run and capture integration
+      - name: Repair indentation-sensitive integration targets
         run: |
-          set +e
-          python scripts/apply-conversation-turn-attribution.py > turn-attribution-integration.log 2>&1
-          status=$?
-          cat turn-attribution-integration.log
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add turn-attribution-integration.log
-          git commit -m 'Capture turn attribution integration failure' || true
-          git push origin HEAD:feature/conversation-turn-attribution
-          exit $status
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/apply-conversation-turn-attribution.py')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace('"       if (typeof onReplyComplete === \'function\') onReplyComplete({ node, text, source, completed_at: nowIso() });"', '"if (typeof onReplyComplete === \'function\') onReplyComplete({ node, text, source, completed_at: nowIso() });"')
+          text = text.replace('"       if (typeof onReplyComplete === \'function\') onReplyComplete({ node, text, source, completed_at: nowIso(), at_epoch_ms: Date.now(), quiet_ms: quietMs });"', '"if (typeof onReplyComplete === \'function\') onReplyComplete({ node, text, source, completed_at: nowIso(), at_epoch_ms: Date.now(), quiet_ms: quietMs });"')
+          text = text.replace('"       startReplyObserver(callback);"', '"startReplyObserver(callback);"')
+          text = text.replace('"       startReplyObserver(callback, observerOptions);"', '"startReplyObserver(callback, observerOptions);"')
+          path.write_text(text, encoding='utf-8')
+          PY
+      - name: Apply turn attribution upgrade
+        run: python scripts/apply-conversation-turn-attribution.py
       - run: npm run verify
       - run: node --check dcf-chatgpt-microcore.user.js
+      - name: Commit implementation and generated release artifacts
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm -f turn-attribution-integration.log || true
+          git add README.md package.json scripts/build-userscript.js scripts/apply-conversation-turn-attribution.py src tests docs dcf-chatgpt-microcore.user.js dcf-chatgpt-microcore.meta.js catalog
+          git diff --cached --quiet || git commit -m 'Implement conversation-turn performance attribution'
+          git push origin HEAD:feature/conversation-turn-attribution
