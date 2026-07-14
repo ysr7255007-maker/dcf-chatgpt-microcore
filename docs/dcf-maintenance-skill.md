@@ -159,3 +159,12 @@ Environment Profile 用于保存包选择、政策和产品组织，不复制用
 处理 ChatGPT 网页卡顿时先区分浏览器渲染、服务端延迟、模型上下文和扩展冲突。DCF 只对自己可观察且可逆的浏览器渲染层负责。默认优先使用 `content-visibility:auto`；只有用户显式选择窗口模式时才让旧 turn 退出显示。不得删除、替换、克隆或重写 ChatGPT 管理的消息节点，不得在流式生成期间重排历史 turn。
 
 Host DOM 选择器是可变适配层，不得写进权威状态。持久模式、阈值和窗口大小属于 package policy / user preference，经 Environment Reconciler 变化。性能报告不得包含消息正文、代码、附件、标题或用户输入，只保留数量、支持性、选择器策略、long-task 聚合和控制器状态。宿主结构无法可靠识别时应退化为不操作，而不是扩大选择器范围。
+
+
+## 十三、Runtime 性能归因
+
+主线程阻塞排查先用有界 Runtime 归因会话，不再只凭 Long Task 数量或体感猜来源。优先采集 Long Animation Frames 的脚本、渲染、样式/布局和 blockingDuration；以 Event Timing 区分 input delay、processing 与 presentation delay；以 layout-shift 判断页面跳动；传统 longtask 仅作不支持 LoAF 时的兜底。
+
+归因报告必须把事实和推断分开。LoAF 的 sourceFunctionName 是入口点，不一定是最耗时的内部函数；脚本、渲染和布局时间可能重叠，不能相加后宣称为独占 CPU；扩展 isolated world、跨域和未知任务可能无法归因。DCF 自身必须使用独立计时报告 apply 次数、原因、总时长和最大时长，不能因 LoAF 没列出 userscript 就宣称零开销。
+
+性能会话属于一次性 Action，不写 root、Profile 或 registry。只保留有界时序和聚合数据，脚本来源去掉 query/hash 并缩减为 host 与末级路径；禁止 DOM 文本、消息正文、事件 target、完整 URL、stack、附件和认证数据。

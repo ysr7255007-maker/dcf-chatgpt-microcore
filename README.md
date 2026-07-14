@@ -4,7 +4,7 @@ DCF is a personally maintained ChatGPT Tampermonkey system whose value goal is a
 
 ## Current architecture
 
-DCF `0.16.0` keeps a generic modular kernel under the first-party language-ammunition product goal. Source is modular, while Tampermonkey still installs one complete userscript.
+DCF `0.17.0` keeps a generic modular kernel under the first-party language-ammunition product goal. Source is modular, while Tampermonkey still installs one complete userscript.
 
 One authoritative state root changes only through the unified transaction path:
 
@@ -63,3 +63,8 @@ DCF `0.15.0` lets an active module declare exact predecessor module IDs through 
 ## Long-conversation browser performance
 
 DCF `0.16.0` adds a trusted Host-side conversation performance governor owned by `dcf.standard.conversation-performance@1.0.0`. Its default safe mode applies browser-native `content-visibility:auto` only after a conversation reaches the configured turn threshold. Optional window modes keep the newest 40 or 20 message turns rendered and reversibly hide older turns without removing, replacing, cloning, or rewriting ChatGPT-managed nodes. Scrolling near the top or using “展开上一批” restores history in batches; “恢复全部并关闭” restores every original inline style. A privacy-safe report includes only counts, selector strategy, mode, apply duration and Long Tasks API aggregates. This addresses browser layout/paint cost, not model context limits, backend latency, outages, or unrelated extension conflicts.
+
+
+## Runtime performance attribution
+
+DCF `0.17.0` upgrades the long-conversation controller from counting Long Tasks to bounded, user-started attribution sessions. A 60-second session observes Long Animation Frames, script entry points, forced style/layout time, Event Timing interaction delay, layout shifts, traditional Long Tasks, DOM mutation counts and DCF's own reconciliation duration. Script URLs are reduced to hostname plus the final path components with query strings and fragments removed; event targets, DOM text, message bodies and stacks are never collected. Extension isolated-world work may not appear in LoAF script attribution, so DCF self-work is measured separately and unknown/cross-origin work remains explicit.

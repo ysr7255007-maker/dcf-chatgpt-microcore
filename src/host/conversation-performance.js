@@ -90,6 +90,7 @@ function createAttributionSession(context = {}) {
     started_epoch_ms: startedEpoch,
     duration_ms: durationMs,
     planned_end_epoch_ms: startedEpoch + durationMs,
+    timeline_start_ms: Number(context.timeline_start_ms || 0),
     ended_at: null,
     ended_epoch_ms: null,
     end_reason: null,
@@ -555,6 +556,10 @@ function createConversationPerformanceController(windowObject = window, options 
     return true;
   }
 
+  function acceptsAttributionEntry(entry) {
+    return !!(attribution && attribution.status === 'running' && Number(entry && entry.startTime || 0) >= Number(attribution.timeline_start_ms || 0));
+  }
+
   function recordLongTask(entry) {
     const item = {
       start_ms: round(entry.startTime),
@@ -563,11 +568,11 @@ function createConversationPerformanceController(windowObject = window, options 
       streaming: !!isStreaming()
     };
     boundedPush(longTasks, Object.assign({ at_epoch_ms: Date.now() }, item), MAX_LONG_TASKS);
-    if (attribution && attribution.status === 'running') boundedPush(attribution.entries.long_tasks, item, MAX_LONG_TASKS);
+    if (acceptsAttributionEntry(entry)) boundedPush(attribution.entries.long_tasks, item, MAX_LONG_TASKS);
   }
 
   function recordLoaf(entry) {
-    if (!attribution || attribution.status !== 'running') return;
+    if (!acceptsAttributionEntry(entry)) return;
     const start = Number(entry.startTime || 0);
     const duration = Number(entry.duration || 0);
     const renderStart = Number(entry.renderStart || 0);
@@ -600,7 +605,7 @@ function createConversationPerformanceController(windowObject = window, options 
   }
 
   function recordEvent(entry) {
-    if (!attribution || attribution.status !== 'running') return;
+    if (!acceptsAttributionEntry(entry)) return;
     const start = Number(entry.startTime || 0);
     const processingStart = Number(entry.processingStart || start);
     const processingEnd = Number(entry.processingEnd || processingStart);
@@ -618,7 +623,7 @@ function createConversationPerformanceController(windowObject = window, options 
   }
 
   function recordLayoutShift(entry) {
-    if (!attribution || attribution.status !== 'running') return;
+    if (!acceptsAttributionEntry(entry)) return;
     boundedPush(attribution.entries.layout_shifts, {
       start_ms: round(entry.startTime),
       value: round(entry.value, 4),
@@ -666,6 +671,7 @@ function createConversationPerformanceController(windowObject = window, options 
     attributionTimer = null;
     attribution = createAttributionSession({
       duration_ms: options.duration_ms,
+      timeline_start_ms: windowObject.performance && typeof windowObject.performance.now === 'function' ? windowObject.performance.now() : 0,
       context: {
         route_kind: routeKind(),
         mode: policy.mode,
