@@ -1,7 +1,7 @@
 'use strict';
 
-const { VERSION } = require('./core/constants');
-const { clone } = require('./core/utils');
+const { VERSION, ROOT_KEY } = require('./core/constants');
+const { clone, compareRevision } = require('./core/utils');
 const { buildProjection } = require('./core/projection');
 const { loadOrMigrate, addPackRevision, finalizeCandidate } = require('./core/state');
 const { decodeArtifacts } = require('./core/artifacts');
@@ -22,10 +22,25 @@ const { createHealthReporter } = require('./modules/health');
 const { createMaintenanceModule } = require('./modules/maintenance');
 const { createApp } = require('./ui/app');
 
-function ensureProductBaseline(root) {
+function activateEmbeddedRevision(candidate, pack) {
+  const entry = candidate.packages.packages[pack.pack_id];
+  const alreadyInstalled = !!(entry && entry.revisions && entry.revisions[pack.revision]);
+  if (!alreadyInstalled) addPackRevision(candidate, pack, { kind: 'embedded-standard-bootstrap-sync', bootstrap_version: VERSION });
+  const active = candidate.packages.packages[pack.pack_id];
+  if (!active) throw new Error(`embedded package ${pack.pack_id}@${pack.revision} was not installed`);
+  if (active.active_revision !== pack.revision || active.enabled === false) {
+    active.active_revision = pack.revision;
+    active.enabled = true;
+    active.source = { kind: 'embedded-standard-bootstrap-sync', bootstrap_version: VERSION };
+    if (alreadyInstalled) candidate.packages.revision += 1;
+  }
+}
+
+function ensureProductBaseline(root, options = {}) {
   let current = root;
   const projection = buildProjection(current);
   const candidate = clone(current);
+  const bootstrapChanged = options.bootstrapChanged === true;
   let changed = false;
   for (const packageId of REQUIRED_PRODUCT_PACKAGES) {
     const pack = STANDARD_PACKS.find((item) => item.pack_id === packageId);
@@ -33,8 +48,12 @@ function ensureProductBaseline(root) {
     const entry = candidate.packages.packages[packageId];
     const resourceMissing = packageId === 'dcf.standard.ammo' && (!projection.ok || !projection.registry.contentTypes.ammo);
     const uiMissing = packageId === 'dcf.ui.package-management' && (!projection.ok || !projection.registry.uiViews || !projection.registry.uiViews.packages);
+    const embeddedAhead = !!(bootstrapChanged && entry && compareRevision(pack.revision, entry.active_revision) > 0);
     if (!entry) {
       addPackRevision(candidate, pack, { kind: 'embedded-standard' });
+      changed = true;
+    } else if (embeddedAhead) {
+      activateEmbeddedRevision(candidate, pack);
       changed = true;
     } else if (entry.enabled === false || resourceMissing || uiMissing) {
       entry.enabled = true;
@@ -48,9 +67,12 @@ function ensureProductBaseline(root) {
 function boot(api = globalThis) {
   const windowObject = api.window || (typeof window !== 'undefined' ? window : null);
   const storage = createStorage(api);
+  const persistedRoot = storage.get(ROOT_KEY, null);
+  const previousKernelVersion = persistedRoot && persistedRoot.kernel_version || null;
+  const bootstrapChanged = previousKernelVersion !== VERSION;
   const receiptStore = createReceiptStore(storage);
   let initialRoot = loadOrMigrate(storage, STANDARD_PACKS);
-  initialRoot = ensureProductBaseline(initialRoot);
+  initialRoot = ensureProductBaseline(initialRoot, { bootstrapChanged, previousKernelVersion });
   const engine = createTransactionEngine(storage, receiptStore, { initialRoot });
   engine.initialize();
   const host = createChatGPTHost(windowObject);
@@ -105,7 +127,12 @@ function boot(api = globalThis) {
   }, {
     onReplyStart: (meta) => conversationTurnAttribution.onReplyStart(meta)
   });
-  api.setTimeout(() => catalog.check().then((result) => { if (result && result.applied && result.applied.length) { app.setNotice('DCF 能力包已自动协调到最新版本'); app.render(); } }), 1600);
+  api.setTimeout(() => catalog.check({ force: bootstrapChanged }).then((result) => {
+    if (result && result.applied && result.applied.length) {
+      app.setNotice(bootstrapChanged ? 'DCF 已随底座升级自动协调能力包' : 'DCF 能力包已自动协调到最新版本');
+      app.render();
+    }
+  }), 1600);
 
   if (typeof api.GM_registerMenuCommand === 'function') {
     api.GM_registerMenuCommand('DCF：检查能力包更新', () => catalog.check({ force: true }).then(() => app.render()));
@@ -113,7 +140,21 @@ function boot(api = globalThis) {
     api.GM_registerMenuCommand('DCF：复制简要诊断', () => maintenance.copySummary());
   }
 
-  const runtime = { version: VERSION, engine, getEnvironment: () => engine.getEnvironment(), host, conversationPerformance, conversationTurnAttribution, app, catalog, reconciler, receiptStore, health, maintenance };
+  const runtime = {
+    version: VERSION,
+    bootstrap: { previous_kernel_version: previousKernelVersion, changed: bootstrapChanged },
+    engine,
+    getEnvironment: () => engine.getEnvironment(),
+    host,
+    conversationPerformance,
+    conversationTurnAttribution,
+    app,
+    catalog,
+    reconciler,
+    receiptStore,
+    health,
+    maintenance
+  };
   Object.defineProperty(runtime, 'environment', { enumerable: true, get: () => engine.getEnvironment() });
   api.__DCF_RUNTIME__ = runtime;
   return runtime;
