@@ -18,8 +18,45 @@ function computeFenceStyle(rect, viewport, margin = 12) {
   return { width, height, left, top };
 }
 
+
+function valueAtPath(source, path) {
+  let current = source;
+  for (const part of Array.isArray(path) ? path : []) {
+    if (current == null || typeof current !== 'object') return undefined;
+    current = current[part];
+  }
+  return current;
+}
+
+function partialMatch(value, expected) {
+  if (expected && typeof expected === 'object' && !Array.isArray(expected)) {
+    if (!value || typeof value !== 'object') return false;
+    return Object.entries(expected).every(([key, child]) => partialMatch(value[key], child));
+  }
+  return Object.is(value, expected);
+}
+
+function resolveUiStateSpec(spec, sources = {}) {
+  if (!spec || typeof spec !== 'object') return { stateful: false, active: false, state: '', label: null };
+  const source = sources[String(spec.source || 'runtime')] || {};
+  const value = valueAtPath(source, spec.path || []);
+  const cases = spec.cases && typeof spec.cases === 'object' ? spec.cases : {};
+  const selectedCase = Object.prototype.hasOwnProperty.call(cases, String(value)) ? cases[String(value)] : null;
+  if (selectedCase && typeof selectedCase === 'object') {
+    return { stateful: true, active: true, state: String(selectedCase.state || 'selected'), label: selectedCase.label || null, value };
+  }
+  if (Object.prototype.hasOwnProperty.call(spec, 'equals') && Object.is(value, spec.equals)) {
+    return { stateful: true, active: true, state: String(spec.state || 'selected'), label: spec.label || null, value };
+  }
+  if (spec.matches && partialMatch(value, spec.matches)) {
+    return { stateful: true, active: true, state: String(spec.state || 'selected'), label: spec.label || null, value };
+  }
+  return { stateful: true, active: false, state: '', label: null, value };
+}
+
 function createApp(options) {
   const { engine, ammo, packageManager, maintenance, commandRunner, reconciler, storage, version } = options;
+  const getRuntimeUiState = typeof options.getRuntimeUiState === 'function' ? options.getRuntimeUiState : () => ({});
   const doc = options.document || document;
   const windowObject = doc.defaultView || window;
   const hostElement = doc.createElement('div');
@@ -30,7 +67,7 @@ function createApp(options) {
       :host{all:initial}.sh{position:fixed;right:12px;bottom:var(--bottom,112px);top:auto;width:var(--w,340px);height:min(var(--h,800px),calc(100vh - 24px));z-index:2147483646;background:#fffffff2;color:#111;border:1px solid #9996;border-radius:14px;box-shadow:0 18px 44px #0002;font:13px system-ui;overflow:hidden;box-sizing:border-box;display:flex;flex-direction:column}
       .sh[data-side=left]{left:12px;right:auto}.sh[data-anchor=top]{top:var(--top,12px);bottom:auto}.sh[data-anchor=bottom]{bottom:var(--bottom,112px);top:auto}
       @media(prefers-color-scheme:dark){.sh{background:#171717ee;color:#eee}}
-      button{border:1px solid #9995;border-radius:9px;background:transparent;color:inherit;padding:6px 8px;cursor:pointer}button:hover{background:#8882}button.danger{border-color:#dc262666}.top{height:42px;flex:0 0 42px;display:flex;align-items:center;gap:6px;padding:6px;border-bottom:1px solid #9993;box-sizing:border-box}.top b{margin-right:auto}.tabs{display:flex;gap:5px}.tabs button.on{background:#2563eb22;border-color:#2563eb66}.body{flex:1;min-height:0;overflow:auto;padding:9px;box-sizing:border-box}.card{border:1px solid #9994;border-radius:12px;background:#8881;padding:9px;margin-bottom:9px;box-sizing:border-box}.name{font-weight:700}.mini{font-size:11px;opacity:.7;word-break:break-all}.section-title{font-size:12px;font-weight:700;opacity:.8;margin:12px 2px 7px}.actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}textarea,input{width:100%;box-sizing:border-box;border:1px solid #9995;border-radius:9px;background:#fff8;color:inherit;padding:7px}select{box-sizing:border-box;border:1px solid #9995;border-radius:9px;background:#fff8;color:inherit;padding:6px}textarea{min-height:120px}.notice{padding:6px 9px;border-bottom:1px solid #9993;font-size:12px}.notice:empty{display:none}.row{display:flex;gap:6px;align-items:center}.row>*{min-width:0}.grow{flex:1}.pkg{padding-top:8px;margin-top:8px;border-top:1px solid #9993}.receipt{font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;word-break:break-word;max-height:180px;overflow:auto}.health-healthy{border-color:#16a34a66}.health-warning{border-color:#d9770666}.health-error{border-color:#dc262666}.state-pill{font-size:10px;padding:2px 6px;border:1px solid #9995;border-radius:999px}.state-pill.daily{border-color:#16a34a66}.state-pill.maintenance{border-color:#2563eb66}
+      button{border:1px solid #9995;border-radius:9px;background:transparent;color:inherit;padding:6px 8px;cursor:pointer}button:hover{background:#8882}button.danger{border-color:#dc262666}button.stateful{position:relative;padding-left:20px;transition:background .16s ease,border-color .16s ease,box-shadow .16s ease}button.stateful:before{content:'';position:absolute;left:8px;top:50%;width:6px;height:6px;border-radius:999px;transform:translateY(-50%);background:#9998}button.state-selected{background:#2563eb24;border-color:#2563eb99;box-shadow:inset 0 0 0 1px #2563eb22}button.state-selected:before{background:#2563eb}button.state-armed{background:#d9770626;border-color:#d97706aa;box-shadow:inset 0 0 0 1px #d9770622}button.state-armed:before{background:#d97706}button.state-running{background:#7c3aed28;border-color:#7c3aedaa;box-shadow:inset 0 0 0 1px #7c3aed22}button.state-running:before{background:#7c3aed}button.state-complete{background:#16a34a26;border-color:#16a34aaa;box-shadow:inset 0 0 0 1px #16a34a22}button.state-complete:before{background:#16a34a}button.state-send{background:#16a34a20;border-color:#16a34a88}button.state-send:before{background:#16a34a}button.state-insert{background:#2563eb20;border-color:#2563eb88}button.state-insert:before{background:#2563eb}.top{height:42px;flex:0 0 42px;display:flex;align-items:center;gap:6px;padding:6px;border-bottom:1px solid #9993;box-sizing:border-box}.top b{margin-right:auto}.tabs{display:flex;gap:5px}.tabs button.on{background:#2563eb22;border-color:#2563eb66}.body{flex:1;min-height:0;overflow:auto;padding:9px;box-sizing:border-box}.card{border:1px solid #9994;border-radius:12px;background:#8881;padding:9px;margin-bottom:9px;box-sizing:border-box}.name{font-weight:700}.mini{font-size:11px;opacity:.7;word-break:break-all}.section-title{font-size:12px;font-weight:700;opacity:.8;margin:12px 2px 7px}.actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}textarea,input{width:100%;box-sizing:border-box;border:1px solid #9995;border-radius:9px;background:#fff8;color:inherit;padding:7px}select{box-sizing:border-box;border:1px solid #9995;border-radius:9px;background:#fff8;color:inherit;padding:6px}textarea{min-height:120px}.notice{padding:6px 9px;border-bottom:1px solid #9993;font-size:12px}.notice:empty{display:none}.row{display:flex;gap:6px;align-items:center}.row>*{min-width:0}.grow{flex:1}.pkg{padding-top:8px;margin-top:8px;border-top:1px solid #9993}.receipt{font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;word-break:break-word;max-height:180px;overflow:auto}.health-healthy{border-color:#16a34a66}.health-warning{border-color:#d9770666}.health-error{border-color:#dc262666}.state-pill{font-size:10px;padding:2px 6px;border:1px solid #9995;border-radius:999px}.state-pill.daily{border-color:#16a34a66}.state-pill.maintenance{border-color:#2563eb66}
       details.card{padding:0}details.card>summary{list-style:none;cursor:pointer;padding:9px}details.card>summary::-webkit-details-marker{display:none}details.card>summary:before{content:'▸';display:inline-block;width:16px;opacity:.7}details.card[open]>summary:before{content:'▾'}details.card>.module-body,details.card>.detail-body{padding:0 9px 9px}.module-summary{display:flex;align-items:flex-start;gap:5px}.module-summary .grow{display:block}.module-summary .fold-hint{font-size:10px;opacity:.55;margin-left:auto}.health-count{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;margin-top:6px}.package-toolbar{padding:8px}.package-toolbar>.row{align-items:flex-start}.package-toolbar>.row>button{white-space:nowrap}.package-install{margin-top:7px;border-top:1px solid #9993}.package-install>summary{cursor:pointer;padding-top:7px;font-size:11px;opacity:.75}.package-install>.detail-body{padding-top:7px}.package-list{padding:0 9px}.package-card{padding:8px 0;border-bottom:1px solid #9993}.package-card:last-child{border-bottom:0}.package-title-row{display:flex;align-items:center;gap:6px}.package-title-row .name{flex:1;min-width:0}.package-description{font-size:11px;line-height:1.35;opacity:.78;margin-top:2px}.package-id{margin-top:2px}.package-controls{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:6px}.package-controls select{width:auto;min-width:72px;max-width:118px;padding:4px 22px 4px 6px}.package-controls button{padding:4px 7px}.package-version{font:11px ui-monospace,SFMono-Regular,Menlo,monospace;padding:4px 6px;border:1px solid #9994;border-radius:8px}.state-pill.enabled{border-color:#16a34a66}.state-pill.disabled{border-color:#d9770666}.state-pill.required{border-color:#7c3aed66}
     </style><style id="package-style"></style><aside class="sh"><div class="top"></div><div class="notice"></div><div class="body"></div></aside>`;
   doc.documentElement.appendChild(hostElement);
@@ -143,7 +180,7 @@ function createApp(options) {
     const mode = engine.getRoot().user.preferences && engine.getRoot().user.preferences.ammo_fire_mode || 'insert';
     const editor = ammoDraft ? `<div class="card ammo-editor"><div class="name">${escapeHtml(ammoDraft.original_id ? '编辑语言弹药' : '新建语言弹药')}</div><div class="mini">${escapeHtml(labels.id)}</div><input data-role="ammo-draft-id" value="${escapeHtml(ammoDraft.id)}" ${ammoDraft.original_id ? 'readonly' : ''}><div class="mini">${escapeHtml(labels.title)}</div><input data-role="ammo-draft-title" value="${escapeHtml(ammoDraft.title)}"><div class="mini">${escapeHtml(labels.purpose)}</div><input data-role="ammo-draft-purpose" value="${escapeHtml(ammoDraft.purpose)}"><div class="mini">${escapeHtml(labels.tags)}</div><input data-role="ammo-draft-tags" value="${escapeHtml(ammoDraft.tags)}"><div class="mini">${escapeHtml(labels.body)}</div><textarea data-role="ammo-draft-body">${escapeHtml(ammoDraft.body)}</textarea><div class="actions"><button data-action="ammo-save">${escapeHtml(labels.save)}</button><button data-action="ammo-cancel">${escapeHtml(labels.cancel)}</button></div></div>` : '';
     const search = items.length ? `<div class="card"><input data-role="ammo-search" placeholder="${escapeHtml(labels.search_placeholder)}" value="${escapeHtml(ammoQuery)}"><div class="mini">${query ? `显示 ${visibleItems.length} / ${items.length}` : `共 ${items.length} 枚弹药`}</div></div>` : '';
-    body.innerHTML = `<div class="card"><div class="name">${escapeHtml(view.title || '语言弹药工作台')}</div><div class="mini">${escapeHtml(view.description || '在一个入口中提取、新建、编辑、查找、调用、更新和管理语言弹药。')}</div><div class="actions"><button data-action="ammo-extract">${escapeHtml(labels.extract)}</button><button data-action="ammo-new">${escapeHtml(labels.new_item)}</button><button data-action="ammo-mode">${escapeHtml(labels.fire_mode)}：${mode === 'send' ? '直接发送' : '填入输入框'}</button></div></div>${editor}${search}` +
+    body.innerHTML = `<div class="card"><div class="name">${escapeHtml(view.title || '语言弹药工作台')}</div><div class="mini">${escapeHtml(view.description || '在一个入口中提取、新建、编辑、查找、调用、更新和管理语言弹药。')}</div><div class="actions"><button data-action="ammo-extract">${escapeHtml(labels.extract)}</button><button data-action="ammo-new">${escapeHtml(labels.new_item)}</button><button data-action="ammo-mode" class="stateful ${mode === 'send' ? 'state-send' : 'state-insert'}" data-command-state="${mode === 'send' ? 'send' : 'insert'}">${escapeHtml(labels.fire_mode)}：${mode === 'send' ? '直接发送' : '填入输入框'}</button></div></div>${editor}${search}` +
       (visibleItems.length ? visibleItems.map((item) => `<div class="card" data-ammo-id="${escapeHtml(item.id)}"><div class="name">${escapeHtml(item.title || item.id)}</div><div class="mini">${escapeHtml(item.purpose || item.id)}</div><div class="actions"><button data-action="ammo-fire">${escapeHtml(labels.fire)}</button><button data-action="ammo-copy">${escapeHtml(labels.copy)}</button><button data-action="ammo-update">${escapeHtml(labels.update)}</button><button data-action="ammo-edit">${escapeHtml(labels.edit)}</button><button data-action="ammo-delete" class="danger">${escapeHtml(labels.remove)}</button></div></div>`).join('') : `<div class="card mini">${query ? '没有匹配的语言弹药。' : '弹药库为空。可以直接新建，或从当前对话提取。'}</div>`);
   }
 
@@ -161,6 +198,46 @@ function createApp(options) {
     return role === 'maintenance';
   }
 
+
+  function commandPresentation(command) {
+    const baseLabel = String(command && (command.label || command.title || command.id) || '命令');
+    const resolved = resolveUiStateSpec(command && command.ui_state, {
+      runtime: getRuntimeUiState() || {},
+      user: engine.getRoot().user || {},
+      environment: engine.getEnvironment() || {}
+    });
+    return Object.assign({ base_label: baseLabel, label: baseLabel }, resolved, { label: resolved.label || baseLabel });
+  }
+
+  function applyCommandButtonState(button, command) {
+    const presentation = commandPresentation(command);
+    for (const name of ['state-selected', 'state-armed', 'state-running', 'state-complete']) button.classList.remove(name);
+    if (presentation.stateful) button.classList.add('stateful');
+    else button.classList.remove('stateful');
+    if (presentation.state) button.classList.add(`state-${presentation.state}`);
+    button.textContent = presentation.label;
+    if (presentation.stateful) button.setAttribute('aria-pressed', presentation.active ? 'true' : 'false');
+    else button.removeAttribute('aria-pressed');
+    button.dataset.commandState = presentation.state || 'inactive';
+  }
+
+  function commandButtonHtml(module, entry) {
+    const presentation = commandPresentation(entry.command);
+    const classes = ['module-command-button'];
+    if (presentation.stateful) classes.push('stateful');
+    if (presentation.state) classes.push(`state-${presentation.state}`);
+    const pressed = presentation.stateful ? ` aria-pressed="${presentation.active ? 'true' : 'false'}"` : '';
+    return `<button class="${classes.join(' ')}" data-action="module-command" data-module-id="${escapeHtml(module.id)}" data-command-id="${escapeHtml(entry.command.id)}" data-command-state="${escapeHtml(presentation.state || 'inactive')}"${pressed}>${escapeHtml(presentation.label)}</button>`;
+  }
+
+  function refreshCommandStates() {
+    for (const button of root.querySelectorAll('button[data-action="module-command"]')) {
+      const module = engine.getRegistry().modules.find((entry) => String(entry.id) === String(button.dataset.moduleId));
+      const found = module && commandList(module).find((entry) => String(entry.command.id) === String(button.dataset.commandId));
+      if (found) applyCommandButtonState(button, found.command);
+    }
+  }
+
   function renderModuleCards(modules, role, emptyText) {
     modules = modules.slice().sort((a, b) => moduleOrder(a) - moduleOrder(b) || String(a.id).localeCompare(String(b.id)));
     if (!modules.length) return `<div class="card mini">${escapeHtml(emptyText || '暂无功能')}</div>`;
@@ -173,7 +250,7 @@ function createApp(options) {
         if (blockTitle && !grouped.includes(blockTitle)) grouped.push(blockTitle);
       }
       const open = !isCollapsed(module, role);
-      return `<details class="card module-card" data-module-id="${escapeHtml(module.id)}" data-module-role="${escapeHtml(role)}" ${open ? 'open' : ''}><summary class="module-summary"><span class="grow"><span class="name">${escapeHtml(display.title || module.title || module.id)}</span><br><span class="mini">${escapeHtml(module.version || '')} · ${escapeHtml(module.id)}</span></span><span class="fold-hint">${open ? '收起' : '展开'}</span></summary><div class="module-body">${grouped.length ? `<div class="mini">${grouped.map(escapeHtml).join(' · ')}</div>` : ''}<div class="actions">${entries.map((entry) => `<button data-action="module-command" data-module-id="${escapeHtml(module.id)}" data-command-id="${escapeHtml(entry.command.id)}">${escapeHtml(entry.command.label || entry.command.title || entry.command.id)}</button>`).join('') || '<span class="mini">无可执行命令</span>'}</div></div></details>`;
+      return `<details class="card module-card" data-module-id="${escapeHtml(module.id)}" data-module-role="${escapeHtml(role)}" ${open ? 'open' : ''}><summary class="module-summary"><span class="grow"><span class="name">${escapeHtml(display.title || module.title || module.id)}</span><br><span class="mini">${escapeHtml(module.version || '')} · ${escapeHtml(module.id)}</span></span><span class="fold-hint">${open ? '收起' : '展开'}</span></summary><div class="module-body">${grouped.length ? `<div class="mini">${grouped.map(escapeHtml).join(' · ')}</div>` : ''}<div class="actions">${entries.map((entry) => `${commandButtonHtml(module, entry)}`).join('') || '<span class="mini">无可执行命令</span>'}</div></div></details>`;
     }).join('');
   }
 
@@ -188,7 +265,7 @@ function createApp(options) {
     const rows = modules.map((module) => {
       const display = moduleDisplay(module);
       const classification = classifyModule(currentRoot, registry, module);
-      return `<div class="pkg" data-role-module-id="${escapeHtml(module.id)}"><div class="row"><span class="grow"><span class="name">${escapeHtml(display.title || module.title || module.id)}</span><br><span class="mini">${escapeHtml(module.id)} · ${escapeHtml(classification.source)}</span></span><span class="state-pill ${escapeHtml(classification.role)}">${escapeHtml(roleLabel(classification.role))}</span></div><div class="actions"><button data-action="module-role" data-module-id="${escapeHtml(module.id)}" data-module-role="daily">日常功能</button><button data-action="module-role" data-module-id="${escapeHtml(module.id)}" data-module-role="maintenance">维护工具</button></div></div>`;
+      return `<div class="pkg" data-role-module-id="${escapeHtml(module.id)}"><div class="row"><span class="grow"><span class="name">${escapeHtml(display.title || module.title || module.id)}</span><br><span class="mini">${escapeHtml(module.id)} · ${escapeHtml(classification.source)}</span></span><span class="state-pill ${escapeHtml(classification.role)}">${escapeHtml(roleLabel(classification.role))}</span></div><div class="actions"><button data-action="module-role" data-module-id="${escapeHtml(module.id)}" data-module-role="daily" class="stateful ${classification.role === 'daily' ? 'state-selected' : ''}" aria-pressed="${classification.role === 'daily' ? 'true' : 'false'}">日常功能</button><button data-action="module-role" data-module-id="${escapeHtml(module.id)}" data-module-role="maintenance" class="stateful ${classification.role === 'maintenance' ? 'state-selected' : ''}" aria-pressed="${classification.role === 'maintenance' ? 'true' : 'false'}">维护工具</button></div></div>`;
     }).join('');
     return `<details class="card"><summary><span class="name">功能分区管理</span></summary><div class="detail-body"><div class="mini">这里只决定模块属于日常功能还是维护工具。界面密度由各模块卡片的展开与折叠处理，模块不会因显示偏好而消失。</div>${rows}</div></details>`;
   }
@@ -257,7 +334,7 @@ function createApp(options) {
     body.innerHTML = `<div class="card"><div class="name">${escapeHtml(view.title || '环境观察与恢复')}</div><div class="mini">${escapeHtml(view.description || '观察期望环境在真实浏览器 Runtime 中是否成立，并提供恢复入口。')}</div></div><div class="card health-${escapeHtml(healthStatus)}"><div class="name">一键 Runtime 体检</div><div class="mini">从真实浏览器现场核对脚本实例、存储、内存运行态、实际 DOM、ChatGPT 宿主连接和最近失败。正常项保持安静，只复制无法合理解释的 Runtime 偏差。</div>${lastHealth ? `<div class="health-count">上次结果：${escapeHtml(healthStatus)} · ${deviationCount} deviations</div>` : ''}<div class="actions"><button data-action="maintenance-health-copy">体检并复制</button></div></div>
       <section data-runtime-section="maintenance-tools"><div class="section-title">维护工具</div>${renderModuleCards(groups.maintenance, 'maintenance', '暂无维护工具')}</section>
       ${renderRoleManager()}
-      <details class="card"><summary><span class="name">环境 Profile</span></summary><div class="detail-body"><div class="mini">Profile 保存包选择、政策和界面组织，不复制用户弹药正文。</div><div class="row"><input data-role="profile-title" placeholder="环境名称" value="${escapeHtml(profileDraft)}"><button data-action="profile-save">保存当前环境</button></div>${profileState.items.length ? profileState.items.map((profile) => `<div class="pkg row"><span class="grow mini">${escapeHtml(profile.title)} · ${profile.package_count} packages${profileState.active_id === profile.id ? ' · 当前' : ''}</span><button data-action="profile-activate" data-profile-id="${escapeHtml(profile.id)}">激活</button><button data-action="profile-remove" data-profile-id="${escapeHtml(profile.id)}" class="danger">删除</button></div>`).join('') : '<div class="mini">暂无环境 Profile</div>'}</div></details>
+      <details class="card"><summary><span class="name">环境 Profile</span></summary><div class="detail-body"><div class="mini">Profile 保存包选择、政策和界面组织，不复制用户弹药正文。</div><div class="row"><input data-role="profile-title" placeholder="环境名称" value="${escapeHtml(profileDraft)}"><button data-action="profile-save">保存当前环境</button></div>${profileState.items.length ? profileState.items.map((profile) => `<div class="pkg row"><span class="grow mini">${escapeHtml(profile.title)} · ${profile.package_count} packages${profileState.active_id === profile.id ? ' · 当前' : ''}</span><button data-action="profile-activate" data-profile-id="${escapeHtml(profile.id)}" class="stateful ${profileState.active_id === profile.id ? 'state-selected' : ''}" aria-pressed="${profileState.active_id === profile.id ? 'true' : 'false'}">${profileState.active_id === profile.id ? '当前环境' : '激活'}</button><button data-action="profile-remove" data-profile-id="${escapeHtml(profile.id)}" class="danger">删除</button></div>`).join('') : '<div class="mini">暂无环境 Profile</div>'}</div></details>
       <details class="card"><summary><span class="name">运行摘要</span></summary><div class="detail-body"><div class="receipt">${escapeHtml(JSON.stringify(summary, null, 2))}</div><div class="actions"><button data-action="maintenance-copy">复制简要诊断</button><button data-action="receipts-clear">清空回执</button></div></div></details>
       <details class="card"><summary><span class="name">最近回执</span></summary><div class="detail-body">${receipts.length ? receipts.map((item) => `<div class="receipt pkg">${escapeHtml(JSON.stringify(item, null, 2))}</div>`).join('') : '<div class="mini">暂无回执</div>'}</div></details>
       <details class="card"><summary><span class="name">状态快照</span></summary><div class="detail-body">${snapshots.length ? snapshots.map((item) => `<div class="pkg row"><span class="grow mini">r${item.revision} · ${escapeHtml(item.reason)}</span><button data-action="rollback" data-revision="${item.revision}">恢复</button></div>`).join('') : '<div class="mini">暂无快照</div>'}</div></details>`;
@@ -443,7 +520,7 @@ function createApp(options) {
     windowObject.visualViewport.addEventListener('scroll', scheduleFence, { passive: true });
   }
   render();
-  return { render, setNotice, captureRuntimeViews, destroy: () => hostElement.remove(), root, shell, hostElement };
+  return { render, refreshCommandStates, setNotice, captureRuntimeViews, destroy: () => hostElement.remove(), root, shell, hostElement };
 }
 
-module.exports = { createApp, computeFenceStyle };
+module.exports = { createApp, computeFenceStyle, resolveUiStateSpec };

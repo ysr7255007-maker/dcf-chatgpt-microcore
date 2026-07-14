@@ -6,6 +6,8 @@ The status in this file is authoritative. A status line inside an older ADR reco
 
 ## Current
 
+- `2026-07-14-dcf-stateful-command-feedback.md` — **accepted**
+
 - `2026-07-14-dcf-bootstrap-package-auto-sync.md` — **accepted**
 - `2026-07-14-dcf-conversation-turn-attribution.md` — **accepted**
 

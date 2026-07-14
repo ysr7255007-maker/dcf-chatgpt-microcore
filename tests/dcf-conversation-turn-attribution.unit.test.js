@@ -70,9 +70,9 @@ try {
 }
 
 const pack = STANDARD_PACKS.find((item) => item.pack_id === 'dcf.standard.conversation-performance');
-assert.strictEqual(pack.revision, '1.2.0');
+assert.strictEqual(pack.revision, '1.3.0');
 const commands = pack.modules[0].blocks.flatMap((block) => block.commands);
-assert(commands.some((command) => command.id === 'turn_attribution_arm' && command.label === '记录下一轮问答'));
+assert(commands.some((command) => command.id === 'turn_attribution_arm' && command.label === '记录下一轮问答' && command.ui_state));
 assert(commands.some((command) => command.id === 'turn_attribution_copy' && command.label === '复制本轮归因报告' && command.steps[0].with.finish === false));
 assert(commands.some((command) => command.id === 'turn_attribution_finish' && command.label === '手动结束并复制' && command.steps[0].with.finish === true));
 
