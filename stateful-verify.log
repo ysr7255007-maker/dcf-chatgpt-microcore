@@ -53,15 +53,44 @@
   "style_restoration_exercised": true,
   "long_animation_frame_attribution": true
 }
+{
+  "ok": true,
+  "loaf_script_attribution": true,
+  "interaction_breakdown": true,
+  "layout_shift_summary": true,
+  "dcf_self_timing": true,
+  "source_url_sanitization": true,
+  "start_action_excluded_by_timeline": true,
+  "turn_scoped_package": true
+}
+{
+  "ok": true,
+  "armed_before_send": true,
+  "send_boundary": true,
+  "first_reply_phase": true,
+  "automatic_reply_completion": true,
+  "normal_copy_does_not_finish": true,
+  "manual_recovery": true,
+  "no_message_text": true
+}
+{
+  "ok": true,
+  "declarative_state_contract": true,
+  "selected_mode_feedback": true,
+  "armed_running_complete_feedback": true,
+  "text_and_color_feedback": true,
+  "live_turn_refresh": true,
+  "unrelated_actions_unstyled": true
+}
 node:assert:150
   throw new AssertionError(obj);
   ^
 
-AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+AssertionError [ERR_ASSERTION]: bootstrap upgrade did not activate the embedded required package revision
 
 '1.3.0' !== '1.2.0'
 
-    at Object.<anonymous> (/home/runner/work/dcf-chatgpt-microcore/dcf-chatgpt-microcore/tests/dcf-performance-attribution.unit.test.js:56:8)
+    at Object.<anonymous> (/home/runner/work/dcf-chatgpt-microcore/dcf-chatgpt-microcore/tests/dcf-bootstrap-package-sync.unit.test.js:28:8)
     at Module._compile (node:internal/modules/cjs/loader:1781:14)
     at Object..js (node:internal/modules/cjs/loader:1913:10)
     at Module.load (node:internal/modules/cjs/loader:1505:32)
@@ -69,7 +98,7 @@ AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
     at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
     at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)
     at node:internal/main/run_main_module:36:49 {
-  generatedMessage: true,
+  generatedMessage: false,
   code: 'ERR_ASSERTION',
   actual: '1.3.0',
   expected: '1.2.0',
