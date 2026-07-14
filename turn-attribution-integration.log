@@ -1,7 +1,8 @@
 Traceback (most recent call last):
-  File "/home/runner/work/dcf-chatgpt-microcore/dcf-chatgpt-microcore/scripts/apply-conversation-turn-attribution.py", line 324, in <module>
-    host = replace_once(
-           ^^^^^^^^^^^^^
-  File "/home/runner/work/dcf-chatgpt-microcore/dcf-chatgpt-microcore/scripts/apply-conversation-turn-attribution.py", line 19, in replace_once
-    raise RuntimeError(f'{label}: expected one match, found {count}')
-RuntimeError: host send diagnostics: expected one match, found 0
+  File "/home/runner/work/dcf-chatgpt-microcore/dcf-chatgpt-microcore/scripts/apply-conversation-turn-attribution.py", line 54, in <module>
+    exec(compile(source, SOURCE_PATH, 'exec'), namespace, namespace)
+  File "scripts/apply-conversation-turn-attribution.py", line 386, in <module>
+  File "scripts/apply-conversation-turn-attribution.py", line 25, in replace_once
+    count = text.count(old)
+        ^^^^^^^^^^^^^^^^^^^^
+RuntimeError: turn attribution effects: expected one match, found exact=0, whitespace=0
