@@ -13,6 +13,7 @@ const { createCommandRunner } = require('./runtime/commands');
 const { createCapabilityReconciler } = require('./runtime/reconciler');
 const { createChatGPTHost } = require('./host/chatgpt');
 const { createConversationPerformanceController } = require('./host/conversation-performance');
+const { createConversationTurnAttribution } = require('./host/conversation-turn-attribution');
 const { STANDARD_PACKS, REQUIRED_PRODUCT_PACKAGES } = require('./modules/standard-packages');
 const { createAmmoModule } = require('./modules/ammo');
 const { createCatalogTransport } = require('./modules/catalog');
@@ -55,7 +56,8 @@ function boot(api = globalThis) {
   const host = createChatGPTHost(windowObject);
   const conversationPerformance = createConversationPerformanceController(windowObject, { findConversationRoot: host.findConversationRoot, isStreaming: host.isStreaming });
   conversationPerformance.syncPolicy(engine.getRegistry().policies && engine.getRegistry().policies.conversation_performance || {});
-  const effects = createEffectRunner(host, receiptStore, conversationPerformance);
+  const conversationTurnAttribution = createConversationTurnAttribution(conversationPerformance, { windowObject });
+  const effects = createEffectRunner(host, receiptStore, conversationPerformance, conversationTurnAttribution);
   const catalog = createCatalogTransport(storage, engine, api);
   const ammo = createAmmoModule(engine, effects);
   let app = null;
@@ -71,7 +73,7 @@ function boot(api = globalThis) {
     windowObject,
     getApp: () => app,
     getRuntime: () => api.__DCF_RUNTIME__ || null,
-    getPerformance: () => conversationPerformance.diagnostics()
+    getPerformance: () => Object.assign({}, conversationPerformance.diagnostics(), { turn_attribution: conversationTurnAttribution.status() })
   });
   const maintenance = createMaintenanceModule(engine, receiptStore, effects, storage, health, reconciler);
   const commandRunner = createCommandRunner(engine, effects, receiptStore, () => {
@@ -95,8 +97,13 @@ function boot(api = globalThis) {
     if (changed || decoded.errors.length) app.render();
   }
 
+  host.startSendObserver((signal) => conversationTurnAttribution.onSend(signal));
   host.startReplyObserver((reply) => {
+    const completed = conversationTurnAttribution.onReplyComplete({ source: reply.source, completed_at: reply.completed_at, at_epoch_ms: reply.at_epoch_ms, quiet_ms: reply.quiet_ms });
+    if (completed.completed && app) { app.setNotice('本轮问答归因已完成，可复制报告'); app.render(); }
     processReply(reply).catch((error) => receiptStore.append({ schema: 'dcf.receipt.v1', intent: { type: 'reply.reconcile' }, status: 'rejected', stage: 'runtime', error: String(error && error.message || error) }));
+  }, {
+    onReplyStart: (meta) => conversationTurnAttribution.onReplyStart(meta)
   });
   api.setTimeout(() => catalog.check().then((result) => { if (result && result.applied && result.applied.length) { app.setNotice('DCF 能力包已自动协调到最新版本'); app.render(); } }), 1600);
 
@@ -106,7 +113,7 @@ function boot(api = globalThis) {
     api.GM_registerMenuCommand('DCF：复制简要诊断', () => maintenance.copySummary());
   }
 
-  const runtime = { version: VERSION, engine, getEnvironment: () => engine.getEnvironment(), host, conversationPerformance, app, catalog, reconciler, receiptStore, health, maintenance };
+  const runtime = { version: VERSION, engine, getEnvironment: () => engine.getEnvironment(), host, conversationPerformance, conversationTurnAttribution, app, catalog, reconciler, receiptStore, health, maintenance };
   Object.defineProperty(runtime, 'environment', { enumerable: true, get: () => engine.getEnvironment() });
   api.__DCF_RUNTIME__ = runtime;
   return runtime;

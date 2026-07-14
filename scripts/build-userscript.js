@@ -24,6 +24,7 @@ const modules = [
   'src/runtime/reconciler.js',
   'src/host/chatgpt.js',
   'src/host/conversation-performance.js',
+  'src/host/conversation-turn-attribution.js',
   'src/modules/standard-packages.js',
   'src/modules/ammo.js',
   'src/modules/catalog.js',

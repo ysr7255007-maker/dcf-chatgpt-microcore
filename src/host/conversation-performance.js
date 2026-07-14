@@ -81,7 +81,7 @@ function emptyAttributionEntries() {
 
 function createAttributionSession(context = {}) {
   const startedEpoch = Number(context.started_epoch_ms || Date.now());
-  const durationMs = clamp(context.duration_ms, 10000, 180000, 60000);
+  const durationMs = clamp(context.duration_ms, 10000, 900000, 60000);
   return {
     schema: 'dcf.conversation-performance.attribution-session.v1',
     session_id: String(context.session_id || `perf-${startedEpoch.toString(36)}-${Math.random().toString(36).slice(2, 8)}`),
@@ -671,15 +671,15 @@ function createConversationPerformanceController(windowObject = window, options 
     attributionTimer = null;
     attribution = createAttributionSession({
       duration_ms: options.duration_ms,
-      timeline_start_ms: windowObject.performance && typeof windowObject.performance.now === 'function' ? windowObject.performance.now() : 0,
-      context: {
+      timeline_start_ms: options.timeline_start_ms != null ? Number(options.timeline_start_ms) : (windowObject.performance && typeof windowObject.performance.now === 'function' ? windowObject.performance.now() : 0),
+      context: Object.assign({
         route_kind: routeKind(),
         mode: policy.mode,
         turn_count: lastTurnCount,
         hidden_count: lastHiddenCount,
         selector_strategy: selectorStrategy,
         streaming_at_start: !!isStreaming()
-      }
+      }, options.context || {})
     });
     attributionTimer = windowObject.setTimeout(() => finishAttribution('duration'), attribution.duration_ms);
     return attributionStatus();

@@ -12,6 +12,11 @@ function createChatGPTHost(windowObject = window, options = {}) {
   let activeNode = null;
   let quietTimer = null;
   let onReplyComplete = null;
+  let onReplyStart = null;
+  let onSend = null;
+  let sendClickHandler = null;
+  let sendKeyHandler = null;
+  let lastSendSignalAt = 0;
   let lastUrl = String(windowObject.location && windowObject.location.href || '');
   let urlTimer = null;
   let rootLocatorTimer = null;
@@ -89,7 +94,7 @@ function createChatGPTHost(windowObject = window, options = {}) {
       disconnectActive();
       if (!text || processedNodes.has(node)) return;
       processedNodes.add(node);
-      if (typeof onReplyComplete === 'function') onReplyComplete({ node, text, source, completed_at: nowIso() });
+      if (typeof onReplyComplete === 'function') onReplyComplete({ node, text, source, completed_at: nowIso(), at_epoch_ms: Date.now(), quiet_ms: quietMs });
     }, quietMs);
   }
 
@@ -102,6 +107,7 @@ function createChatGPTHost(windowObject = window, options = {}) {
     }
     disconnectActive();
     activeNode = normalized;
+    if (typeof onReplyStart === 'function') onReplyStart({ source, started_at: nowIso(), at_epoch_ms: Date.now(), timeline_ms: windowObject.performance && typeof windowObject.performance.now === 'function' ? windowObject.performance.now() : 0 });
     activeObserver = new windowObject.MutationObserver(() => scheduleCompletion(normalized, source));
     activeObserver.observe(normalized, { childList: true, subtree: true, characterData: true });
     scheduleCompletion(normalized, source);
@@ -156,15 +162,16 @@ function createChatGPTHost(windowObject = window, options = {}) {
     attempt();
   }
 
-  function startReplyObserver(callback) {
+  function startReplyObserver(callback, observerOptions = {}) {
     onReplyComplete = callback;
+    onReplyStart = typeof observerOptions.onReplyStart === 'function' ? observerOptions.onReplyStart : null;
     scheduleRootAttach();
     urlTimer = windowObject.setInterval(() => {
       const href = String(windowObject.location && windowObject.location.href || '');
       if (href === lastUrl) return;
       lastUrl = href;
       stopReplyObserver();
-      startReplyObserver(callback);
+      startReplyObserver(callback, observerOptions);
     }, 1200);
     return () => stopReplyObserver();
   }
@@ -207,6 +214,54 @@ function createChatGPTHost(windowObject = window, options = {}) {
     if (!button || button.disabled) throw new Error('ChatGPT send button not available');
     button.click();
     return { inserted: true, sent: true };
+  }
+
+
+  function eventTimelineMs(event) {
+    const raw = Number(event && event.timeStamp);
+    const perf = windowObject.performance;
+    if (Number.isFinite(raw) && raw >= 0) {
+      if (raw > 1e12 && perf && Number.isFinite(Number(perf.timeOrigin))) return Math.max(0, raw - Number(perf.timeOrigin));
+      return raw;
+    }
+    return perf && typeof perf.now === 'function' ? perf.now() : 0;
+  }
+
+  function emitSend(kind, event) {
+    if (typeof onSend !== 'function') return;
+    const epoch = Date.now();
+    if (epoch - lastSendSignalAt < 250) return;
+    lastSendSignalAt = epoch;
+    onSend({ kind, at: nowIso(), at_epoch_ms: epoch, timeline_ms: eventTimelineMs(event) });
+  }
+
+  function startSendObserver(callback) {
+    stopSendObserver();
+    onSend = callback;
+    sendClickHandler = (event) => {
+      const target = event && event.target instanceof windowObject.Element ? event.target : null;
+      const button = target && target.closest('[data-testid="send-button"],button[aria-label*="Send" i],button[aria-label*="发送"]');
+      if (button && !button.disabled) emitSend('click', event);
+    };
+    sendKeyHandler = (event) => {
+      if (!event || event.key !== 'Enter' || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey || event.isComposing) return;
+      const input = composer();
+      const target = event.target instanceof windowObject.Element ? event.target : null;
+      if (!input || !target || !(target === input || input.contains(target))) return;
+      const button = doc.querySelector('[data-testid="send-button"],button[aria-label*="Send" i],button[aria-label*="发送"]');
+      if (button && !button.disabled) emitSend('enter', event);
+    };
+    doc.addEventListener('click', sendClickHandler, true);
+    doc.addEventListener('keydown', sendKeyHandler, true);
+    return () => stopSendObserver();
+  }
+
+  function stopSendObserver() {
+    if (sendClickHandler) doc.removeEventListener('click', sendClickHandler, true);
+    if (sendKeyHandler) doc.removeEventListener('keydown', sendKeyHandler, true);
+    sendClickHandler = null;
+    sendKeyHandler = null;
+    onSend = null;
   }
 
   async function copy(text) {
@@ -258,14 +313,16 @@ function createChatGPTHost(windowObject = window, options = {}) {
       observer_scope: 'conversation-root-added-nodes + current-reply',
       recovery_count: recoveryCount,
       quiet_ms: quietMs,
-      root_locator_pending: !!rootLocatorTimer,
-      url_watch_active: !!urlTimer
+      root_locator_pending: !!rootLocatorTimer,       url_watch_active: !!urlTimer,
+       send_observer_attached: !!(sendClickHandler && sendKeyHandler)
     };
   }
 
   return {
     startReplyObserver,
     stopReplyObserver,
+    startSendObserver,
+    stopSendObserver,
     findConversationRoot,
     findRecentAssistantNodes,
     readReplyText,

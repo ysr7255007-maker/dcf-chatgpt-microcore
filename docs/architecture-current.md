@@ -1,7 +1,7 @@
 # DCF 当前架构
 
 Updated: 2026-07-14  
-Current release: `0.17.0`
+Current release: `0.18.0`
 
 ## 1. 价值与工程关系
 
@@ -164,3 +164,12 @@ Research basis: MDN `content-visibility` documentation; web.dev rendering guidan
 诊断是一次性 Action，不进入权威环境。用户显式开始 60 秒会话，系统只在该时间窗内保存有界样本；结束后返回 `dcf.conversation-performance.attribution.v1`。点击开始前已启动的帧通过 Performance Timeline 起点排除，避免把启动按钮本身误当作主要来源。
 
 LoAF 不能保证归因浏览器扩展隔离世界、跨域脚本或精确热点函数。DCF 因此单独计量自身每次协调耗时与触发原因，并把未知来源、脚本入口而非内部热点、以及各阶段计时可能重叠写入报告限制。报告禁止消息正文、DOM 文本、事件 target、完整 URL/query、调用栈和认证信息。
+
+
+## 15. 问答轮次归因（0.18.0）
+
+主线程归因的默认统计边界不是任意 60 秒，而是用户可感知的一次完整问答：下一次发送动作发生时开始，首个助手输出活动形成阶段分界，助手回复停止流式并通过安静窗口确认后自动结束。固定时长只保留为最长运行围栏，手动结束只用于失败、取消或回复无法正常收口。
+
+“记录下一轮问答”只进入 armed 状态，不启动 Performance 样本，因此诊断按钮本身不进入数据。Host Adapter 在捕获阶段观察发送按钮点击和输入框 Enter，不读取输入正文；send event 的 timeline timestamp 成为 LoAF、Event Timing、layout-shift 和 longtask 的共同下界。回复侧复用已有的 bounded current-reply observer，额外发出 first activity 与 completion 生命周期信号。
+
+报告把浏览器可观察的轮次拆为 send-to-first-reply-activity 与 first-reply-activity-to-completion。前一段包含服务端、网络、调度和页面工作，Runtime 只能证明等待长度及同时发生的浏览器阻塞，不能把整段等待自动归罪于浏览器。完成时间包含明确报告的 quiet-window 检测余量。

@@ -11,7 +11,7 @@ function safeEffect(effect) {
   return copy;
 }
 
-function createEffectRunner(host, receiptStore, performanceController) {
+function createEffectRunner(host, receiptStore, performanceController, turnAttribution) {
   async function run(effect, context = {}) {
     const started = Date.now();
     try {
@@ -34,6 +34,16 @@ function createEffectRunner(host, receiptStore, performanceController) {
         if (!performanceController) throw new Error('conversation performance controller unavailable');
         const attribution = effect.finish === false ? performanceController.attributionReport() : performanceController.finishAttribution('manual');
         const report = `<<<DCF_CONVERSATION_PERFORMANCE_ATTRIBUTION\n${JSON.stringify(attribution, null, 2)}\nDCF_CONVERSATION_PERFORMANCE_ATTRIBUTION>>>`;
+        result = await host.copy(report);
+      } else if (effect.type === 'conversation.performance.turn.arm') {
+        if (!turnAttribution) throw new Error('conversation turn attribution unavailable');
+        result = turnAttribution.arm();
+      } else if (effect.type === 'conversation.performance.turn.report') {
+        if (!turnAttribution) throw new Error('conversation turn attribution unavailable');
+        const attribution = effect.finish === false ? turnAttribution.report() : turnAttribution.finishAndReport('manual');
+        const report = `<<<DCF_CONVERSATION_TURN_ATTRIBUTION
+${JSON.stringify(attribution, null, 2)}
+DCF_CONVERSATION_TURN_ATTRIBUTION>>>`;
         result = await host.copy(report);
       } else throw new Error(`unsupported effect ${effect.type}`);
       receiptStore.append({ schema: 'dcf.effect.receipt.v1', effect: safeEffect(effect), context, status: 'ok', result, duration_ms: Date.now() - started });

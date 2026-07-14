@@ -53,10 +53,11 @@ assert(!JSON.stringify(report).includes('SECRET'));
 assert(!JSON.stringify(report).includes('private'));
 
 const pack = STANDARD_PACKS.find((item) => item.pack_id === 'dcf.standard.conversation-performance');
-assert.strictEqual(pack.revision, '1.1.0');
+assert.strictEqual(pack.revision, '1.2.0');
 const commandIds = pack.modules[0].blocks.flatMap((block) => block.commands).map((command) => command.id);
-assert(commandIds.includes('attribution60'));
-assert(commandIds.includes('attribution_copy'));
+assert(commandIds.includes('turn_attribution_arm'));
+assert(commandIds.includes('turn_attribution_copy'));
+assert(commandIds.includes('turn_attribution_finish'));
 
 const controllerSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'host', 'conversation-performance.js'), 'utf8');
 for (const marker of ['long-animation-frame', 'forcedStyleAndLayoutDuration', 'durationThreshold: 16', 'layout-shift', 'timeline_start_ms', 'acceptsAttributionEntry']) assert(controllerSource.includes(marker), `missing attribution marker ${marker}`);
@@ -67,4 +68,4 @@ const commandSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'runtime
 assert(commandSource.includes('conversation.performance.attribution.start'));
 assert(commandSource.includes('conversation.performance.attribution.report'));
 
-console.log(JSON.stringify({ ok: true, loaf_script_attribution: true, interaction_breakdown: true, layout_shift_summary: true, dcf_self_timing: true, source_url_sanitization: true, start_action_excluded_by_timeline: true }, null, 2));
+console.log(JSON.stringify({ ok: true, loaf_script_attribution: true, interaction_breakdown: true, layout_shift_summary: true, dcf_self_timing: true, source_url_sanitization: true, start_action_excluded_by_timeline: true, turn_scoped_package: true }, null, 2));
