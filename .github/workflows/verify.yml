@@ -8,15 +8,26 @@ on:
       - feature/conversation-performance-governor
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   verify:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: feature/conversation-performance-governor
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - run: python scripts/fix-performance-controller-audit.py
+      - name: Commit audited controller behavior
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/host/conversation-performance.js tests/dcf-conversation-performance.unit.test.js docs/architecture-current.md docs/current-state.md
+          git diff --cached --quiet || git commit -m 'Eliminate idle rescans and preserve streaming safety'
+          git push origin HEAD:feature/conversation-performance-governor
       - run: npm run verify
       - run: node --check dcf-chatgpt-microcore.user.js
