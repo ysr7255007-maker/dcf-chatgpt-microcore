@@ -21,13 +21,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: python scripts/apply-conversation-turn-attribution.py
-      - run: npm run verify
-      - run: node --check dcf-chatgpt-microcore.user.js
-      - name: Commit implementation and generated release artifacts
+      - name: Run and capture integration
         run: |
+          set +e
+          python scripts/apply-conversation-turn-attribution.py > turn-attribution-integration.log 2>&1
+          status=$?
+          cat turn-attribution-integration.log
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add README.md package.json scripts/build-userscript.js src tests docs dcf-chatgpt-microcore.user.js dcf-chatgpt-microcore.meta.js catalog
-          git diff --cached --quiet || git commit -m 'Implement conversation-turn performance attribution'
+          git add turn-attribution-integration.log
+          git commit -m 'Capture turn attribution integration failure' || true
           git push origin HEAD:feature/conversation-turn-attribution
+          exit $status
+      - run: npm run verify
+      - run: node --check dcf-chatgpt-microcore.user.js
