@@ -21,15 +21,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Run and capture verification
+      - run: python scripts/fix-performance-health-gating.py
+      - name: Commit health gating fix
         run: |
-          set +e
-          npm run verify > verify-performance.log 2>&1
-          status=$?
-          cat verify-performance.log
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add verify-performance.log
-          git commit -m 'Capture performance governor verification failure' || true
+          git add src/modules/health.js tests/dcf-health-report.unit.test.js tests/dcf-conversation-performance.unit.test.js
+          git diff --cached --quiet || git commit -m 'Gate performance health on the active package'
           git push origin HEAD:feature/conversation-performance-governor
-          exit $status
+      - run: npm run verify
+      - run: node --check dcf-chatgpt-microcore.user.js
