@@ -53,7 +53,7 @@ assert(!JSON.stringify(report).includes('SECRET'));
 assert(!JSON.stringify(report).includes('private'));
 
 const pack = STANDARD_PACKS.find((item) => item.pack_id === 'dcf.standard.conversation-performance');
-assert.strictEqual(pack.revision, '1.2.0');
+assert.strictEqual(pack.revision, '1.3.0');
 const commandIds = pack.modules[0].blocks.flatMap((block) => block.commands).map((command) => command.id);
 assert(commandIds.includes('turn_attribution_arm'));
 assert(commandIds.includes('turn_attribution_copy'));
