@@ -39,15 +39,12 @@
   "superseded_legacy_module_is_not_a_health_gap": true,
   "folded_packages_remain_observable": true
 }
-node:assert:150
-  throw new AssertionError(obj);
-  ^
+node:internal/assert/utils:77
+    throw err;
+    ^
 
-AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
-
-'1.3.0' !== '1.2.0'
-
-    at Object.<anonymous> (/home/runner/work/dcf-chatgpt-microcore/dcf-chatgpt-microcore/tests/dcf-conversation-performance.unit.test.js:115:8)
+AssertionError [ERR_ASSERTION]: route safety poll still performs periodic full reconciliation
+    at Object.<anonymous> (/home/runner/work/dcf-chatgpt-microcore/dcf-chatgpt-microcore/tests/dcf-conversation-performance.unit.test.js:125:1)
     at Module._compile (node:internal/modules/cjs/loader:1781:14)
     at Object..js (node:internal/modules/cjs/loader:1913:10)
     at Module.load (node:internal/modules/cjs/loader:1505:32)
@@ -55,11 +52,11 @@ AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
     at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
     at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)
     at node:internal/main/run_main_module:36:49 {
-  generatedMessage: true,
+  generatedMessage: false,
   code: 'ERR_ASSERTION',
-  actual: '1.3.0',
-  expected: '1.2.0',
-  operator: 'strictEqual',
+  actual: false,
+  expected: true,
+  operator: '==',
   diff: 'simple'
 }
 
