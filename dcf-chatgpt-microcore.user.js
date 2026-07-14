@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DCF ChatGPT Microcore
 // @namespace    https://chatgpt.com/
-// @version      0.14.0
+// @version      0.15.0
 // @description  DCF conversation-environment runtime with unified intents, resources, profiles, reconciliation and independent Runtime observation.
 // @updateURL    https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.meta.js
 // @downloadURL  https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/dcf-chatgpt-microcore.user.js
@@ -112,7 +112,7 @@ module.exports = {
 "src/core/constants.js":function(module,exports,require){
 'use strict';
 
-const VERSION = '0.14.0';
+const VERSION = '0.15.0';
 const ROOT_KEY = 'dcf.state.root.v1';
 const SNAPSHOT_KEY = 'dcf.state.snapshots.v1';
 const RUNTIME_KEY = 'dcf.runtime.registry.v3';
@@ -643,6 +643,49 @@ module.exports = {
 const { clone, deepMerge, hash, isObject } = require("src/core/utils.js");
 const { compilePackageSet } = require("src/core/resources.js");
 
+function resolveModuleSupersession(modules) {
+  const ids = new Set((modules || []).map((module) => String(module && module.id || '')).filter(Boolean));
+  const direct = {};
+  const errors = [];
+  const ordered = (modules || []).slice().sort((a, b) => String(a.id || '').localeCompare(String(b.id || '')));
+  for (const module of ordered) {
+    const by = String(module && module.id || '');
+    for (const rawTarget of Array.isArray(module && module.supersedes) ? module.supersedes : []) {
+      const target = String(rawTarget || '').trim();
+      if (!target) continue;
+      if (target === by) {
+        errors.push(`module ${by} cannot supersede itself`);
+        continue;
+      }
+      if (direct[target] && direct[target] !== by) {
+        errors.push(`module supersession conflict ${target}: ${direct[target]} vs ${by}`);
+        continue;
+      }
+      direct[target] = by;
+    }
+  }
+  function finalReplacement(target) {
+    const seen = [target];
+    let current = direct[target];
+    while (current && direct[current]) {
+      if (seen.includes(current)) {
+        errors.push(`module supersession cycle: ${seen.concat(current).join(' -> ')}`);
+        return '';
+      }
+      seen.push(current);
+      current = direct[current];
+    }
+    return current || '';
+  }
+  const entries = {};
+  for (const target of Object.keys(direct).sort()) {
+    if (!ids.has(target)) continue;
+    const by = finalReplacement(target);
+    if (by) entries[target] = { by, direct_by: direct[target] };
+  }
+  return { ok: errors.length === 0, errors, entries };
+}
+
 function buildProjection(root) {
   const compiled = compilePackageSet(root.packages || {});
   if (!compiled.ok) return { ok: false, errors: compiled.errors, registry: null };
@@ -693,6 +736,9 @@ function buildProjection(root) {
   }
   for (const type of Object.keys(contentTypes)) content[type] = content[type] || {};
   modules.sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  const supersession = resolveModuleSupersession(modules);
+  if (!supersession.ok) return { ok: false, errors: supersession.errors, registry: null };
+  const runtimeModules = modules.filter((module) => !supersession.entries[String(module.id)]);
 
   const registry = {
     schema: 'dcf.runtime.registry.v3',
@@ -709,7 +755,8 @@ function buildProjection(root) {
     content,
     surfaces,
     uiViews,
-    modules,
+    modules: runtimeModules,
+    moduleSupersession: { schema: 'dcf.runtime.module-supersession.v1', entries: clone(supersession.entries) },
     moduleDisplay: deepMerge(moduleDisplayDefaults, user.moduleDisplay || {}),
     settings: Object.assign({}, settingDefaults, clone(user.settings || {})),
     policies: Object.assign({}, policyDefaults, clone(user.preferences || {})),
@@ -717,7 +764,7 @@ function buildProjection(root) {
     installedPacks: compiled.activePackages,
     build: {
       schema: 'dcf.build.result.v2',
-      build_id: hash({ state_hash: root.state_hash, active: compiled.activePackages, ownership: compiled.ownership, resources: compiled.resourceGraph }),
+      build_id: hash({ state_hash: root.state_hash, active: compiled.activePackages, ownership: compiled.ownership, resources: compiled.resourceGraph, module_supersession: supersession.entries }),
       resource_ownership: compiled.ownership,
       conflicts: []
     }
@@ -725,7 +772,7 @@ function buildProjection(root) {
   return { ok: true, errors: [], registry };
 }
 
-module.exports = { buildProjection };
+module.exports = { buildProjection, resolveModuleSupersession };
 
 },
 "src/core/state.js":function(module,exports,require){
@@ -2005,13 +2052,13 @@ const STANDARD_PACKS = [
   {
     schema: 'dcf.module_pack.v1',
     pack_id: 'dcf.standard.ammo',
-    revision: '1.2.0',
-    title: '语言弹药核心',
-    description: '提供语言弹药内容、语境化调用、实质更新和低摩擦发射能力。',
+    revision: '1.3.0',
+    title: '语言弹药工作台',
+    description: '统一提供语言弹药的提取、新建、编辑、查找、语境化调用、实质更新与管理。',
     contributes: {
       content_types: [{ id: 'ammo', marker: 'DCF_AMMO', title: '语言弹药', body_field: 'body', actions: ['fire', 'copy', 'update', 'delete'] }],
       surfaces: [{ id: 'dcf.ammo', title: '弹药', area: 'primary', order: 10, kind: 'content-list', content_type: 'ammo' }],
-      ui_views: [{ id: 'ammo', kind: 'content', projection: 'content:ammo', tab_label: '弹药', title: '语言弹药', description: '自动提取、自动装填、语境化调用与实质更新。', order: 10 }],
+      ui_views: [{ id: 'ammo', kind: 'content', projection: 'content:ammo', tab_label: '弹药', title: '语言弹药工作台', description: '在一个入口中提取、新建、编辑、查找、调用、更新和管理语言弹药。', order: 10, labels: { extract: '从当前对话提取', new_item: '新建弹药', search_placeholder: '查找标题、用途、标签或 ID', fire_mode: '发射', fire: '发射', copy: '复制', update: '更新', edit: '编辑', remove: '删除', save: '保存', cancel: '取消' } }],
       policies: {
         ammo_protocol: {
           invocation_marker: '〔DCF·语言弹药〕',
@@ -2027,7 +2074,7 @@ const STANDARD_PACKS = [
       },
       appearance: { side: 'right', vars: { w: '340px', h: '800px', top: '12px', bottom: '112px', anchor: 'bottom' } }
     },
-    modules: [{ id: 'dcf.ammo.module', title: '语言弹药', version: '1.2.0', kind: 'ammo' }]
+    modules: [{ id: 'dcf.ammo.module', title: '语言弹药工作台', version: '1.3.0', kind: 'ammo', supersedes: ['dcf.ammo_workbench', 'dcf.ammo_workspace.unified', 'dcf.language_ammo'] }]
   },
   {
     schema: 'dcf.module_pack.v1',
@@ -2332,6 +2379,34 @@ function unique(values) { return Array.from(new Set((values || []).map((value) =
 function hasCjk(value) { return /[\u3400-\u9fff]/.test(String(value || '')); }
 function activePack(entry) { const revision = entry && entry.active_revision; return entry && entry.revisions && entry.revisions[revision] && entry.revisions[revision].pack || null; }
 
+
+function hasNonModuleRuntimeContribution(pack) {
+  const source = pack && typeof pack === 'object' ? pack : {};
+  if (Array.isArray(source.resources) && source.resources.length) return true;
+  const contributes = source.contributes && typeof source.contributes === 'object' ? source.contributes : {};
+  for (const key of ['content_types', 'surfaces', 'ui_views', 'styles']) {
+    if (Array.isArray(contributes[key]) && contributes[key].length) return true;
+  }
+  for (const key of ['appearance', 'settings', 'policies', 'content']) {
+    if (contributes[key] && typeof contributes[key] === 'object' && Object.keys(contributes[key]).length) return true;
+  }
+  return false;
+}
+
+function packageSupersessionStatus(entry, registry) {
+  const pack = activePack(entry) || {};
+  const moduleIds = (Array.isArray(pack.modules) ? pack.modules : []).map((module) => String(module && module.id || '')).filter(Boolean);
+  const map = registry && registry.moduleSupersession && registry.moduleSupersession.entries || {};
+  const superseded = moduleIds.filter((id) => !!map[id]);
+  const replacements = unique(superseded.map((id) => map[id] && map[id].by));
+  return {
+    fully_superseded: moduleIds.length > 0 && superseded.length === moduleIds.length && !hasNonModuleRuntimeContribution(pack),
+    module_ids: moduleIds,
+    superseded_module_ids: superseded,
+    replacements
+  };
+}
+
 function packagePresentation(entry) {
   const pack = activePack(entry) || {};
   const modules = Array.isArray(pack.modules) ? pack.modules : [];
@@ -2380,9 +2455,12 @@ function packagePresentation(entry) {
 }
 
 function createPackageManager(engine, catalog, reconciler) {
-  function packages() {
+  function sortedPackages() {
     return Object.values(engine.getRoot().packages.packages || {}).sort((a, b) => packagePresentation(a).title.localeCompare(packagePresentation(b).title, 'zh-CN') || String(a.package_id).localeCompare(String(b.package_id)));
   }
+  function status(entry) { return packageSupersessionStatus(entry, engine.getRegistry()); }
+  function packages() { return sortedPackages().filter((entry) => !status(entry).fully_superseded); }
+  function supersededPackages() { return sortedPackages().filter((entry) => status(entry).fully_superseded); }
   function installJson(text) {
     const parsed = JSON.parse(String(text || '{}'));
     const wrapper = `<<<DCF_MODULE_PACK\n${JSON.stringify(parsed)}\nDCF_MODULE_PACK>>>`;
@@ -2394,6 +2472,8 @@ function createPackageManager(engine, catalog, reconciler) {
   function intent(value, material) { return reconciler ? reconciler.acceptIntent(value, material) : engine.applyEnvironmentIntent(value, material); }
   return {
     packages,
+    supersededPackages,
+    supersessionStatus: status,
     environment: () => engine.getEnvironment(),
     presentation: packagePresentation,
     installJson,
@@ -2405,7 +2485,7 @@ function createPackageManager(engine, catalog, reconciler) {
   };
 }
 
-module.exports = { createPackageManager, packagePresentation, activePack, LEGACY_PRESENTATION };
+module.exports = { createPackageManager, packagePresentation, activePack, packageSupersessionStatus, LEGACY_PRESENTATION };
 
 },
 "src/modules/module-roles.js":function(module,exports,require){
@@ -2826,6 +2906,8 @@ function createApp(options) {
   let collapsedModules = initialSession.collapsed_modules && typeof initialSession.collapsed_modules === 'object' ? Object.assign({}, initialSession.collapsed_modules) : {};
   let packageDraft = '';
   let profileDraft = '';
+  let ammoQuery = '';
+  let ammoDraft = null;
   let fenceFrame = 0;
 
   function saveSession() {
@@ -2874,12 +2956,57 @@ function createApp(options) {
     top.innerHTML = `<b>DCF ${escapeHtml(version)}</b><div class="tabs">${views.map((view) => `<button data-tab="${escapeHtml(view.id)}" class="${tab === view.id ? 'on' : ''}">${escapeHtml(view.tab_label || view.title || view.id)}</button>`).join('')}</div>`;
   }
 
+  function ammoLabels(view) {
+    return Object.assign({
+      extract: '从当前对话提取', new_item: '新建弹药', search_placeholder: '查找标题、用途、标签或 ID',
+      fire_mode: '发射', fire: '发射', copy: '复制', update: '更新', edit: '编辑', remove: '删除',
+      save: '保存', cancel: '取消', id: 'ID', title: '标题', purpose: '用途', tags: '标签', body: '正文'
+    }, view.labels || {});
+  }
+
+  function startAmmoDraft(item) {
+    ammoDraft = {
+      original_id: item && item.id || '',
+      id: item && item.id || `ammo-${Date.now().toString(36)}`,
+      title: item && item.title || '',
+      purpose: item && item.purpose || '',
+      tags: Array.isArray(item && item.tags) ? item.tags.join(', ') : '',
+      body: item && item.body || ''
+    };
+  }
+
+  function saveAmmoDraft() {
+    if (!ammoDraft) throw new Error('没有待保存的弹药');
+    const id = String(ammoDraft.id || '').trim();
+    const bodyText = String(ammoDraft.body || '').trim();
+    if (!id) throw new Error('弹药 ID 不能为空');
+    if (!bodyText) throw new Error('弹药正文不能为空');
+    const existing = ammoDraft.original_id ? ammo.items().find((entry) => entry.id === ammoDraft.original_id) : null;
+    if (!ammoDraft.original_id && ammo.items().some((entry) => entry.id === id)) throw new Error(`弹药 ${id} 已存在`);
+    const value = Object.assign({}, existing || {}, {
+      id,
+      title: String(ammoDraft.title || id).trim() || id,
+      purpose: String(ammoDraft.purpose || '').trim(),
+      body: bodyText
+    });
+    const tags = String(ammoDraft.tags || '').split(/[,，]/).map((tag) => tag.trim()).filter(Boolean);
+    if (tags.length) value.tags = Array.from(new Set(tags));
+    else delete value.tags;
+    ammoDraft = null;
+    return reconciler.acceptIntent({ type: 'environment.resource.upsert', resource_type: 'ammo', resource_id: id }, { value });
+  }
+
   function renderAmmo() {
     const view = engine.getRegistry().uiViews && engine.getRegistry().uiViews.ammo || {};
+    const labels = ammoLabels(view);
     const items = ammo.items();
+    const query = String(ammoQuery || '').trim().toLocaleLowerCase();
+    const visibleItems = query ? items.filter((item) => [item.id, item.title, item.purpose, Array.isArray(item.tags) ? item.tags.join(' ') : ''].join(' ').toLocaleLowerCase().includes(query)) : items;
     const mode = engine.getRoot().user.preferences && engine.getRoot().user.preferences.ammo_fire_mode || 'insert';
-    body.innerHTML = `<div class="card"><div class="name">${escapeHtml(view.title || '语言弹药')}</div><div class="mini">${escapeHtml(view.description || '自动提取、自动装填、更新与发射')}</div><div class="actions"><button data-action="ammo-extract">从当前对话提取</button><button data-action="ammo-mode">发射：${mode === 'send' ? '直接发送' : '填入输入框'}</button></div></div>` +
-      (items.length ? items.map((item) => `<div class="card" data-ammo-id="${escapeHtml(item.id)}"><div class="name">${escapeHtml(item.title || item.id)}</div><div class="mini">${escapeHtml(item.purpose || item.id)}</div><div class="actions"><button data-action="ammo-fire">发射</button><button data-action="ammo-copy">复制</button><button data-action="ammo-update">更新</button><button data-action="ammo-delete" class="danger">删除</button></div></div>`).join('') : '<div class="card mini">弹药库为空。完成一次提取后，回复中的 DCF_AMMO 会自动装填。</div>');
+    const editor = ammoDraft ? `<div class="card ammo-editor"><div class="name">${escapeHtml(ammoDraft.original_id ? '编辑语言弹药' : '新建语言弹药')}</div><div class="mini">${escapeHtml(labels.id)}</div><input data-role="ammo-draft-id" value="${escapeHtml(ammoDraft.id)}" ${ammoDraft.original_id ? 'readonly' : ''}><div class="mini">${escapeHtml(labels.title)}</div><input data-role="ammo-draft-title" value="${escapeHtml(ammoDraft.title)}"><div class="mini">${escapeHtml(labels.purpose)}</div><input data-role="ammo-draft-purpose" value="${escapeHtml(ammoDraft.purpose)}"><div class="mini">${escapeHtml(labels.tags)}</div><input data-role="ammo-draft-tags" value="${escapeHtml(ammoDraft.tags)}"><div class="mini">${escapeHtml(labels.body)}</div><textarea data-role="ammo-draft-body">${escapeHtml(ammoDraft.body)}</textarea><div class="actions"><button data-action="ammo-save">${escapeHtml(labels.save)}</button><button data-action="ammo-cancel">${escapeHtml(labels.cancel)}</button></div></div>` : '';
+    const search = items.length ? `<div class="card"><input data-role="ammo-search" placeholder="${escapeHtml(labels.search_placeholder)}" value="${escapeHtml(ammoQuery)}"><div class="mini">${query ? `显示 ${visibleItems.length} / ${items.length}` : `共 ${items.length} 枚弹药`}</div></div>` : '';
+    body.innerHTML = `<div class="card"><div class="name">${escapeHtml(view.title || '语言弹药工作台')}</div><div class="mini">${escapeHtml(view.description || '在一个入口中提取、新建、编辑、查找、调用、更新和管理语言弹药。')}</div><div class="actions"><button data-action="ammo-extract">${escapeHtml(labels.extract)}</button><button data-action="ammo-new">${escapeHtml(labels.new_item)}</button><button data-action="ammo-mode">${escapeHtml(labels.fire_mode)}：${mode === 'send' ? '直接发送' : '填入输入框'}</button></div></div>${editor}${search}` +
+      (visibleItems.length ? visibleItems.map((item) => `<div class="card" data-ammo-id="${escapeHtml(item.id)}"><div class="name">${escapeHtml(item.title || item.id)}</div><div class="mini">${escapeHtml(item.purpose || item.id)}</div><div class="actions"><button data-action="ammo-fire">${escapeHtml(labels.fire)}</button><button data-action="ammo-copy">${escapeHtml(labels.copy)}</button><button data-action="ammo-update">${escapeHtml(labels.update)}</button><button data-action="ammo-edit">${escapeHtml(labels.edit)}</button><button data-action="ammo-delete" class="danger">${escapeHtml(labels.remove)}</button></div></div>`).join('') : `<div class="card mini">${query ? '没有匹配的语言弹药。' : '弹药库为空。可以直接新建，或从当前对话提取。'}</div>`);
   }
 
   function moduleDisplay(module) {
@@ -2936,41 +3063,47 @@ function createApp(options) {
 
   function renderPackages() {
     const entries = packageManager.packages();
+    const supersededEntries = packageManager.supersededPackages();
     const view = engine.getRegistry().uiViews && engine.getRegistry().uiViews.packages || {};
     const labels = Object.assign({
       check_updates: '检查更新', manual_install: '手动安装包', install_json: '安装 JSON',
       package_json_placeholder: '粘贴 DCF_MODULE_PACK JSON', switch_revision: '切换',
       enable: '启用', disable: '停用', uninstall: '卸载'
     }, view.labels || {});
-    const stateLabels = Object.assign({ required: '核心', enabled: '已启用', disabled: '已停用' }, view.state_labels || {});
+    const stateLabels = Object.assign({ required: '核心', enabled: '已启用', disabled: '已停用', superseded: '已替代' }, view.state_labels || {});
     const controlOrder = Array.isArray(view.control_order) && view.control_order.length ? view.control_order : ['revision', 'switch', 'toggle', 'uninstall'];
     const density = view.density === 'comfortable' ? 'comfortable' : 'compact';
     const manualInstall = view.manual_install !== false && view.manual_install !== 'hidden';
     const manualOpen = view.manual_install === 'open' ? 'open' : '';
     const installPanel = manualInstall ? `<details class="package-install" ${manualOpen}><summary>${escapeHtml(labels.manual_install)}</summary><div class="detail-body"><textarea data-role="package-json" placeholder="${escapeHtml(labels.package_json_placeholder)}">${escapeHtml(packageDraft)}</textarea><div class="actions"><button data-action="package-install">${escapeHtml(labels.install_json)}</button></div></div></details>` : '';
-    body.innerHTML = `<div class="card package-toolbar"><div class="row"><span class="grow"><span class="name">${escapeHtml(view.title || '安装包管理')}</span><br><span class="mini">${escapeHtml(view.description || '包与 revision 的期望状态控制面。')}</span></span><button data-action="package-update">${escapeHtml(labels.check_updates)}</button></div>${installPanel}</div><section class="card package-list density-${density}" data-runtime-section="packages">` + entries.map((entry) => {
+    function packageCard(entry, retired) {
       const revisions = Object.keys(entry.revisions || {}).sort();
       const required = packageManager.isRequired(entry.package_id);
       const presentation = packageManager.presentation(entry);
       const enabled = entry.enabled !== false;
-      const stateClass = required ? 'required' : enabled ? 'enabled' : 'disabled';
-      const stateLabel = required ? stateLabels.required : enabled ? stateLabels.enabled : stateLabels.disabled;
+      const status = packageManager.supersessionStatus(entry);
+      const stateClass = retired ? 'disabled' : required ? 'required' : enabled ? 'enabled' : 'disabled';
+      const stateLabel = retired ? stateLabels.superseded : required ? stateLabels.required : enabled ? stateLabels.enabled : stateLabels.disabled;
       const controls = [];
-      for (const control of controlOrder) {
-        if (control === 'revision') {
-          controls.push(revisions.length > 1
-            ? `<select aria-label="选择版本" data-role="package-revision" data-id="${escapeHtml(entry.package_id)}">${revisions.map((revision) => `<option ${revision === entry.active_revision ? 'selected' : ''}>${escapeHtml(revision)}</option>`).join('')}</select>`
-            : `<span class="package-version">v${escapeHtml(entry.active_revision)}</span>`);
-        } else if (control === 'switch' && revisions.length > 1) {
-          controls.push(`<button data-action="package-switch" data-id="${escapeHtml(entry.package_id)}">${escapeHtml(labels.switch_revision)}</button>`);
-        } else if (control === 'toggle' && !required) {
-          controls.push(`<button data-action="package-toggle" data-id="${escapeHtml(entry.package_id)}">${escapeHtml(enabled ? labels.disable : labels.enable)}</button>`);
-        } else if (control === 'uninstall' && !required) {
-          controls.push(`<button data-action="package-uninstall" data-id="${escapeHtml(entry.package_id)}" class="danger">${escapeHtml(labels.uninstall)}</button>`);
+      if (retired) {
+        controls.push(`<span class="package-version">v${escapeHtml(entry.active_revision)}</span>`);
+        if (!required) controls.push(`<button data-action="package-uninstall" data-id="${escapeHtml(entry.package_id)}" class="danger">${escapeHtml(labels.uninstall)}</button>`);
+      } else {
+        for (const control of controlOrder) {
+          if (control === 'revision') {
+            controls.push(revisions.length > 1
+              ? `<select aria-label="选择版本" data-role="package-revision" data-id="${escapeHtml(entry.package_id)}">${revisions.map((revision) => `<option ${revision === entry.active_revision ? 'selected' : ''}>${escapeHtml(revision)}</option>`).join('')}</select>`
+              : `<span class="package-version">v${escapeHtml(entry.active_revision)}</span>`);
+          } else if (control === 'switch' && revisions.length > 1) controls.push(`<button data-action="package-switch" data-id="${escapeHtml(entry.package_id)}">${escapeHtml(labels.switch_revision)}</button>`);
+          else if (control === 'toggle' && !required) controls.push(`<button data-action="package-toggle" data-id="${escapeHtml(entry.package_id)}">${escapeHtml(enabled ? labels.disable : labels.enable)}</button>`);
+          else if (control === 'uninstall' && !required) controls.push(`<button data-action="package-uninstall" data-id="${escapeHtml(entry.package_id)}" class="danger">${escapeHtml(labels.uninstall)}</button>`);
         }
       }
-      return `<div class="package-card" data-package-id="${escapeHtml(entry.package_id)}"><div class="package-title-row"><span class="name">${escapeHtml(presentation.title)}</span><span class="state-pill ${stateClass}">${escapeHtml(stateLabel)}</span></div><div class="package-description">${escapeHtml(presentation.description)}</div>${view.show_technical_id === false ? '' : `<div class="mini package-id">${escapeHtml(entry.package_id)}</div>`}<div class="package-controls">${controls.join('')}</div></div>`;
-    }).join('') + '</section>';
+      const replacement = retired && status.replacements.length ? `<div class="mini">由 ${escapeHtml(status.replacements.join('、'))} 替代</div>` : '';
+      return `<div class="package-card" data-package-id="${escapeHtml(entry.package_id)}"><div class="package-title-row"><span class="name">${escapeHtml(presentation.title)}</span><span class="state-pill ${stateClass}">${escapeHtml(stateLabel)}</span></div><div class="package-description">${escapeHtml(presentation.description)}</div>${replacement}${view.show_technical_id === false ? '' : `<div class="mini package-id">${escapeHtml(entry.package_id)}</div>`}<div class="package-controls">${controls.join('')}</div></div>`;
+    }
+    const history = supersededEntries.length ? `<details class="card package-history"><summary><span class="name">已替代历史包（${supersededEntries.length}）</span></summary><div class="detail-body"><div class="mini">这些包的运行能力已经由当前完整实现接管，不再占用功能或维护入口。历史 revision 仍保留供恢复，也可以直接卸载。</div>${supersededEntries.map((entry) => packageCard(entry, true)).join('')}</div></details>` : '';
+    body.innerHTML = `<div class="card package-toolbar"><div class="row"><span class="grow"><span class="name">${escapeHtml(view.title || '安装包管理')}</span><br><span class="mini">${escapeHtml(view.description || '包与 revision 的期望状态控制面。')}</span></span><button data-action="package-update">${escapeHtml(labels.check_updates)}</button></div>${installPanel}</div><section class="card package-list density-${density}" data-runtime-section="packages">${entries.map((entry) => packageCard(entry, false)).join('')}</section>${history}`;
   }
 
   function renderMaintenance() {
@@ -3098,8 +3231,16 @@ function createApp(options) {
   }
 
   root.addEventListener('input', (event) => {
-    if (event.target && event.target.dataset.role === 'package-json') packageDraft = event.target.value;
-    if (event.target && event.target.dataset.role === 'profile-title') profileDraft = event.target.value;
+    const role = event.target && event.target.dataset.role;
+    if (role === 'package-json') packageDraft = event.target.value;
+    if (role === 'profile-title') profileDraft = event.target.value;
+    if (role === 'ammo-search') {
+      ammoQuery = event.target.value;
+      renderAmmo();
+      const input = root.querySelector('[data-role=ammo-search]');
+      if (input) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
+    }
+    if (ammoDraft && role && role.startsWith('ammo-draft-')) ammoDraft[role.slice('ammo-draft-'.length)] = event.target.value;
   });
 
   root.addEventListener('click', (event) => {
@@ -3122,7 +3263,11 @@ function createApp(options) {
     const action = button.dataset.action;
     const card = button.closest('[data-ammo-id]');
     const item = card ? ammo.items().find((entry) => entry.id === card.dataset.ammoId) : null;
-    if (action === 'ammo-extract') runAndRender(() => ammo.requestExtract(), '提取请求已发送');
+    if (action === 'ammo-new') { startAmmoDraft(null); render(); }
+    else if (action === 'ammo-edit' && item) { startAmmoDraft(item); render(); }
+    else if (action === 'ammo-save') runAndRender(() => saveAmmoDraft(), '语言弹药已保存');
+    else if (action === 'ammo-cancel') { ammoDraft = null; render(); }
+    else if (action === 'ammo-extract') runAndRender(() => ammo.requestExtract(), '提取请求已发送');
     else if (action === 'ammo-mode') {
       const current = engine.getRoot().user.preferences && engine.getRoot().user.preferences.ammo_fire_mode || 'insert';
       runAndRender(() => reconciler.acceptIntent({ type: 'environment.user.set', path: ['preferences', 'ammo_fire_mode'] }, { value: current === 'send' ? 'insert' : 'send' }), '发射方式已更新');

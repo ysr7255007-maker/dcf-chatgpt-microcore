@@ -1,7 +1,7 @@
 # DCF 当前架构
 
 Updated: 2026-07-14  
-Current release: `0.14.0`
+Current release: `0.15.0`
 
 ## 1. 价值与工程关系
 
@@ -124,3 +124,12 @@ ChatGPT 历史消息虚拟化仍属于二期。
 更新请求使用 `〔DCF·弹药更新〕`，并同时携带完整原弹药、当前对话作为修订依据的说明、保留/修正规则以及返回完整同 `id` `DCF_AMMO` 的输出协议。更新不是普通润色，也不是把当前对话机械摘要进正文。
 
 `dcf.standard.ammo@1.2.0` 通过 `policy-default:ammo_protocol` 拥有调用标志和更新规则。`ammo.js` 从 registry policy 读取协议，并只保留等价安全回退。复制操作仍导出原始正文；调用包络只用于发射。
+
+
+## 12. 模块替代与工作台收口（0.15.0）
+
+模块重复不再通过中文标题或相似功能猜测。活动模块可以用 `supersedes` 声明被其完整接管的稳定旧 module ID；投影器验证冲突与循环后，从正常 Runtime modules 中移除已替代对象，并发布 `dcf.runtime.module-supersession.v1` 关系。替代模块不存在时，旧模块仍保持可达，作为恢复退路。
+
+包不会因替代而被自动删除。只有当一个包的全部运行模块均已被替代，且没有其他独立 content/view/style/policy 资源时，它才从包管理主列表移入折叠的“已替代历史包”区域。
+
+`dcf.standard.ammo@1.3.0` 将 `dcf.ammo_workbench`、`dcf.ammo_workspace.unified`、`dcf.language_ammo` 收口到 `dcf.ammo.module`。正式语言弹药工作台同时提供提取、新建、编辑、查找、语境化发射、复制、实质更新和删除；因此退出的是过渡入口，不是仍未接管的能力。

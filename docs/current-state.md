@@ -16,9 +16,9 @@ Updated: 2026-07-14
 
 ## 当前版本
 
-当前正式版本：`0.14.0`
+当前正式版本：`0.15.0`
 
-`0.11.4` 保留包管理、日常功能和维护工具分区，移除错误的 hidden 产品语义，并把体检重建为真实浏览器 Runtime 偏差报告。`0.11.5` 修正 Runtime DOM 入口采样误报。`0.11.6` 聚焦包管理中文可读性和紧凑总览。`0.12.0` 统一按值/按引用能力包更新。`0.13.0` 将系统整体收拢为期望对话环境、typed intent、有限资源族、环境投影和 Profile/恢复架构。`0.14.0` 为语言弹药增加语境化调用标志和实质更新协议，并把协议下沉为 ammo package policy。
+`0.11.4` 保留包管理、日常功能和维护工具分区，移除错误的 hidden 产品语义，并把体检重建为真实浏览器 Runtime 偏差报告。`0.11.5` 修正 Runtime DOM 入口采样误报。`0.11.6` 聚焦包管理中文可读性和紧凑总览。`0.12.0` 统一按值/按引用能力包更新。`0.13.0` 将系统整体收拢为期望对话环境、typed intent、有限资源族、环境投影和 Profile/恢复架构。`0.14.0` 为语言弹药增加语境化调用标志和实质更新协议，并把协议下沉为 ammo package policy。`0.15.0` 增加显式模块替代生命周期，把三个迁移期弹药工作台收口为一个完整工作台，并将纯历史包折叠收纳。
 
 ## 当前浏览器 Runtime 检查点
 
@@ -86,7 +86,7 @@ deviations: []
 - firing emits only `〔DCF·语言弹药〕` plus the body;
 - update requests include `〔DCF·弹药更新〕`, the complete current item, substantive revision rules and complete `DCF_AMMO` output requirements;
 - copying still exports the raw body;
-- `dcf.standard.ammo@1.2.0` owns the `ammo_protocol` policy;
+- `dcf.standard.ammo@1.3.0` owns the `ammo_protocol` policy and canonical workbench supersession;
 - Environment Snapshot derives from the single root and current registry;
 - persistent production controls route through Environment Reconciler;
 - content/action/view/style/policy resource graph has stable ownership and observation contracts;
@@ -136,3 +136,12 @@ ChatGPT historical-message virtualization, turn-window rendering, DOM/memory das
 - 更新消息包含 `〔DCF·弹药更新〕`、完整原弹药、实质修订规则和完整同 `id` `DCF_AMMO` 返回要求。
 - `dcf.standard.ammo@1.2.0` 通过 `ammo_protocol` policy 拥有标志与更新规则；bootstrap 只保留安全回退。
 - 复制保持原始正文，不自动附加调用标志。
+
+
+## 0.15.0 模块替代与语言弹药工作台收口
+
+- `dcf.ammo.module` 正式命名为“语言弹药工作台”，在一个页面提供提取、新建、编辑、查找、语境化发射、复制、实质更新和删除。
+- 它以精确 ID 替代 `dcf.ammo_workbench`、`dcf.ammo_workspace.unified`、`dcf.language_ammo`；这三个迁移期入口不再出现在功能、维护或分区管理中。
+- 旧包不会静默删除，而是折叠进包管理的“已替代历史包”，保留显式卸载和恢复出口。
+- 替代只按声明的稳定 ID 生效，名称相似的其他模块不受影响；自动提取、格式化等未确认等价的独立能力继续保留。
+- 用户浏览器尚未完成 0.15.0 的 Runtime 现场验收。
