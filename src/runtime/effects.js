@@ -11,7 +11,7 @@ function safeEffect(effect) {
   return copy;
 }
 
-function createEffectRunner(host, receiptStore) {
+function createEffectRunner(host, receiptStore, performanceController) {
   async function run(effect, context = {}) {
     const started = Date.now();
     try {
@@ -20,7 +20,14 @@ function createEffectRunner(host, receiptStore) {
       else if (effect.type === 'composer.send') result = await host.insertComposer(String(effect.text || ''), { send: true });
       else if (effect.type === 'clipboard.write') result = await host.copy(String(effect.text || ''));
       else if (effect.type === 'notification') result = await host.notify(String(effect.text || 'DCF'));
-      else throw new Error(`unsupported effect ${effect.type}`);
+      else if (effect.type === 'conversation.performance.reveal') {
+        if (!performanceController) throw new Error('conversation performance controller unavailable');
+        result = performanceController.revealPreviousBatch();
+      } else if (effect.type === 'conversation.performance.report') {
+        if (!performanceController) throw new Error('conversation performance controller unavailable');
+        const report = `<<<DCF_CONVERSATION_PERFORMANCE\n${JSON.stringify(performanceController.diagnostics(), null, 2)}\nDCF_CONVERSATION_PERFORMANCE>>>`;
+        result = await host.copy(report);
+      } else throw new Error(`unsupported effect ${effect.type}`);
       receiptStore.append({ schema: 'dcf.effect.receipt.v1', effect: safeEffect(effect), context, status: 'ok', result, duration_ms: Date.now() - started });
       return { ok: true, result };
     } catch (error) {

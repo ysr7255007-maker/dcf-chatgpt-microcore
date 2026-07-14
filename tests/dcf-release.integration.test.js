@@ -14,6 +14,12 @@ assert(meta.includes(`// @version      ${pkg.version}`), 'metadata version misma
 assert(user.includes("require('src/index.js')"), 'generated userscript does not boot source entry');
 assert(!user.includes('Function(source)'), 'runtime remote-code execution path present');
 assert(!user.includes('eval('), 'eval path present');
+
+const bundledModules = new Set(Array.from(user.matchAll(/^"([^"]+)":function\(module,exports,require\)\{/gm), (match) => match[1]));
+const requiredModules = new Set(Array.from(user.matchAll(/require\((['"])([^'"]+)\1\)/g), (match) => match[2]).filter((id) => id.startsWith('src/')));
+for (const id of requiredModules) assert(bundledModules.has(id), `generated userscript requires an unbundled module: ${id}`);
+assert(bundledModules.has('src/host/conversation-performance.js'), 'conversation performance controller missing from generated userscript');
+
 assert.strictEqual(catalog.schema, 'dcf.catalog.v1');
 assert(catalog.packages.length >= 2, 'standard catalog packages missing');
 for (const entry of catalog.packages) {
@@ -21,4 +27,4 @@ for (const entry of catalog.packages) {
   assert(fs.existsSync(localPath), `catalog package file missing: ${entry.package_id}`);
 }
 
-console.log(JSON.stringify({ ok: true, version: pkg.version, modular_source_single_artifact: true, no_remote_code_execution: true, catalog_consistent: true }, null, 2));
+console.log(JSON.stringify({ ok: true, version: pkg.version, modular_source_single_artifact: true, all_requires_bundled: true, no_remote_code_execution: true, catalog_consistent: true }, null, 2));

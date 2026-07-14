@@ -80,10 +80,17 @@ let uiState = {
   }
 };
 const runtimeObject = { version: VERSION };
+const performanceState = {
+  schema: 'dcf.conversation-performance.runtime.v1', mode: 'safe', activation_turns: 24, keep_recent: 40, reveal_batch: 20,
+  conversation_root_found: true, observed_root_connected: true, selector_strategy: 'article-testid',
+  turn_count: 48, optimized_count: 48, hidden_count: 0, revealed_older: 0, streaming: false,
+  content_visibility_supported: true, long_task_observer_supported: true, long_tasks_60s: 0, long_task_duration_ms_60s: 0
+};
 const app = { captureRuntimeViews: () => JSON.parse(JSON.stringify(uiState)) };
 const reporter = createHealthReporter(engine, receipts, storage, host, REQUIRED_PRODUCT_PACKAGES, {
   getApp: () => app,
-  getRuntime: () => runtimeObject
+  getRuntime: () => runtimeObject,
+  getPerformance: () => performanceState
 });
 
 let report = reporter.report();

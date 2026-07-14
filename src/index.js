@@ -12,6 +12,7 @@ const { createEffectRunner } = require('./runtime/effects');
 const { createCommandRunner } = require('./runtime/commands');
 const { createCapabilityReconciler } = require('./runtime/reconciler');
 const { createChatGPTHost } = require('./host/chatgpt');
+const { createConversationPerformanceController } = require('./host/conversation-performance');
 const { STANDARD_PACKS, REQUIRED_PRODUCT_PACKAGES } = require('./modules/standard-packages');
 const { createAmmoModule } = require('./modules/ammo');
 const { createCatalogTransport } = require('./modules/catalog');
@@ -52,19 +53,25 @@ function boot(api = globalThis) {
   const engine = createTransactionEngine(storage, receiptStore, { initialRoot });
   engine.initialize();
   const host = createChatGPTHost(windowObject);
-  const effects = createEffectRunner(host, receiptStore);
+  const conversationPerformance = createConversationPerformanceController(windowObject, { findConversationRoot: host.findConversationRoot, isStreaming: host.isStreaming });
+  conversationPerformance.syncPolicy(engine.getRegistry().policies && engine.getRegistry().policies.conversation_performance || {});
+  const effects = createEffectRunner(host, receiptStore, conversationPerformance);
   const catalog = createCatalogTransport(storage, engine, api);
   const ammo = createAmmoModule(engine, effects);
   let app = null;
   const reconciler = createCapabilityReconciler(engine, catalog, receiptStore, {
-    onCommitted: () => { if (app) app.render(); }
+    onCommitted: () => {
+      conversationPerformance.syncPolicy(engine.getRegistry().policies && engine.getRegistry().policies.conversation_performance || {});
+      if (app) app.render();
+    }
   });
   catalog.setApplyResolved((resolved) => reconciler.applyResolved(resolved));
   const packageManager = createPackageManager(engine, catalog, reconciler);
   const health = createHealthReporter(engine, receiptStore, storage, host, REQUIRED_PRODUCT_PACKAGES, {
     windowObject,
     getApp: () => app,
-    getRuntime: () => api.__DCF_RUNTIME__ || null
+    getRuntime: () => api.__DCF_RUNTIME__ || null,
+    getPerformance: () => conversationPerformance.diagnostics()
   });
   const maintenance = createMaintenanceModule(engine, receiptStore, effects, storage, health, reconciler);
   const commandRunner = createCommandRunner(engine, effects, receiptStore, () => {
@@ -99,7 +106,7 @@ function boot(api = globalThis) {
     api.GM_registerMenuCommand('DCF：复制简要诊断', () => maintenance.copySummary());
   }
 
-  const runtime = { version: VERSION, engine, getEnvironment: () => engine.getEnvironment(), host, app, catalog, reconciler, receiptStore, health, maintenance };
+  const runtime = { version: VERSION, engine, getEnvironment: () => engine.getEnvironment(), host, conversationPerformance, app, catalog, reconciler, receiptStore, health, maintenance };
   Object.defineProperty(runtime, 'environment', { enumerable: true, get: () => engine.getEnvironment() });
   api.__DCF_RUNTIME__ = runtime;
   return runtime;

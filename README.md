@@ -4,7 +4,7 @@ DCF is a personally maintained ChatGPT Tampermonkey system whose value goal is a
 
 ## Current architecture
 
-DCF `0.14.0` keeps a generic modular kernel under the first-party language-ammunition product goal. Source is modular, while Tampermonkey still installs one complete userscript.
+DCF `0.16.0` keeps a generic modular kernel under the first-party language-ammunition product goal. Source is modular, while Tampermonkey still installs one complete userscript.
 
 One authoritative state root changes only through the unified transaction path:
 
@@ -52,9 +52,14 @@ DCF `0.13.0` treats the authoritative root as one desired conversation environme
 
 DCF `0.14.0` distinguishes invocation from raw text reuse. Firing an ammo item sends `〔DCF·语言弹药〕` plus the body so the receiving conversation reinterprets the condensed long-term intent against the current context before acting. Clear adaptations can proceed directly; only material conflict or unresolved ambiguity requires confirmation.
 
-Updating an ammo item sends `〔DCF·弹药更新〕`, the complete current item and a substantive revision contract. The response must preserve the same `id` and return one complete `DCF_AMMO` artifact. Marker text and update rules are owned by `dcf.standard.ammo@1.2.0` as `ammo_protocol` policy; copying still exports the raw body.
+Updating an ammo item sends `〔DCF·弹药更新〕`, the complete current item and a substantive revision contract. The response must preserve the same `id` and return one complete `DCF_AMMO` artifact. Marker text and update rules are owned by `dcf.standard.ammo@1.3.0` as `ammo_protocol` policy; copying still exports the raw body.
 
 
 ## Canonical module supersession
 
 DCF `0.15.0` lets an active module declare exact predecessor module IDs through `supersedes`. A predecessor leaves normal Runtime views only while its replacement is active; similarly named modules are never inferred as duplicates. Packages whose only runtime module is superseded move from the primary package list into a folded historical section instead of being destructively deleted. `dcf.standard.ammo@1.3.0` uses this mechanism to replace the three migrated ammo workbenches with one complete language-ammunition workbench.
+
+
+## Long-conversation browser performance
+
+DCF `0.16.0` adds a trusted Host-side conversation performance governor owned by `dcf.standard.conversation-performance@1.0.0`. Its default safe mode applies browser-native `content-visibility:auto` only after a conversation reaches the configured turn threshold. Optional window modes keep the newest 40 or 20 message turns rendered and reversibly hide older turns without removing, replacing, cloning, or rewriting ChatGPT-managed nodes. Scrolling near the top or using “展开上一批” restores history in batches; “恢复全部并关闭” restores every original inline style. A privacy-safe report includes only counts, selector strategy, mode, apply duration and Long Tasks API aggregates. This addresses browser layout/paint cost, not model context limits, backend latency, outages, or unrelated extension conflicts.

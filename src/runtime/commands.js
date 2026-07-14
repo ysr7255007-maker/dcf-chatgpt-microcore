@@ -72,6 +72,13 @@ function createCommandRunner(engine, effectRunner, receiptStore, shellObserver, 
       result = environmentIntent({ type: 'environment.resource.upsert', resource_type: String(args.type || 'ammo'), resource_id: String(item.id || ''), source: { module_id: context.module_id, command_id: context.command_id } }, { value: item });
     } else if (call === 'content.remove') {
       result = environmentIntent({ type: 'environment.resource.remove', resource_type: String(args.type || 'ammo'), resource_id: String(args.id || ''), source: { module_id: context.module_id, command_id: context.command_id } });
+    } else if (call === 'conversation.performance.configure') {
+      const current = clone(engine.getRoot().user.preferences && engine.getRoot().user.preferences.conversation_performance || engine.getRegistry().policies && engine.getRegistry().policies.conversation_performance || {});
+      result = environmentIntent({ type: 'environment.user.set', path: ['preferences', 'conversation_performance'], source: { module_id: context.module_id, command_id: context.command_id } }, { value: Object.assign(current, args) });
+    } else if (call === 'conversation.performance.reveal') {
+      result = await effectRunner.run({ type: 'conversation.performance.reveal' }, context);
+    } else if (call === 'conversation.performance.report') {
+      result = await effectRunner.run({ type: 'conversation.performance.report' }, context);
     } else if (call === 'composer.replace' || call === 'composer.insert') {
       result = await effectRunner.run({ type: 'composer.insert', text: String(args.text || '') }, context);
     } else if (call === 'composer.send') {
