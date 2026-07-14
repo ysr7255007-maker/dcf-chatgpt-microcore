@@ -6,13 +6,13 @@ const STANDARD_PACKS = [
   {
     schema: 'dcf.module_pack.v1',
     pack_id: 'dcf.standard.ammo',
-    revision: '1.2.0',
-    title: '语言弹药核心',
-    description: '提供语言弹药内容、语境化调用、实质更新和低摩擦发射能力。',
+    revision: '1.3.0',
+    title: '语言弹药工作台',
+    description: '统一提供语言弹药的提取、新建、编辑、查找、语境化调用、实质更新与管理。',
     contributes: {
       content_types: [{ id: 'ammo', marker: 'DCF_AMMO', title: '语言弹药', body_field: 'body', actions: ['fire', 'copy', 'update', 'delete'] }],
       surfaces: [{ id: 'dcf.ammo', title: '弹药', area: 'primary', order: 10, kind: 'content-list', content_type: 'ammo' }],
-      ui_views: [{ id: 'ammo', kind: 'content', projection: 'content:ammo', tab_label: '弹药', title: '语言弹药', description: '自动提取、自动装填、语境化调用与实质更新。', order: 10 }],
+      ui_views: [{ id: 'ammo', kind: 'content', projection: 'content:ammo', tab_label: '弹药', title: '语言弹药工作台', description: '在一个入口中提取、新建、编辑、查找、调用、更新和管理语言弹药。', order: 10, labels: { extract: '从当前对话提取', new_item: '新建弹药', search_placeholder: '查找标题、用途、标签或 ID', fire_mode: '发射', fire: '发射', copy: '复制', update: '更新', edit: '编辑', remove: '删除', save: '保存', cancel: '取消' } }],
       policies: {
         ammo_protocol: {
           invocation_marker: '〔DCF·语言弹药〕',
@@ -28,7 +28,7 @@ const STANDARD_PACKS = [
       },
       appearance: { side: 'right', vars: { w: '340px', h: '800px', top: '12px', bottom: '112px', anchor: 'bottom' } }
     },
-    modules: [{ id: 'dcf.ammo.module', title: '语言弹药', version: '1.2.0', kind: 'ammo' }]
+    modules: [{ id: 'dcf.ammo.module', title: '语言弹药工作台', version: '1.3.0', kind: 'ammo', supersedes: ['dcf.ammo_workbench', 'dcf.ammo_workspace.unified', 'dcf.language_ammo'] }]
   },
   {
     schema: 'dcf.module_pack.v1',

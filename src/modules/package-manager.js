@@ -37,6 +37,34 @@ function unique(values) { return Array.from(new Set((values || []).map((value) =
 function hasCjk(value) { return /[\u3400-\u9fff]/.test(String(value || '')); }
 function activePack(entry) { const revision = entry && entry.active_revision; return entry && entry.revisions && entry.revisions[revision] && entry.revisions[revision].pack || null; }
 
+
+function hasNonModuleRuntimeContribution(pack) {
+  const source = pack && typeof pack === 'object' ? pack : {};
+  if (Array.isArray(source.resources) && source.resources.length) return true;
+  const contributes = source.contributes && typeof source.contributes === 'object' ? source.contributes : {};
+  for (const key of ['content_types', 'surfaces', 'ui_views', 'styles']) {
+    if (Array.isArray(contributes[key]) && contributes[key].length) return true;
+  }
+  for (const key of ['appearance', 'settings', 'policies', 'content']) {
+    if (contributes[key] && typeof contributes[key] === 'object' && Object.keys(contributes[key]).length) return true;
+  }
+  return false;
+}
+
+function packageSupersessionStatus(entry, registry) {
+  const pack = activePack(entry) || {};
+  const moduleIds = (Array.isArray(pack.modules) ? pack.modules : []).map((module) => String(module && module.id || '')).filter(Boolean);
+  const map = registry && registry.moduleSupersession && registry.moduleSupersession.entries || {};
+  const superseded = moduleIds.filter((id) => !!map[id]);
+  const replacements = unique(superseded.map((id) => map[id] && map[id].by));
+  return {
+    fully_superseded: moduleIds.length > 0 && superseded.length === moduleIds.length && !hasNonModuleRuntimeContribution(pack),
+    module_ids: moduleIds,
+    superseded_module_ids: superseded,
+    replacements
+  };
+}
+
 function packagePresentation(entry) {
   const pack = activePack(entry) || {};
   const modules = Array.isArray(pack.modules) ? pack.modules : [];
@@ -85,9 +113,12 @@ function packagePresentation(entry) {
 }
 
 function createPackageManager(engine, catalog, reconciler) {
-  function packages() {
+  function sortedPackages() {
     return Object.values(engine.getRoot().packages.packages || {}).sort((a, b) => packagePresentation(a).title.localeCompare(packagePresentation(b).title, 'zh-CN') || String(a.package_id).localeCompare(String(b.package_id)));
   }
+  function status(entry) { return packageSupersessionStatus(entry, engine.getRegistry()); }
+  function packages() { return sortedPackages().filter((entry) => !status(entry).fully_superseded); }
+  function supersededPackages() { return sortedPackages().filter((entry) => status(entry).fully_superseded); }
   function installJson(text) {
     const parsed = JSON.parse(String(text || '{}'));
     const wrapper = `<<<DCF_MODULE_PACK\n${JSON.stringify(parsed)}\nDCF_MODULE_PACK>>>`;
@@ -99,6 +130,8 @@ function createPackageManager(engine, catalog, reconciler) {
   function intent(value, material) { return reconciler ? reconciler.acceptIntent(value, material) : engine.applyEnvironmentIntent(value, material); }
   return {
     packages,
+    supersededPackages,
+    supersessionStatus: status,
     environment: () => engine.getEnvironment(),
     presentation: packagePresentation,
     installJson,
@@ -110,4 +143,4 @@ function createPackageManager(engine, catalog, reconciler) {
   };
 }
 
-module.exports = { createPackageManager, packagePresentation, activePack, LEGACY_PRESENTATION };
+module.exports = { createPackageManager, packagePresentation, activePack, packageSupersessionStatus, LEGACY_PRESENTATION };

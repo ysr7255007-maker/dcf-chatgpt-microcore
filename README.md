@@ -53,3 +53,8 @@ DCF `0.13.0` treats the authoritative root as one desired conversation environme
 DCF `0.14.0` distinguishes invocation from raw text reuse. Firing an ammo item sends `〔DCF·语言弹药〕` plus the body so the receiving conversation reinterprets the condensed long-term intent against the current context before acting. Clear adaptations can proceed directly; only material conflict or unresolved ambiguity requires confirmation.
 
 Updating an ammo item sends `〔DCF·弹药更新〕`, the complete current item and a substantive revision contract. The response must preserve the same `id` and return one complete `DCF_AMMO` artifact. Marker text and update rules are owned by `dcf.standard.ammo@1.2.0` as `ammo_protocol` policy; copying still exports the raw body.
+
+
+## Canonical module supersession
+
+DCF `0.15.0` lets an active module declare exact predecessor module IDs through `supersedes`. A predecessor leaves normal Runtime views only while its replacement is active; similarly named modules are never inferred as duplicates. Packages whose only runtime module is superseded move from the primary package list into a folded historical section instead of being destructively deleted. `dcf.standard.ammo@1.3.0` uses this mechanism to replace the three migrated ammo workbenches with one complete language-ammunition workbench.

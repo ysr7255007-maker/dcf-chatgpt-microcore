@@ -1,13 +1,13 @@
 {
   "schema": "dcf.catalog.v1",
-  "generated_by_version": "0.14.0",
+  "generated_by_version": "0.15.0",
   "packages": [
     {
       "package_id": "dcf.standard.ammo",
-      "revision": "1.2.0",
+      "revision": "1.3.0",
       "channel": "stable",
-      "hash": "fnv1a-2894848b",
-      "url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/catalog/packages/dcf.standard.ammo/1.2.0.json"
+      "hash": "fnv1a-930a4f11",
+      "url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/catalog/packages/dcf.standard.ammo/1.3.0.json"
     },
     {
       "package_id": "dcf.ui.runtime-workspace",

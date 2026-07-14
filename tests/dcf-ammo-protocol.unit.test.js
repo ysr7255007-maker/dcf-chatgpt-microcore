@@ -6,7 +6,7 @@ const { STANDARD_PACKS } = require('../src/modules/standard-packages');
 
 const ammoPack = STANDARD_PACKS.find((pack) => pack.pack_id === 'dcf.standard.ammo');
 assert(ammoPack, 'standard ammo package missing');
-assert.strictEqual(ammoPack.revision, '1.2.0');
+assert.strictEqual(ammoPack.revision, '1.3.0');
 const protocol = ammoPack.contributes.policies.ammo_protocol;
 const item = {
   id: 'method.complete-candidates',

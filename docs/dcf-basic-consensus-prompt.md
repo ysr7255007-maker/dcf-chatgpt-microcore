@@ -29,3 +29,6 @@ ChatGPT、GitHub catalog 和手动输入只是工件 transport。对话自动摄
 DCF 的正常演化单位是不可变能力包 revision，而不是整份 userscript。完整对话包是按值交付，`DCF_PACKAGE_UPDATE` 是按引用交付；两者必须经同一个 Resolver/Reconciler 改变 `root.packages` 期望能力集合并重建 Runtime。普通功能、文案、布局和声明式 UI 优先作为包资源更新；userscript 只为启动、存储、校验、Host、协调器与恢复边界升级。
 
 DCF 的统一架构对象是期望对话环境。`dcf.state.root.v1` 仍是唯一权威状态，Environment Snapshot 只是 Facade。对话工件、按钮和菜单先编译成同一种 typed intent；持久环境变化与一次性 Action/Effect 分离。包是不可变交付容器，content/action/view/style/policy 是环境资源。弹药、功能、构成和维护是同一环境的不同投影。Profile 和历史恢复都走环境迁移，不得另建工作区状态。
+
+
+重复功能的消解采用显式替代关系，不用标题相似度猜测。完整接管者以稳定 ID 声明旧模块；先吸收仍有价值的独有能力，再让旧入口退出正常 Runtime。历史包保留恢复与显式卸载出口，用户内容不随模块替代删除。

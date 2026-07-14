@@ -3,6 +3,49 @@
 const { clone, deepMerge, hash, isObject } = require('./utils');
 const { compilePackageSet } = require('./resources');
 
+function resolveModuleSupersession(modules) {
+  const ids = new Set((modules || []).map((module) => String(module && module.id || '')).filter(Boolean));
+  const direct = {};
+  const errors = [];
+  const ordered = (modules || []).slice().sort((a, b) => String(a.id || '').localeCompare(String(b.id || '')));
+  for (const module of ordered) {
+    const by = String(module && module.id || '');
+    for (const rawTarget of Array.isArray(module && module.supersedes) ? module.supersedes : []) {
+      const target = String(rawTarget || '').trim();
+      if (!target) continue;
+      if (target === by) {
+        errors.push(`module ${by} cannot supersede itself`);
+        continue;
+      }
+      if (direct[target] && direct[target] !== by) {
+        errors.push(`module supersession conflict ${target}: ${direct[target]} vs ${by}`);
+        continue;
+      }
+      direct[target] = by;
+    }
+  }
+  function finalReplacement(target) {
+    const seen = [target];
+    let current = direct[target];
+    while (current && direct[current]) {
+      if (seen.includes(current)) {
+        errors.push(`module supersession cycle: ${seen.concat(current).join(' -> ')}`);
+        return '';
+      }
+      seen.push(current);
+      current = direct[current];
+    }
+    return current || '';
+  }
+  const entries = {};
+  for (const target of Object.keys(direct).sort()) {
+    if (!ids.has(target)) continue;
+    const by = finalReplacement(target);
+    if (by) entries[target] = { by, direct_by: direct[target] };
+  }
+  return { ok: errors.length === 0, errors, entries };
+}
+
 function buildProjection(root) {
   const compiled = compilePackageSet(root.packages || {});
   if (!compiled.ok) return { ok: false, errors: compiled.errors, registry: null };
@@ -53,6 +96,9 @@ function buildProjection(root) {
   }
   for (const type of Object.keys(contentTypes)) content[type] = content[type] || {};
   modules.sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  const supersession = resolveModuleSupersession(modules);
+  if (!supersession.ok) return { ok: false, errors: supersession.errors, registry: null };
+  const runtimeModules = modules.filter((module) => !supersession.entries[String(module.id)]);
 
   const registry = {
     schema: 'dcf.runtime.registry.v3',
@@ -69,7 +115,8 @@ function buildProjection(root) {
     content,
     surfaces,
     uiViews,
-    modules,
+    modules: runtimeModules,
+    moduleSupersession: { schema: 'dcf.runtime.module-supersession.v1', entries: clone(supersession.entries) },
     moduleDisplay: deepMerge(moduleDisplayDefaults, user.moduleDisplay || {}),
     settings: Object.assign({}, settingDefaults, clone(user.settings || {})),
     policies: Object.assign({}, policyDefaults, clone(user.preferences || {})),
@@ -77,7 +124,7 @@ function buildProjection(root) {
     installedPacks: compiled.activePackages,
     build: {
       schema: 'dcf.build.result.v2',
-      build_id: hash({ state_hash: root.state_hash, active: compiled.activePackages, ownership: compiled.ownership, resources: compiled.resourceGraph }),
+      build_id: hash({ state_hash: root.state_hash, active: compiled.activePackages, ownership: compiled.ownership, resources: compiled.resourceGraph, module_supersession: supersession.entries }),
       resource_ownership: compiled.ownership,
       conflicts: []
     }
@@ -85,4 +132,4 @@ function buildProjection(root) {
   return { ok: true, errors: [], registry };
 }
 
-module.exports = { buildProjection };
+module.exports = { buildProjection, resolveModuleSupersession };

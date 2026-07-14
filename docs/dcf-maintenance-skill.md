@@ -145,3 +145,10 @@ Environment Profile 用于保存包选择、政策和产品组织，不复制用
 普通产品功能、文案、布局、页面组织、控制顺序和声明式样式变化只升级对应能力包 revision。只有现有包协议、Resolver/Reconciler、存储、Host Adapter、权限、启动与恢复边界无法表达变化时，才发布新的 bootstrap userscript 版本。
 
 架构变化同步更新 `docs/architecture-current.md`、新 ADR、`docs/adr/status-index.md`、本文件、基本共识和 `docs/current-state.md`。旧 ADR 保留历史正文，当前决策以 status index 为准。
+
+
+## 十一、重复能力与模块替代
+
+发现功能、维护或包管理中存在相似对象时，不得按中文标题去重。先比较稳定 module ID、命令集合、资源所有权和用户数据边界；只有一个活动实现已经完整接管另一个实现时，才由新模块显式声明 `supersedes`。
+
+替代前先吸收旧实现仍有价值的独有能力。替代关系必须使用精确 ID，冲突或循环在候选投影阶段失败。替代模块不在时旧模块继续可达；替代成立时旧模块退出功能、维护和分区管理，纯旧模块包移入折叠历史区，但不自动删除 revision 或用户成果。需要彻底删除时由用户在历史区显式卸载。

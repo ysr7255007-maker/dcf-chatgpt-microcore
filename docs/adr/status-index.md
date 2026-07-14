@@ -6,6 +6,8 @@ The status in this file is authoritative. A status line inside an older ADR reco
 
 ## Current
 
+- `2026-07-14-dcf-canonical-module-supersession.md` — **accepted**
+
 - `2026-07-14-dcf-ammo-invocation-update-protocol.md` — **accepted**
 - `2026-07-13-dcf-conversation-environment-architecture.md` — **accepted**
 - `2026-07-13-dcf-unified-capability-reconciliation.md` — **accepted**
