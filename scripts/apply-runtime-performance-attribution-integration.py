@@ -13,50 +13,66 @@ def write(path, text):
     target.write_text(text, encoding='utf-8')
 
 
-def replace_once(text, old, new, label):
+def replace_exact(text, old, new, expected, label):
     count = text.count(old)
-    if count != 1:
-        raise RuntimeError(f'{label}: expected one match, found {count}')
-    return text.replace(old, new, 1)
+    if count != expected:
+        raise RuntimeError(f'{label}: expected {expected} matches, found {count}')
+    return text.replace(old, new, expected)
 
 
 controller = read('src/host/conversation-performance.js')
 if 'timeline_start_ms:' not in controller:
-    controller = replace_once(
+    controller = replace_exact(
         controller,
         "    planned_end_epoch_ms: startedEpoch + durationMs,\n    ended_at: null,",
         "    planned_end_epoch_ms: startedEpoch + durationMs,\n    timeline_start_ms: Number(context.timeline_start_ms || 0),\n    ended_at: null,",
+        1,
         'session timeline start'
     )
-    controller = replace_once(
+    controller = replace_exact(
         controller,
         "  function recordLongTask(entry) {",
         "  function acceptsAttributionEntry(entry) {\n    return !!(attribution && attribution.status === 'running' && Number(entry && entry.startTime || 0) >= Number(attribution.timeline_start_ms || 0));\n  }\n\n  function recordLongTask(entry) {",
+        1,
         'entry boundary helper'
     )
-    controller = replace_once(
+    controller = replace_exact(
         controller,
         "    if (attribution && attribution.status === 'running') boundedPush(attribution.entries.long_tasks, item, MAX_LONG_TASKS);",
         "    if (acceptsAttributionEntry(entry)) boundedPush(attribution.entries.long_tasks, item, MAX_LONG_TASKS);",
+        1,
         'long task session boundary'
     )
-    controller = replace_once(controller, "    if (!attribution || attribution.status !== 'running') return;\n    const start = Number(entry.startTime || 0);", "    if (!acceptsAttributionEntry(entry)) return;\n    const start = Number(entry.startTime || 0);", 'loaf session boundary')
-    controller = replace_once(controller, "    if (!attribution || attribution.status !== 'running') return;\n    const start = Number(entry.startTime || 0);", "    if (!acceptsAttributionEntry(entry)) return;\n    const start = Number(entry.startTime || 0);", 'event session boundary')
-    controller = replace_once(controller, "    if (!attribution || attribution.status !== 'running') return;\n    boundedPush(attribution.entries.layout_shifts, {", "    if (!acceptsAttributionEntry(entry)) return;\n    boundedPush(attribution.entries.layout_shifts, {", 'layout shift session boundary')
-    controller = replace_once(
+    controller = replace_exact(
+        controller,
+        "    if (!attribution || attribution.status !== 'running') return;\n    const start = Number(entry.startTime || 0);",
+        "    if (!acceptsAttributionEntry(entry)) return;\n    const start = Number(entry.startTime || 0);",
+        2,
+        'loaf and event session boundaries'
+    )
+    controller = replace_exact(
+        controller,
+        "    if (!attribution || attribution.status !== 'running') return;\n    boundedPush(attribution.entries.layout_shifts, {",
+        "    if (!acceptsAttributionEntry(entry)) return;\n    boundedPush(attribution.entries.layout_shifts, {",
+        1,
+        'layout shift session boundary'
+    )
+    controller = replace_exact(
         controller,
         "    attribution = createAttributionSession({\n      duration_ms: options.duration_ms,\n      context: {",
         "    attribution = createAttributionSession({\n      duration_ms: options.duration_ms,\n      timeline_start_ms: windowObject.performance && typeof windowObject.performance.now === 'function' ? windowObject.performance.now() : 0,\n      context: {",
+        1,
         'attribution timeline start capture'
     )
 write('src/host/conversation-performance.js', controller)
 
 health = read('src/modules/health.js')
 if 'long_animation_frame_supported' not in health:
-    health = replace_once(
+    health = replace_exact(
         health,
         "          selector_strategy: performanceState.selector_strategy, long_tasks_60s: performanceState.long_tasks_60s, long_task_duration_ms_60s: performanceState.long_task_duration_ms_60s",
         "          selector_strategy: performanceState.selector_strategy, long_tasks_60s: performanceState.long_tasks_60s, long_task_duration_ms_60s: performanceState.long_task_duration_ms_60s,\n          long_animation_frame_supported: performanceState.long_animation_frame_supported, event_timing_supported: performanceState.event_timing_supported,\n          layout_shift_supported: performanceState.layout_shift_supported, attribution_status: performanceState.attribution && performanceState.attribution.status || 'not-started'",
+        1,
         'health performance attribution summary'
     )
 write('src/modules/health.js', health)
@@ -65,7 +81,7 @@ performance_test = read('tests/dcf-conversation-performance.unit.test.js')
 performance_test = performance_test.replace("assert.strictEqual(pack.revision, '1.0.0');", "assert.strictEqual(pack.revision, '1.1.0');")
 performance_test = performance_test.replace("for (const id of ['safe', 'window40', 'window20', 'off', 'reveal', 'report'])", "for (const id of ['safe', 'window40', 'window20', 'off', 'reveal', 'report', 'attribution60', 'attribution_copy'])")
 performance_test = performance_test.replace("assert(source.includes('if (routeChanged || rootChanged) scheduleApply(0);')", "assert(source.includes(\"if (routeChanged || rootChanged) scheduleApply(0, routeChanged ? 'route' : 'root-change');\")")
-if "long_animation_frame_attribution" not in performance_test:
+if 'long_animation_frame_attribution' not in performance_test:
     performance_test = performance_test.replace("  style_restoration_exercised: true", "  style_restoration_exercised: true,\n  long_animation_frame_attribution: true")
 write('tests/dcf-conversation-performance.unit.test.js', performance_test)
 
@@ -87,6 +103,7 @@ assert.strictEqual(thirdParty.category, 'third-party');
 assert(!thirdParty.source.includes('private'));
 
 const session = createAttributionSession({ session_id: 'test-session', started_at: '2026-07-14T00:00:00.000Z', started_epoch_ms: 1000, duration_ms: 60000, timeline_start_ms: 500, context: { route_kind: '/c/:conversation', mode: 'safe', turn_count: 116 } });
+assert.strictEqual(session.timeline_start_ms, 500);
 session.status = 'complete';
 session.ended_at = '2026-07-14T00:01:00.000Z';
 session.ended_epoch_ms = 61000;
