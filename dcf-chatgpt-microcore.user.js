@@ -2695,6 +2695,8 @@ function createHealthReporter(engine, receiptStore, storage, host, requiredPacka
     const runtimeObject = typeof runtime.getRuntime === 'function' ? runtime.getRuntime() : null;
     const app = typeof runtime.getApp === 'function' ? runtime.getApp() : null;
     const performanceState = typeof runtime.getPerformance === 'function' ? runtime.getPerformance() : null;
+    const performanceEntry = root.packages && root.packages.packages && root.packages.packages['dcf.standard.conversation-performance'];
+    const performanceExpected = !!(performanceEntry && performanceEntry.enabled !== false);
     const deviations = [];
 
     function add(code, severity, subject, expected, actual, evidence, explanation) {
@@ -2717,9 +2719,9 @@ function createHealthReporter(engine, receiptStore, storage, host, requiredPacka
     } else if (runtimeObject.version !== VERSION) {
       add('runtime_version_mismatch', 'error', '__DCF_RUNTIME__.version', VERSION, runtimeObject.version || null, null, 'The in-memory runtime and the installed userscript source are not the same version.');
     }
-    if (!performanceState) {
+    if (performanceExpected && !performanceState) {
       add('runtime_conversation_performance_missing', 'error', 'conversation-performance', 'the current Runtime exposes the long-conversation performance controller', 'missing', null, 'The required performance package exists without its trusted Host controller.');
-    } else if (performanceState.mode !== 'off' && performanceState.turn_count >= performanceState.activation_turns && !performanceState.content_visibility_supported) {
+    } else if (performanceState && performanceState.mode !== 'off' && performanceState.turn_count >= performanceState.activation_turns && !performanceState.content_visibility_supported) {
       add('runtime_content_visibility_unsupported', 'warning', 'conversation-performance', 'the browser supports content-visibility:auto', false, { mode: performanceState.mode }, 'The safe rendering optimization cannot be applied by this browser; window mode remains reversible but may provide less benefit.');
     }
 
