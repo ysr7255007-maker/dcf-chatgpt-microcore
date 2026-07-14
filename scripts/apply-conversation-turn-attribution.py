@@ -38,6 +38,25 @@ def make_whitespace_tolerant(source):
     return source.replace(old, new, 1)
 
 
+def repair_effect_transform(source):
+    start_marker = '''effects = replace_once(
+    effects,
+    "      } else if (effect.type === 'conversation.performance.attribution.report') {'''
+    end_marker = "write('src/runtime/effects.js', effects)"
+    start = source.find(start_marker)
+    end = source.find(end_marker, start)
+    if start < 0 or end < 0:
+        raise RuntimeError('original turn attribution effect transform block missing')
+    replacement = '''effects = replace_once(
+    effects,
+    "      } else throw new Error(`unsupported effect ${effect.type}`);",
+    "      } else if (effect.type === 'conversation.performance.turn.arm') {\\n        if (!turnAttribution) throw new Error('conversation turn attribution unavailable');\\n        result = turnAttribution.arm();\\n      } else if (effect.type === 'conversation.performance.turn.report') {\\n        if (!turnAttribution) throw new Error('conversation turn attribution unavailable');\\n        const attribution = effect.finish === false ? turnAttribution.report() : turnAttribution.finishAndReport('manual');\\n        const report = `<<<DCF_CONVERSATION_TURN_ATTRIBUTION\\n${JSON.stringify(attribution, null, 2)}\\nDCF_CONVERSATION_TURN_ATTRIBUTION>>>`;\\n        result = await host.copy(report);\\n      } else throw new Error(`unsupported effect ${effect.type}`);",
+    'turn attribution effects'
+)
+'''
+    return source[:start] + replacement + source[end:]
+
+
 def capture_failure(error):
     log = ''.join(traceback.format_exception(type(error), error, error.__traceback__))
     (ROOT / 'turn-attribution-integration.log').write_text(log, encoding='utf-8')
@@ -49,7 +68,7 @@ def capture_failure(error):
 
 
 try:
-    source = make_whitespace_tolerant(load_original())
+    source = repair_effect_transform(make_whitespace_tolerant(load_original()))
     namespace = {'__file__': str(Path(__file__).resolve()), '__name__': '__main__'}
     exec(compile(source, SOURCE_PATH, 'exec'), namespace, namespace)
 except Exception as error:
