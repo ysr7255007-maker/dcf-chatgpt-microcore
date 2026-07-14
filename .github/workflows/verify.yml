@@ -5,47 +5,17 @@ on:
   push:
     branches:
       - main
-      - feature/runtime-performance-attribution
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   verify:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: feature/runtime-performance-attribution
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Repair ordered integration replacements
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('scripts/apply-runtime-performance-attribution-integration.py')
-          text = path.read_text(encoding='utf-8')
-          old = '''    controller = replace_once(controller, "    if (!attribution || attribution.status !== 'running') return;\\n    const start = Number(entry.startTime || 0);", "    if (!acceptsAttributionEntry(entry)) return;\\n    const start = Number(entry.startTime || 0);", 'loaf session boundary')
-    controller = replace_once(controller, "    if (!attribution || attribution.status !== 'running') return;\\n    const start = Number(entry.startTime || 0);", "    if (!acceptsAttributionEntry(entry)) return;\\n    const start = Number(entry.startTime || 0);", 'event session boundary')'''
-          new = '''    old_entry_boundary = "    if (!attribution || attribution.status !== 'running') return;\\n    const start = Number(entry.startTime || 0);"
-    new_entry_boundary = "    if (!acceptsAttributionEntry(entry)) return;\\n    const start = Number(entry.startTime || 0);"
-    if controller.count(old_entry_boundary) != 2:
-        raise RuntimeError(f'ordered entry boundaries: expected two matches, found {controller.count(old_entry_boundary)}')
-    controller = controller.replace(old_entry_boundary, new_entry_boundary, 1)
-    controller = controller.replace(old_entry_boundary, new_entry_boundary, 1)'''
-          if old not in text:
-              raise SystemExit('integration repair target missing')
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
-          PY
-      - run: python scripts/apply-runtime-performance-attribution-integration.py
       - run: npm run verify
       - run: node --check dcf-chatgpt-microcore.user.js
-      - name: Commit integration and generated release artifacts
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add README.md package.json scripts/build-userscript.js scripts/apply-runtime-performance-attribution-integration.py src tests docs dcf-chatgpt-microcore.user.js dcf-chatgpt-microcore.meta.js catalog
-          git diff --cached --quiet || git commit -m 'Integrate Runtime performance attribution and generate DCF 0.17.0'
-          git push origin HEAD:feature/runtime-performance-attribution
