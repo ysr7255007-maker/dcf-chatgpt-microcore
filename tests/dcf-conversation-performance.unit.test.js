@@ -112,10 +112,10 @@ controller.destroy();
 const pack = STANDARD_PACKS.find((item) => item.pack_id === 'dcf.standard.conversation-performance');
 assert(pack, 'conversation performance package missing');
 assert(REQUIRED_PRODUCT_PACKAGES.includes(pack.pack_id), 'conversation performance package is not in product baseline');
-assert.strictEqual(pack.revision, '1.0.0');
+assert.strictEqual(pack.revision, '1.1.0');
 assert.strictEqual(pack.contributes.policies.conversation_performance.mode, 'safe');
 const commands = pack.modules[0].blocks.flatMap((block) => block.commands).map((command) => command.id);
-for (const id of ['safe', 'window40', 'window20', 'off', 'reveal', 'report']) assert(commands.includes(id), `missing performance command ${id}`);
+for (const id of ['safe', 'window40', 'window20', 'off', 'reveal', 'report', 'attribution60', 'attribution_copy']) assert(commands.includes(id), `missing performance command ${id}`);
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'host', 'conversation-performance.js'), 'utf8');
 assert(source.includes("content-visibility', 'auto"), 'safe content-visibility mode missing');
@@ -123,7 +123,7 @@ assert(source.includes("display', 'none', 'important"), 'windowed rendering cont
 assert(source.includes('PerformanceObserver'), 'long-task observation missing');
 assert(source.includes('isStreaming()'), 'streaming guard missing');
 assert(source.includes('revealPreviousBatch'), 'batch reveal missing');
-assert(source.includes('if (routeChanged || rootChanged) scheduleApply(0);'), 'route safety poll still performs periodic full reconciliation');
+assert(source.includes("if (routeChanged || rootChanged) scheduleApply(0, routeChanged ? 'route' : 'root-change');"), 'route safety poll still performs periodic full reconciliation');
 assert(!source.includes('force: options.automatic !== true'), 'manual reveal bypasses the streaming guard');
 assert(!source.includes('.replaceWith('), 'controller replaces ChatGPT-managed nodes');
 assert(!source.includes('.removeChild('), 'controller removes ChatGPT-managed nodes');
@@ -149,5 +149,6 @@ console.log(JSON.stringify({
   reconciled_policy: true,
   no_idle_full_rescan: true,
   streaming_safe_manual_reveal: true,
-  style_restoration_exercised: true
+  style_restoration_exercised: true,
+  long_animation_frame_attribution: true
 }, null, 2));

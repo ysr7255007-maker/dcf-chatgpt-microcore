@@ -209,7 +209,9 @@ function createHealthReporter(engine, receiptStore, storage, host, requiredPacka
         current_tab: ui && ui.current_tab || null,
         conversation_performance: performanceState ? {
           mode: performanceState.mode, turn_count: performanceState.turn_count, optimized_count: performanceState.optimized_count, hidden_count: performanceState.hidden_count,
-          selector_strategy: performanceState.selector_strategy, long_tasks_60s: performanceState.long_tasks_60s, long_task_duration_ms_60s: performanceState.long_task_duration_ms_60s
+          selector_strategy: performanceState.selector_strategy, long_tasks_60s: performanceState.long_tasks_60s, long_task_duration_ms_60s: performanceState.long_task_duration_ms_60s,
+          long_animation_frame_supported: performanceState.long_animation_frame_supported, event_timing_supported: performanceState.event_timing_supported,
+          layout_shift_supported: performanceState.layout_shift_supported, attribution_status: performanceState.attribution && performanceState.attribution.status || 'not-started'
         } : null
       },
       deviations,

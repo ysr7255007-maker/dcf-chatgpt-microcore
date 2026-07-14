@@ -1,7 +1,7 @@
 # DCF 当前架构
 
 Updated: 2026-07-14  
-Current release: `0.16.0`
+Current release: `0.17.0`
 
 ## 1. 价值与工程关系
 
@@ -155,3 +155,12 @@ DCF 采用分级治理：
 Research basis: MDN `content-visibility` documentation; web.dev rendering guidance; community projects `povariha123/chatgpt-long-chat-lag-fix` and `YashRana738/GptOptimum`.
 
 性能控制器不按固定频率重扫对话。MutationObserver 负责内容变化，低频 URL/root 轮询只在导航或根节点替换时触发一次重新协调；手动与自动历史展开都服从流式输出保护。
+
+
+## 14. Runtime 主线程归因诊断（0.17.0）
+
+传统 Long Tasks 只能可靠证明主线程曾被占用超过 50ms，通常不能指出具体脚本。DCF 的归因会话优先使用 Long Animation Frames，把慢帧拆为脚本工作、渲染、样式与布局，并记录主世界脚本的脱敏来源、入口函数、调用类型、总执行时间和强制样式/布局时间；同时使用 Event Timing 区分输入等待、事件处理和呈现延迟，使用 Layout Instability 记录非预期布局偏移，并保留 Long Tasks 作为兼容兜底。
+
+诊断是一次性 Action，不进入权威环境。用户显式开始 60 秒会话，系统只在该时间窗内保存有界样本；结束后返回 `dcf.conversation-performance.attribution.v1`。点击开始前已启动的帧通过 Performance Timeline 起点排除，避免把启动按钮本身误当作主要来源。
+
+LoAF 不能保证归因浏览器扩展隔离世界、跨域脚本或精确热点函数。DCF 因此单独计量自身每次协调耗时与触发原因，并把未知来源、脚本入口而非内部热点、以及各阶段计时可能重叠写入报告限制。报告禁止消息正文、DOM 文本、事件 target、完整 URL/query、调用栈和认证信息。

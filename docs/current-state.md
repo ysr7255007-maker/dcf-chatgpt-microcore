@@ -16,25 +16,29 @@ Updated: 2026-07-14
 
 ## 当前版本
 
-当前正式版本：`0.16.0`
+当前正式版本：`0.17.0`
 
-`0.11.4` 保留包管理、日常功能和维护工具分区，移除错误的 hidden 产品语义，并把体检重建为真实浏览器 Runtime 偏差报告。`0.11.5` 修正 Runtime DOM 入口采样误报。`0.11.6` 聚焦包管理中文可读性和紧凑总览。`0.12.0` 统一按值/按引用能力包更新。`0.13.0` 将系统整体收拢为期望对话环境、typed intent、有限资源族、环境投影和 Profile/恢复架构。`0.14.0` 为语言弹药增加语境化调用标志和实质更新协议，并把协议下沉为 ammo package policy。`0.15.0` 增加显式模块替代生命周期，把三个迁移期弹药工作台收口为一个完整工作台，并将纯历史包折叠收纳。`0.16.0` 增加长对话浏览器减负控制器、透明离屏优化、显式历史窗口和性能观察。
+`0.11.4` 保留包管理、日常功能和维护工具分区，移除错误的 hidden 产品语义，并把体检重建为真实浏览器 Runtime 偏差报告。`0.11.5` 修正 Runtime DOM 入口采样误报。`0.11.6` 聚焦包管理中文可读性和紧凑总览。`0.12.0` 统一按值/按引用能力包更新。`0.13.0` 将系统整体收拢为期望对话环境、typed intent、有限资源族、环境投影和 Profile/恢复架构。`0.14.0` 为语言弹药增加语境化调用标志和实质更新协议，并把协议下沉为 ammo package policy。`0.15.0` 增加显式模块替代生命周期，把三个迁移期弹药工作台收口为一个完整工作台，并将纯历史包折叠收纳。`0.16.0` 增加长对话浏览器减负控制器、透明离屏优化、显式历史窗口和性能观察。`0.17.0` 增加有界 Runtime 主线程归因会话。`0.17.0` 增加有界 Runtime 主线程归因会话。
 
 ## 当前浏览器 Runtime 检查点
 
-用户最近确认完成的是 `0.13.0` 迁移。最近一次真实浏览器体检生成于 `2026-07-13T14:01:49.777Z`：
+用户浏览器已加载 `0.16.0`，并于 `2026-07-14T11:18:06.006Z` 在当前长对话提交真实性能摘要：
 
 ```text
-schema: dcf.runtime.health.diff.v1
-version: 0.13.0
+schema: dcf.conversation-performance.runtime.v1
 route_kind: /c/:conversation
-primary_backend: gm
-current_tab: maintenance
-status: healthy
-deviations: []
+mode: safe
+turn_count: 116
+optimized_count: 116
+hidden_count: 0
+selector_strategy: testid
+content_visibility_supported: true
+long_tasks_60s: 10
+long_task_duration_ms_60s: 4212
+last_apply_duration_ms: 1
 ```
 
-体检隐私边界确认未包含对话正文、弹药正文、包 payload、命令参数或认证数据。该结果关闭 0.13.0 的 Runtime 迁移检查点，但不证明用户浏览器已经加载 0.14.0，也不单独证明 Environment Profile、具体模块命令和用户内容隔离等业务行为。
+这证明透明减负已作用于 116 个真实 turn，且最近一次 DCF 协调自身只耗时 1ms；它同时暴露出一分钟累计 4212ms 的主线程阻塞仍未归因。该性能摘要不是完整 Runtime health，不能据此宣布 0.16.0 所有观察面 healthy。`0.17.0` 的当前事项就是通过 LoAF、Event Timing、layout-shift、longtask fallback 与 DCF self timing 获取下一步证据。
 
 ## 0.11.4 Runtime 体检与折叠模型
 
@@ -107,7 +111,7 @@ deviations: []
 
 ## Deferred to phase two
 
-ChatGPT historical-message virtualization, turn-window rendering, DOM/memory dashboard, and other attempts to reduce ChatGPT's own long-thread rendering cost.
+更激进的节点脱离式虚拟化、内存采样和需要 DevTools Protocol 的 CPU profile 仍未进入 DCF；先完成页面可用 Performance API 的真实归因。
 
 ## 0.12.0 统一能力重协调
 
@@ -160,3 +164,13 @@ ChatGPT historical-message virtualization, turn-window rendering, DOM/memory das
 - 用户浏览器尚未完成 0.16.0 的现场性能与兼容验收。
 
 - 0.16.0 合并前审计已取消空闲状态下的固定频率全量重扫；手动展开历史也不再绕过流式保护。
+
+
+## 0.17.0 Runtime 主线程归因诊断
+
+- `dcf.standard.conversation-performance@1.1.0` 新增“开始 60 秒归因诊断”和“结束并复制归因报告”。
+- 报告聚合 Long Animation Frames、脚本入口与来源、blocking/render/style-layout/forced-layout、Event Timing、layout-shift 和 longtask fallback。
+- DCF 单独记录 apply 次数、触发原因、总时长、最大时长，以及会话期间的 DOM mutation 批次。
+- 会话开始前已启动的 Performance Timeline entry 被排除，避免启动按钮污染样本。
+- 脚本 URL 删除 query/hash，仅保留来源类别、host 和末级路径；不采集消息正文、DOM 文本、event target 或 stack。
+- 用户浏览器尚未完成 0.17.0 的 60 秒归因现场验收。
