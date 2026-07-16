@@ -1,11 +1,11 @@
 # DCF 新版直接重构当前状态
 
-Updated: 2026-07-15
+Updated: 2026-07-16
 
 ## 当前分支与版本
 
 - 分支：`rewrite-v2-survival-box`
-- 审查 userscript：`0.2.0-alpha.3`（GitHub 生成物尚未写入本次持久化修复；本地同源构建用于浏览器验收）
+- 审查 userscript：`0.2.0-alpha.4`，已由 GitHub Action 根据当前 `src-next/` 确定性构建并发布到审查分支
 - 正式 `0.18.2` 与 `main` 保持不变
 - 语言弹药数据分支：`language-ammo-library`
 - 固定便携库路径：`data/language-ammo/library.json`
@@ -30,6 +30,14 @@ Updated: 2026-07-15
 
 旧版到便携库的首次迁移使用 `tools/dcf-legacy-ammo-export.user.js`。它与旧版使用同一 userscript 身份，只负责读取原 `dcf.state.root.v1` 并复制便携库；复制后可直接切换到新版。
 
+## 生成物发布方式
+
+- 业务需求理解、`src-next/` 源码、测试和 ADR 由维护者显式修改并提交。
+- `.github/workflows/next-generated-artifacts.yml` 在审查分支内运行现有 `npm run verify:next`。
+- workflow 只允许构建过程改动 `dcf-chatgpt-next.user.js` 与 `dcf-chatgpt-next.meta.js`；出现其他文件差异时直接失败。
+- 生成物有变化时由 `github-actions[bot]` 提交；机器人提交不会进入自动修复或重复写入循环。
+- Action 是确定性构建与校验执行层，不修改业务源码、不根据失败日志自行修复，也不承担需求或架构判断。
+
 ## 便携库工作方式
 
 - DCF 插件不保存 GitHub Token。
@@ -40,18 +48,20 @@ Updated: 2026-07-15
 
 ## 已验证
 
-`npm run verify:next` 执行：
+当前源码与生成物已经通过：
 
 - 动态发现并构建全部 `src-next/**/*.js`；
 - 语言弹药单枚工件、便携库编码/解析/重复 ID 拒绝和合并分类测试；
 - 生存盒顺序启动、插件 API 可见、失败进入安全模式和最近可用组合测试；
 - GM 持久化适配器跨实例保留插件数据，并拒绝浏览器环境中的静默内存降级；
 - 长对话 turn 选择测试；
-- 完整 userscript 语法检查。
+- 完整 userscript 语法检查；
+- `DCF Verify` run 315：success；
+- GitHub Action 生成物提交 `9f707baa727ee947c3e268b3f920290dc48207bf`，只改动 userscript 与 meta，并将两者统一到 `0.2.0-alpha.4`。
 
 ## 仍需完成的证据
 
-- 在真实 ChatGPT 页面安装本地同源验收 userscript；
+- 通过 GitHub 审查分支更新或安装 `0.2.0-alpha.4`；
 - 调整外观并刷新，确认位置和尺寸保留；
 - 从 GitHub 加载弹药并刷新，确认弹药仍然存在；
 - 验证输入框、发送按钮和回复节点选择器；
@@ -59,7 +69,7 @@ Updated: 2026-07-15
 - 验证旧版导出桥能够保留原弹药数量和正文；
 - 验证安全模式、长对话减负和问答归因。
 
-语言弹药内容哈希、删除抑制和历史回复摄取边界保留为下一项独立修改，不与本次持久化根因修复捆绑。当前 GitHub 工具不接受本地大文件作为 blob 输入，因此没有借助 Action 回写生成 userscript；源码与测试先保持为可审查状态，本地同源构建用于浏览器验收。
+语言弹药内容哈希、删除抑制和历史回复摄取边界保留为下一项独立修改，不与本次持久化根因修复捆绑。
 
 上述内容是正式切换前的统一浏览器验收，不再作为继续开发的阶段门。
 
