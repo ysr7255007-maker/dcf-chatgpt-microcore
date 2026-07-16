@@ -1,10 +1,10 @@
 // ==UserScript==
-// @name         DCF ChatGPT Next (Review)
+// @name         DCF ChatGPT Next Snapshot Review
 // @namespace    https://chatgpt.com/
-// @version      0.2.0-alpha.8
-// @description  Minimal survival box plus the explicitly selected DCF official plugin pack.
-// @updateURL    https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rewrite-v2-survival-box/dcf-chatgpt-next.meta.js
-// @downloadURL  https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rewrite-v2-survival-box/dcf-chatgpt-next.user.js
+// @version      0.2.0-alpha.8-complete
+// @description  Compiled DCF boot snapshot (complete); plugin code is selected before installation and executed by Tampermonkey.
+// @updateURL    https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rewrite-v2-survival-box/dcf-chatgpt-next-snapshot-complete.meta.js
+// @downloadURL  https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rewrite-v2-survival-box/dcf-chatgpt-next-snapshot-complete.user.js
 // @supportURL   https://github.com/ysr7255007-maker/dcf-chatgpt-microcore/pull/21
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
