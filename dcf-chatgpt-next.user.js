@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         DCF ChatGPT Next (Review)
 // @namespace    https://chatgpt.com/
-// @version      0.2.0-alpha.5
-// @description  Direct DCF rewrite: minimal survival box plus complete first-party plugin set.
+// @version      0.2.0-alpha.6
+// @description  Minimal survival box plus the explicitly selected DCF official plugin pack.
 // @updateURL    https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rewrite-v2-survival-box/dcf-chatgpt-next.meta.js
 // @downloadURL  https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rewrite-v2-survival-box/dcf-chatgpt-next.user.js
 // @supportURL   https://github.com/ysr7255007-maker/dcf-chatgpt-microcore/pull/21
@@ -1999,7 +1999,7 @@ module.exports = { shellPlugin, DEFAULT_GEOMETRY };
 "src-next/survival/constants.js":function(module,exports,require){
 'use strict';
 
-const VERSION = '0.2.0-alpha.5';
+const VERSION = '0.2.0-alpha.6';
 const STATE_SCHEMA = 'dcf.next.survival.state.v1';
 const STATE_KEY = 'dcf.next.survival.state.v1';
 const PLUGIN_STORAGE_PREFIX = 'dcf.next.plugin.';
