@@ -95,7 +95,7 @@ module.exports = { clone, isObject, nowIso, normalizeText, safeJsonParse, create
 "src-next/experimental/core-review-constants.js":function(module,exports,require){
 'use strict';
 
-const CORE_REVIEW_VERSION = '0.1.0-alpha.1';
+const CORE_REVIEW_VERSION = '0.1.0-alpha.2';
 const CORE_STATE_SCHEMA = 'dcf.core-review.state.v1';
 const CORE_STATE_KEY = 'dcf.core-review.state.v1';
 const MODULE_PREFIX = 'dcf.core-review.module.';
@@ -322,6 +322,59 @@ function snapshotFromManifest(state, storage, manifest, previousSnapshot = null)
 }
 
 module.exports = { validatePluginPackBundle, installPluginPack, pluginCatalog, buildSnapshot, snapshotFromManifest };
+
+},
+"src-next/experimental/core-review-preflight.js":function(module,exports,require){
+'use strict';
+
+const { nowIso, sanitizeState } = require("src-next/experimental/core-review-storage.js");
+
+function probeDynamicExecution(FunctionCtor = Function) {
+  try {
+    const fn = new FunctionCtor('return 0xDCF;');
+    if (fn() !== 0xDCF) throw new Error('dynamic_execution_probe_result_invalid');
+    return true;
+  } catch (error) {
+    const wrapped = new Error(`dynamic_execution_unavailable:${error?.message || String(error)}`);
+    wrapped.cause = error;
+    throw wrapped;
+  }
+}
+
+function recordDynamicExecutionFailure(storage, error) {
+  const state = sanitizeState(storage.getState(null));
+  const at = nowIso();
+  state.boot = {
+    status: 'failed',
+    attempt_id: `${Date.now()}-preflight`,
+    started_at: at,
+    completed_at: at,
+    plugins: [],
+    error: {
+      stage: 'dynamic_execution',
+      message: error?.message || String(error)
+    }
+  };
+  state.force_recovery = true;
+  state.recovery_reason = 'dynamic_execution_unavailable';
+  storage.setState(state);
+  return state;
+}
+
+function assertDynamicExecutionEnvironment({ storage, FunctionCtor = Function } = {}) {
+  try {
+    return probeDynamicExecution(FunctionCtor);
+  } catch (error) {
+    if (storage) recordDynamicExecutionFailure(storage, error);
+    throw error;
+  }
+}
+
+module.exports = {
+  probeDynamicExecution,
+  recordDynamicExecutionFailure,
+  assertDynamicExecutionEnvironment
+};
 
 },
 "src-next/experimental/core-review-runtime.js":function(module,exports,require){
@@ -670,10 +723,26 @@ const constants = require("src-next/experimental/core-review-constants.js");
 const storage = require("src-next/experimental/core-review-storage.js");
 const modules = require("src-next/experimental/core-review-modules.js");
 const pack = require("src-next/experimental/core-review-pack.js");
+const preflight = require("src-next/experimental/core-review-preflight.js");
 const { createCoreReview } = require("src-next/experimental/core-review-runtime.js");
 
 async function main() {
-  const core = createCoreReview();
+  const coreStorage = storage.createCoreStorage();
+  try {
+    preflight.assertDynamicExecutionEnvironment({ storage: coreStorage });
+  } catch (error) {
+    const core = createCoreReview({ storage: coreStorage });
+    core.renderRecovery('dynamic_execution_unavailable');
+    globalThis.DCF_CORE_REVIEW = Object.freeze({
+      version: constants.CORE_REVIEW_VERSION,
+      result: { ok: false, recovery: true, error: { stage: 'dynamic_execution', message: error?.message || String(error) } },
+      state: core.state,
+      showRecovery: () => core.renderRecovery('manual')
+    });
+    return;
+  }
+
+  const core = createCoreReview({ storage: coreStorage });
   const result = await core.boot();
   globalThis.DCF_CORE_REVIEW = Object.freeze({
     version: constants.CORE_REVIEW_VERSION,
@@ -699,7 +768,7 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
   });
 }
 
-module.exports = { ...constants, ...storage, ...modules, ...pack, createCoreReview };
+module.exports = { ...constants, ...storage, ...modules, ...pack, ...preflight, createCoreReview };
 
 },
 "src-next/index.js":function(module,exports,require){

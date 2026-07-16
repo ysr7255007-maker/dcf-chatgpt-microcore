@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DCF ChatGPT Next Core Review
 // @namespace    https://chatgpt.com/
-// @version      0.1.0-alpha.1
+// @version      0.1.0-alpha.2
 // @description  Experimental minimal survival core for real plugin-pack and dynamic-loading acceptance.
 // @updateURL    https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rewrite-v2-survival-box/dcf-chatgpt-next-core-review.meta.js
 // @downloadURL  https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rewrite-v2-survival-box/dcf-chatgpt-next-core-review.user.js
@@ -17,5 +17,6 @@
 // @connect      raw.githubusercontent.com
 // @connect      127.0.0.1
 // @connect      localhost
+// @sandbox      DOM
 // @run-at       document-idle
 // ==/UserScript==
