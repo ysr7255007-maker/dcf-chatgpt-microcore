@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DCF ChatGPT Next (Review)
 // @namespace    https://chatgpt.com/
-// @version      0.2.0-alpha.4
+// @version      0.2.0-alpha.5
 // @description  Direct DCF rewrite: minimal survival box plus complete first-party plugin set.
 // @updateURL    https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rewrite-v2-survival-box/dcf-chatgpt-next.meta.js
 // @downloadURL  https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rewrite-v2-survival-box/dcf-chatgpt-next.user.js
@@ -15,5 +15,7 @@
 // @grant        GM_listValues
 // @grant        GM_xmlhttpRequest
 // @connect      raw.githubusercontent.com
+// @connect      127.0.0.1
+// @connect      localhost
 // @run-at       document-idle
 // ==/UserScript==
