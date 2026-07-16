@@ -1,0 +1,40 @@
+{
+  "schema": "dcf.code_unit_index.v1",
+  "units": [
+    {
+      "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/chrome-extension/code-units/ammo/main.js",
+      "description": "ChatGPT 页面接入、自动装填、同 ID 更新、查看、编辑、发射、导入与导出。",
+      "hash": "8b368b666216868c89687eec232cac48e1854696ef148c97ee695ff52d4201f3",
+      "host_api": "1",
+      "id": "dcf.firstparty.ammo",
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "phase": 20,
+      "required": true,
+      "run_at": "document_idle",
+      "title": "语言弹药闭环",
+      "version": "1.0.0-rc.1",
+      "world_id": "dcf-runtime"
+    },
+    {
+      "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/chrome-extension/code-units/diagnostics/main.js",
+      "description": "独立返回代码单元启动证据，验证普通代码单元可以单独替换与回滚。",
+      "hash": "8d592670c560d5b59d00761ef33a8d0f95b5f71520828385fb89b8497504004b",
+      "host_api": "1",
+      "id": "dcf.firstparty.diagnostics",
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "phase": 90,
+      "required": true,
+      "run_at": "document_idle",
+      "title": "启动诊断证据",
+      "version": "1.0.0-rc.1",
+      "world_id": "dcf-runtime"
+    }
+  ],
+  "version": "1.0.0-rc.1"
+}

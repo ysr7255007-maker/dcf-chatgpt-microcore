@@ -1,0 +1,26 @@
+name: DCF Chrome candidate
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify-and-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify legacy fallback and Chrome candidate
+        run: npm run verify
+      - name: Candidate summary
+        run: cat dist/verification-summary.json
+      - name: Upload unique candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: dcf-chrome-extension-1.0.0-rc.1
+          path: |
+            dist/dcf-chrome-extension-1.0.0-rc.1.zip
+            dist/verification-summary.json
+          if-no-files-found: error

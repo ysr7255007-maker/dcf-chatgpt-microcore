@@ -1,53 +1,36 @@
 # DCF ADR canonical status index
 
-Updated: 2026-07-14
+Updated: 2026-07-17
 
-The status in this file is authoritative. A status line inside an older ADR records its status when written and is historical after a later ADR supersedes it.
+The status here is authoritative. Older ADR status lines are historical after supersession.
 
 ## Current
 
-- `2026-07-14-dcf-stateful-command-feedback.md` — **accepted**
-
-- `2026-07-14-dcf-bootstrap-package-auto-sync.md` — **accepted**
-- `2026-07-14-dcf-conversation-turn-attribution.md` — **accepted**
-
-- `2026-07-14-dcf-runtime-performance-attribution.md` — **accepted**
-
-- `2026-07-14-dcf-conversation-performance-governor.md` — **accepted**
-
-- `2026-07-14-dcf-canonical-module-supersession.md` — **accepted**
-
-- `2026-07-14-dcf-ammo-invocation-update-protocol.md` — **accepted**
-- `2026-07-13-dcf-conversation-environment-architecture.md` — **accepted**
-- `2026-07-13-dcf-unified-capability-reconciliation.md` — **accepted**
-- `2026-07-13-dcf-runtime-health-and-folding.md` — **accepted**
-- `2026-07-12-dcf-phase-one-whole-project-rebuild.md` — **accepted**
-- `2026-07-12-dcf-shell-geometry-source-of-truth.md` — **accepted**, retained by phase one
-- viewport-containment-fence ADR — **accepted**, retained by phase one
+- `2026-07-17-dcf-chrome-native-dynamic-host.md` — **accepted for candidate implementation; pending product acceptance**; one Chrome extension, controlled code units, exact startup snapshots, static survival core, automatic old-side-rail migration and LKG rollback
+- `2026-07-14-dcf-stateful-command-feedback.md` — **retained product-semantic guidance**
+- `2026-07-14-dcf-conversation-turn-attribution.md` — **retained as optional future code-unit capability**, not candidate completion scope
+- `2026-07-14-dcf-conversation-performance-governor.md` — **retained as optional future code-unit capability**, not candidate completion scope
+- `2026-07-14-dcf-canonical-module-supersession.md` — **retained conceptually**; exact-ID replacement is now expressed through code-unit versions and snapshots
+- `2026-07-14-dcf-ammo-invocation-update-protocol.md` — **accepted and implemented in the Chrome ammo unit**
 
 ## Proposed
 
-- `2026-07-14-dcf-compliance-as-generated-projection.md` — **proposed**; automation performs mechanical maintenance and exposes evidence, while format conformity is never treated as proof that the implementation route or architecture is correct
-- `2026-07-14-dcf-architecture-complexity-budget.md` — **proposed**; freeze further platformization, judge architecture by marginal change cost, and audit every coordination layer for simplification
-- `2026-07-14-dcf-cross-platform-memory-system.md` — **proposed**; platform-neutral canonical memory store with bounded per-platform projections, pending real multi-platform validation
+- `2026-07-14-dcf-compliance-as-generated-projection.md` — **proposed**; automation performs mechanical maintenance and exposes evidence, while format conformity is never proof of architectural correctness
+- `2026-07-14-dcf-architecture-complexity-budget.md` — **proposed, strengthened by Chrome rebuild**; reject platform layers without marginal value
+- `2026-07-14-dcf-cross-platform-memory-system.md` — **proposed**; platform-neutral canonical memory remains future work
 
 ## Superseded or partially superseded
 
-- `2026-07-13-dcf-package-module-function-role-separation.md` — **partially superseded**; package/runtime/daily/maintenance separation remains, hidden is no longer a role
-- `2026-07-13-dcf-module-visibility-observability.md` — **superseded**; modules remain discoverable and UI density is handled by folding
-- `2026-07-12-dcf-storage-backend-bridge-and-health-report.md` — **partially superseded**; storage bridge remains, full state-dump health reporting is replaced by Runtime deviation reporting
-- `2026-07-09-dcf-release-structure.md` — complete userscript release retained; modular source is now implemented
-- `2026-07-09-dcf-sidebar-ui.md` — persistent low-friction sidebar retained; UI is now a projection
-- `2026-07-09-dcf-ammo-daily-use-and-hot-update.md` — value requirements retained; implementation replaced by package-owned contextual invocation/update protocol
-- `2026-07-09-dcf-kernel-only-maintenance-wrapper.md` — generic-core boundary retained; ammo is explicitly the required first-party product module
-- `2026-07-09-dcf-light-capability-bus-kernel.md` — capability bus retained; whole-page ingestion and automatic success feedback removed
-- `2026-07-09-dcf-command-dispatch-diagnostics-0.8.7.md` — shared command resolution retained; unified receipts replace separate diagnostic inlets
-- `2026-07-09-dcf-uisugar-content-hot-update-0.8.8.md` — declarative UI/content retained through resources and projections
-- `2026-07-11-dcf-command-evidence-chain.md` — correlation, privacy, non-interference, and delivery truth retained; transaction/command/effect receipts replace the parallel trace system
-- `2026-07-12-dcf-deterministic-package-source-model.md` — immutable revisions and deterministic projection retained inside the single-root transaction model
+- `2026-07-13-dcf-conversation-environment-architecture.md` — **partially superseded**; one authoritative desired state remains, but old resource/package projection is not the new browser execution model
+- `2026-07-13-dcf-unified-capability-reconciliation.md` — **superseded in implementation** by code-unit store plus exact snapshots; unified lifecycle principle retained
+- `2026-07-13-dcf-runtime-health-and-folding.md` — **partially superseded**; privacy-bounded actual-runtime diff retained, old Tampermonkey UI facts are historical
+- `2026-07-12-dcf-phase-one-whole-project-rebuild.md` — **superseded as current host implementation**; product semantics and bounded host intake retained
+- `2026-07-12-dcf-storage-backend-bridge-and-health-report.md` — **superseded for future storage**; old localStorage/GM migration evidence remains historical
+- `2026-07-12-dcf-deterministic-package-source-model.md` — **superseded by controlled code-unit manifests and SHA-256**, immutable deterministic source principle retained
+- `2026-07-09-dcf-release-structure.md` — **superseded**; complete userscript is fallback, Chrome extension is the candidate installation
+- `2026-07-09-dcf-ammo-daily-use-and-hot-update.md` — **value requirements retained**, implementation replaced
+- earlier bootloader/chunk/local-engine/CSP mitigations — **historical rejected routes**
 
-## Superseded implementation decisions
+## Historical fallback
 
-- `2026-07-09-dcf-ingestion-guard-0.8.6.md` — current-reply artifact decoding and local failure receipts replace page-block guard/seen-ledger behavior
-- SideRail and ModuleRail layout ADRs — unified Surface/module-display projection replaces fixed layout implementations
-- earlier bootloader/chunk/local-engine mitigations in the release-structure history — complete native userscript release remains the only accepted release architecture
+All Tampermonkey `0.18.2` implementation ADRs remain available as evidence and rollback context but do not override the Chrome native host ADR.

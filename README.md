@@ -1,85 +1,59 @@
-# dcf-chatgpt-microcore
+# DCF Chrome 原生动态宿主
 
-DCF is a personally maintained ChatGPT Tampermonkey system whose value goal is a low-friction language-ammunition loop. The repository is public for update delivery, not operated as a community plugin platform.
+DCF 的价值目标仍是低摩擦语言弹药闭环：从有价值的 ChatGPT 对话中形成可复用语言，自动装填、持续更新，并在后续对话中低摩擦发射。
 
-## Current architecture
+当前候选版本是 **DCF Chrome `1.0.0-rc.1`**。它把浏览器底层从 Tampermonkey 完整 userscript 改为一个 Google Chrome Manifest V3 扩展，并以 `chrome.userScripts` 承载可独立安装、更新、停用、替换和回滚的受控代码单元。
 
-DCF `0.18.2` keeps a generic modular kernel under the first-party language-ammunition product goal. Source is modular, while Tampermonkey still installs one complete userscript.
+旧正式版 `0.18.2` 仍保留在仓库根目录及 `main` 历史中，作为候选验收前的明确回退路径；它不再是新架构的产品候选。
 
-One authoritative state root changes only through the unified transaction path:
+## 用户侧结果
+
+- 只安装一个 DCF Chrome 扩展；
+- 不需要 Node.js、pnpm、Docker、本机 Runtime、命令行或常驻服务；
+- 首次只需在 Chrome 扩展详情页开启一次“允许用户脚本”；
+- 打开 ChatGPT 后，语言弹药自动进入可用状态；
+- 语言弹药代码与启动组合分离，普通代码单元可以独立替换和回滚；
+- 高级页面代码损坏时，扩展静态恢复页仍可查看代码库、目标快照、实际注册集合和最近错误，并恢复最近可用组合；
+- 旧版 Tampermonkey 仍运行时，迁移桥自动读取其开放侧栏中的弹药、发射模式和外观设置，不要求逐条复制或编辑 JSON。
+
+## 架构
 
 ```text
-intent or artifact
-→ candidate state
-→ invariant validation
-→ atomic root commit
-→ derived runtime projection
-→ receipt / host effect
+官方代码单元或更新
+→ SHA-256 校验
+→ 本地代码库
+→ 候选精确启动快照
+→ chrome.userScripts 注册集合
+→ 各代码单元返回启动证据
+→ 确认当前快照与最近可用快照
 ```
 
-ChatGPT replies can carry complete `DCF_MODULE_PACK` values or `DCF_PACKAGE_UPDATE` references. Manual JSON and the fixed GitHub catalog are additional transports. All inputs resolve to one typed artifact and one capability-reconciliation transaction path. Reply intake observes only newly added/current assistant replies.
+候选失败时不覆盖最近可用快照；故障注册会被清理并恢复上一份已知可用集合。
 
-The UI distinguishes:
+最小生存核位于扩展静态源码中，只负责代码单元、快照、注册协调、证据、恢复和窄宿主协议。语言弹药作为第一方代码单元拥有产品价值主权，但不拥有广泛扩展权限。
 
-- installed packages in **包管理**;
-- runtime modules in the registry;
-- daily functions in **功能**;
-- probes, diagnostics, layout, authoring, acceptance, and recovery tools in **维护**.
-
-`hidden` is not a product role. All non-ammo runtime modules remain discoverable in either daily or maintenance. Module cards use expand/collapse to control density; fold state lives only in disposable `dcf.ui.session.v1` and never rewrites package or authoritative user state.
-
-**一键 Runtime 体检并复制** observes the actual browser instance rather than dumping internal state. It compares persisted storage, in-memory Runtime, real Shadow DOM entries, host count and geometry, ChatGPT observer/composer connection, and recent failed operations. A healthy report contains `deviations: []`; abnormal reports include only the minimum evidence for each Runtime mismatch.
-
-See `docs/architecture-current.md` for the current structure and `docs/adr/status-index.md` for canonical decision status.
-
-## Build and verification
+## 构建与验证
 
 ```bash
 npm run verify
 ```
 
-This builds the complete `.user.js`, generates the catalog, and verifies ammo invocation/update semantics, transactions, resource conflicts, migration, legacy commands, role/fold separation, Runtime health privacy and deviation detection, bounded reply intake, catalog updates, viewport containment, release integrity, and deterministic output.
+`verify` 同时验证 Chrome 候选与旧正式版回退。Chrome 候选会生成：
 
-## Unified capability reconciliation
+- `dist/dcf-chrome-extension/`：可通过“加载已解压的扩展程序”安装；
+- `dist/dcf-chrome-extension-1.0.0-rc.1.zip`：唯一候选安装包；
+- `dist/verification-summary.json`：结构化构建摘要；
+- `releases/chrome/official-index.json` 与受哈希约束的独立代码单元源码运输文件。
 
-`root.packages` is the authoritative desired capability set. A complete package is a by-value input; `DCF_PACKAGE_UPDATE` is a by-reference input resolved through the trusted catalog. Both enter the same resolver, immutable revision validation, atomic commit, Runtime reprojection and receipt path. The first package-owned declarative view is `dcf.ui.package-management`, so package-management text, control order and style can update as a package revision without changing the userscript bootstrap.
+GitHub Actions 只执行确定性安装、测试、构建、哈希校验和产物上传，不理解或修改业务源码。
 
-## Conversation environment architecture
+## 唯一现场验收
 
-DCF `0.13.0` treats the authoritative root as one desired conversation environment. A read-only Environment Snapshot exposes capabilities, user resources, policies, presentation, profiles and provenance. Persistent changes compile to typed environment intents and pass through one candidate/validate/commit/reproject path. Content, actions, views, styles and policies are finite resource families. Ammo, functions, composition and maintenance are package-owned views of the same environment. Profiles save package selection, policies and presentation without copying user ammo bodies.
+1. 保持旧正式版可用，不删除其数据；
+2. 安装唯一候选扩展；
+3. 开启一次“允许用户脚本”；
+4. 打开 ChatGPT，确认迁移结果；
+5. 进行一段真实对话并使用提取、自动装填、同 ID 更新和发射；
+6. 判断摩擦、可见性和结果是否达到旧版或更好。
 
-## Contextual language-ammunition protocol
-
-DCF `0.14.0` distinguishes invocation from raw text reuse. Firing an ammo item sends `〔DCF·语言弹药〕` plus the body so the receiving conversation reinterprets the condensed long-term intent against the current context before acting. Clear adaptations can proceed directly; only material conflict or unresolved ambiguity requires confirmation.
-
-Updating an ammo item sends `〔DCF·弹药更新〕`, the complete current item and a substantive revision contract. The response must preserve the same `id` and return one complete `DCF_AMMO` artifact. Marker text and update rules are owned by `dcf.standard.ammo@1.3.0` as `ammo_protocol` policy; copying still exports the raw body.
-
-
-## Canonical module supersession
-
-DCF `0.15.0` lets an active module declare exact predecessor module IDs through `supersedes`. A predecessor leaves normal Runtime views only while its replacement is active; similarly named modules are never inferred as duplicates. Packages whose only runtime module is superseded move from the primary package list into a folded historical section instead of being destructively deleted. `dcf.standard.ammo@1.3.0` uses this mechanism to replace the three migrated ammo workbenches with one complete language-ammunition workbench.
-
-
-## Long-conversation browser performance
-
-DCF `0.16.0` adds a trusted Host-side conversation performance governor owned by `dcf.standard.conversation-performance@1.0.0`. Its default safe mode applies browser-native `content-visibility:auto` only after a conversation reaches the configured turn threshold. Optional window modes keep the newest 40 or 20 message turns rendered and reversibly hide older turns without removing, replacing, cloning, or rewriting ChatGPT-managed nodes. Scrolling near the top or using “展开上一批” restores history in batches; “恢复全部并关闭” restores every original inline style. A privacy-safe report includes only counts, selector strategy, mode, apply duration and Long Tasks API aggregates. This addresses browser layout/paint cost, not model context limits, backend latency, outages, or unrelated extension conflicts.
-
-
-## Runtime performance attribution
-
-DCF `0.17.0` upgrades the long-conversation controller from counting Long Tasks to bounded, user-started attribution sessions. A 60-second session observes Long Animation Frames, script entry points, forced style/layout time, Event Timing interaction delay, layout shifts, traditional Long Tasks, DOM mutation counts and DCF's own reconciliation duration. Script URLs are reduced to hostname plus the final path components with query strings and fragments removed; event targets, DOM text, message bodies and stacks are never collected. Extension isolated-world work may not appear in LoAF script attribution, so DCF self-work is measured separately and unknown/cross-origin work remains explicit.
-
-
-## Conversation-turn attribution
-
-DCF `0.18.0` replaces the fixed 60-second diagnostic as the primary workflow with a question-answer turn boundary. **记录下一轮问答** only arms the collector. The actual Runtime sample begins on the next captured send interaction, records the first assistant DOM activity, and closes automatically after the reply is no longer streaming and remains quiet. The report separates send-to-first-reply activity from reply-activity-to-completion, while keeping a long timeout and manual finish as recovery paths. No user or assistant message text is retained.
-
-
-## Bootstrap/package upgrade closure
-
-DCF `0.18.1` closes the gap between userscript upgrades and package activation. On a detected kernel-version transition, the bootstrap installs and activates newer embedded revisions of required first-party packages through the authoritative root, then performs an immediate Catalog check without the normal six-hour throttle. Previous revisions remain immutable and available, while same-version manual rollback choices survive later reloads.
-
-
-## Stateful command feedback
-
-DCF `0.18.2` adds a finite declarative `ui_state` contract for commands whose current state can be observed reliably. Selected modes, armed diagnostics, running diagnostics and completed reports receive distinct color, a status dot, updated wording and `aria-pressed`; one-shot actions remain visually neutral. The question-answer attribution controls refresh in place when send/reply lifecycle events change, avoiding a full panel rerender. Current module roles, the active environment Profile and the ammo firing mode use the same visible-state convention.
+自动注册、更新恢复、候选回滚和故障隔离不要求用户手工制造故障。
