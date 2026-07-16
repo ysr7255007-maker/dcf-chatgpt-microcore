@@ -1,7 +1,7 @@
 {
   "schema": "dcf.plugin-pack.v1",
   "id": "dcf.official",
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-alpha.2",
   "title": "DCF 官方插件工具包",
   "modules": [
     "src-next/plugins/shell.js",
@@ -30,13 +30,13 @@
     { "id": "dcf.next.conversation-performance", "version": "1.0.0", "entry": "src-next/plugins/conversation-performance.js", "factory": "conversationPerformancePlugin" },
     { "id": "dcf.next.attribution", "version": "1.0.0", "entry": "src-next/plugins/attribution.js", "factory": "attributionPlugin" },
     { "id": "dcf.next.appearance", "version": "1.0.0", "entry": "src-next/plugins/appearance.js", "factory": "appearancePlugin" },
-    { "id": "dcf.next.plugin-manager", "version": "1.0.0", "entry": "src-next/plugins/plugin-manager.js", "factory": "pluginManagerPlugin" },
+    { "id": "dcf.next.plugin-manager", "version": "1.1.0", "entry": "src-next/plugins/plugin-manager.js", "factory": "pluginManagerPlugin" },
     { "id": "dcf.next.backup", "version": "1.0.0", "entry": "src-next/plugins/backup.js", "factory": "backupPlugin" },
     { "id": "dcf.next.diagnostics", "version": "1.0.0", "entry": "src-next/plugins/diagnostics.js", "factory": "diagnosticsPlugin" }
   ],
   "recommended_snapshots": {
-    "minimal": ["dcf.next.shell@1.0.0", "dcf.next.chatgpt@1.0.0", "dcf.next.plugin-manager@1.0.0", "dcf.next.diagnostics@1.0.0"],
-    "standard": ["dcf.next.shell@1.0.0", "dcf.next.chatgpt@1.0.0", "dcf.next.ammo@1.0.0", "dcf.next.conversation-performance@1.0.0", "dcf.next.attribution@1.0.0", "dcf.next.appearance@1.0.0", "dcf.next.plugin-manager@1.0.0", "dcf.next.backup@1.0.0", "dcf.next.diagnostics@1.0.0"],
-    "complete": ["dcf.next.shell@1.0.0", "dcf.next.chatgpt@1.0.0", "dcf.next.local-agent@1.0.0", "dcf.next.ammo@1.0.0", "dcf.next.conversation-performance@1.0.0", "dcf.next.attribution@1.0.0", "dcf.next.appearance@1.0.0", "dcf.next.plugin-manager@1.0.0", "dcf.next.backup@1.0.0", "dcf.next.diagnostics@1.0.0"]
+    "minimal": ["dcf.next.shell@1.0.0", "dcf.next.chatgpt@1.0.0", "dcf.next.plugin-manager@1.1.0", "dcf.next.diagnostics@1.0.0"],
+    "standard": ["dcf.next.shell@1.0.0", "dcf.next.chatgpt@1.0.0", "dcf.next.ammo@1.0.0", "dcf.next.conversation-performance@1.0.0", "dcf.next.attribution@1.0.0", "dcf.next.appearance@1.0.0", "dcf.next.plugin-manager@1.1.0", "dcf.next.backup@1.0.0", "dcf.next.diagnostics@1.0.0"],
+    "complete": ["dcf.next.shell@1.0.0", "dcf.next.chatgpt@1.0.0", "dcf.next.local-agent@1.0.0", "dcf.next.ammo@1.0.0", "dcf.next.conversation-performance@1.0.0", "dcf.next.attribution@1.0.0", "dcf.next.appearance@1.0.0", "dcf.next.plugin-manager@1.1.0", "dcf.next.backup@1.0.0", "dcf.next.diagnostics@1.0.0"]
   }
 }

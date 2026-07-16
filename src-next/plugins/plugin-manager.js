@@ -5,9 +5,9 @@ const { clone, copyText } = require('../core/utils');
 function pluginManagerPlugin() {
   return {
     id: 'dcf.next.plugin-manager',
-    version: '1.0.0',
+    version: '1.1.0',
     title: '插件管理',
-    description: '管理真实启动清单、顺序、组合和内嵌插件版本。',
+    description: '管理已安装插件进入运行组合时的启停、顺序和版本。',
     async start(ctx) {
       const shell = ctx.plugins.get('dcf.next.shell');
       if (!shell) throw new Error('shell_plugin_required');
@@ -45,18 +45,23 @@ function pluginManagerPlugin() {
       }
       function setEnabled(index, enabled) { working[index] = { ...working[index], enabled }; shell.refresh('plugins'); }
       function setVersion(index, version) { working[index] = { ...working[index], version }; shell.refresh('plugins'); }
+      function addInstalledPlugin(info) {
+        if (working.some((entry) => entry.id === info.id)) return;
+        working.push({ id: info.id, version: info.version, enabled: true });
+        shell.refresh('plugins');
+      }
 
       function render(container) {
         container.replaceChildren();
         const root = document.createElement('div'); root.className = 'dcf-stack';
-        const intro = document.createElement('div'); intro.className = 'dcf-muted'; intro.textContent = '这里修改的是生存盒实际读取的启动清单。保存后刷新；插件管理器本身不是唯一恢复入口。'; root.append(intro);
+        const intro = document.createElement('div'); intro.className = 'dcf-muted'; intro.textContent = '这里修改生存核实际读取的运行组合。已安装插件只有加入组合后才会在下次启动运行；插件管理器本身不是唯一恢复入口。'; root.append(intro);
         const available = availableMap();
         working.forEach((entry, index) => {
           const info = available.get(entry.id)?.find((item) => item.version === entry.version) || { title: entry.id, description: '' };
           const card = document.createElement('article'); card.className = 'dcf-card dcf-stack';
           const header = document.createElement('div'); header.className = 'dcf-row';
           const toggle = document.createElement('input'); toggle.type = 'checkbox'; toggle.checked = entry.enabled !== false; toggle.onchange = () => setEnabled(index, toggle.checked);
-          const title = document.createElement('div'); title.className = 'dcf-title'; title.style.flex = '1'; title.textContent = info.title;
+          const title = document.createElement('div'); title.className = 'dcf-title'; title.style.flex = '1'; title.textContent = info.title || entry.id;
           const order = document.createElement('span'); order.className = 'dcf-badge'; order.textContent = `#${index + 1}`;
           header.append(toggle, title, order); card.append(header);
           const technical = document.createElement('div'); technical.className = 'dcf-muted'; technical.textContent = `${entry.id}@${entry.version}${info.description ? ` · ${info.description}` : ''}`; card.append(technical);
@@ -72,10 +77,24 @@ function pluginManagerPlugin() {
           controls.append(up, down); card.append(controls); root.append(card);
         });
 
+        const activeIds = new Set(working.map((entry) => entry.id));
+        const availableButInactive = Array.from(available.values()).flatMap((versions) => versions.slice(0, 1)).filter((info) => !activeIds.has(info.id));
+        if (availableButInactive.length) {
+          const availableCard = document.createElement('section'); availableCard.className = 'dcf-card dcf-stack';
+          const availableTitle = document.createElement('div'); availableTitle.className = 'dcf-title'; availableTitle.textContent = '已安装但未进入当前组合'; availableCard.append(availableTitle);
+          for (const info of availableButInactive) {
+            const row = document.createElement('div'); row.className = 'dcf-row';
+            const label = document.createElement('div'); label.style.flex = '1'; label.textContent = `${info.title || info.id} · ${info.id}@${info.version}`;
+            const add = document.createElement('button'); add.className = 'dcf-btn'; add.textContent = '加入组合'; add.onclick = () => addInstalledPlugin(info);
+            row.append(label, add); availableCard.append(row);
+          }
+          root.append(availableCard);
+        }
+
         const actions = document.createElement('div'); actions.className = 'dcf-row';
         const save = document.createElement('button'); save.className = 'dcf-btn primary'; save.textContent = '保存并重启'; save.onclick = () => persist({ restart: true });
         const reset = document.createElement('button'); reset.className = 'dcf-btn'; reset.textContent = '放弃改动'; reset.onclick = () => { working = ctx.survival.currentManifest(); shell.refresh('plugins'); };
-        const exportButton = document.createElement('button'); exportButton.className = 'dcf-btn'; exportButton.textContent = '复制启动清单'; exportButton.onclick = () => copyText(JSON.stringify({ schema: 'dcf.next.plugin-manifest.v1', plugins: working }, null, 2)).then(() => shell.notify('启动清单已复制'));
+        const exportButton = document.createElement('button'); exportButton.className = 'dcf-btn'; exportButton.textContent = '复制运行组合'; exportButton.onclick = () => copyText(JSON.stringify({ schema: 'dcf.next.plugin-manifest.v1', plugins: working }, null, 2)).then(() => shell.notify('运行组合已复制'));
         actions.append(save, reset, exportButton); root.append(actions);
 
         const savedCard = document.createElement('section'); savedCard.className = 'dcf-card dcf-stack';
@@ -93,15 +112,15 @@ function pluginManagerPlugin() {
         root.append(savedCard);
 
         const importCard = document.createElement('section'); importCard.className = 'dcf-card dcf-stack';
-        const importTitle = document.createElement('div'); importTitle.className = 'dcf-title'; importTitle.textContent = '导入启动清单';
+        const importTitle = document.createElement('div'); importTitle.className = 'dcf-title'; importTitle.textContent = '导入运行组合';
         const area = document.createElement('textarea'); area.placeholder = '粘贴 dcf.next.plugin-manifest.v1 JSON'; area.value = importText; area.oninput = () => { importText = area.value; };
         const apply = document.createElement('button'); apply.className = 'dcf-btn'; apply.textContent = '校验并载入'; apply.onclick = () => {
           try {
             const parsed = JSON.parse(importText);
-            if (parsed.schema !== 'dcf.next.plugin-manifest.v1' || !Array.isArray(parsed.plugins)) throw new Error('启动清单格式不正确');
+            if (parsed.schema !== 'dcf.next.plugin-manifest.v1' || !Array.isArray(parsed.plugins)) throw new Error('运行组合格式不正确');
             const known = availableMap();
-            for (const entry of parsed.plugins) if (!known.get(entry.id)?.some((candidate) => candidate.version === entry.version)) throw new Error(`当前 userscript 不包含 ${entry.id}@${entry.version}`);
-            working = clone(parsed.plugins); shell.refresh('plugins'); shell.notify('清单已载入，尚未保存');
+            for (const entry of parsed.plugins) if (!known.get(entry.id)?.some((candidate) => candidate.version === entry.version)) throw new Error(`当前代码库不包含 ${entry.id}@${entry.version}`);
+            working = clone(parsed.plugins); shell.refresh('plugins'); shell.notify('组合已载入，尚未保存');
           } catch (error) { shell.notify(error.message, 'error'); }
         };
         importCard.append(importTitle, area, apply); root.append(importCard);

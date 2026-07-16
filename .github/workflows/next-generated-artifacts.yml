@@ -12,6 +12,7 @@ on:
       - 'tests/local-agent-bridge.unit.test.js'
       - 'scripts/build-next-userscript.js'
       - 'scripts/build-official-plugin-pack.js'
+      - 'scripts/build-next-core-review.js'
       - 'package.json'
       - '.github/workflows/next-generated-artifacts.yml'
 
@@ -43,7 +44,7 @@ jobs:
         run: |
           set -euo pipefail
           changed="$(git diff --name-only)"
-          unexpected="$(printf '%s\n' "$changed" | sed '/^$/d' | grep -Ev '^(dcf-chatgpt-next\.user\.js|dcf-chatgpt-next\.meta\.js|dist/dcf-official-plugin-pack\.json)$' || true)"
+          unexpected="$(printf '%s\n' "$changed" | sed '/^$/d' | grep -Ev '^(dcf-chatgpt-next\.user\.js|dcf-chatgpt-next\.meta\.js|dcf-chatgpt-next-core-review\.user\.js|dcf-chatgpt-next-core-review\.meta\.js|dist/dcf-official-plugin-pack\.json)$' || true)"
           if [[ -n "$unexpected" ]]; then
             echo 'Build changed files outside the approved generated artifacts:'
             printf '%s\n' "$unexpected"
@@ -53,9 +54,14 @@ jobs:
           node <<'NODE'
           const fs = require('fs');
           const { VERSION } = require('./src-next/survival/constants');
+          const { CORE_REVIEW_VERSION } = require('./src-next/experimental/core-review');
           for (const file of ['dcf-chatgpt-next.user.js', 'dcf-chatgpt-next.meta.js']) {
             const text = fs.readFileSync(file, 'utf8');
             if (!text.includes(`// @version      ${VERSION}`)) throw new Error(`${file} does not contain version ${VERSION}`);
+          }
+          for (const file of ['dcf-chatgpt-next-core-review.user.js', 'dcf-chatgpt-next-core-review.meta.js']) {
+            const text = fs.readFileSync(file, 'utf8');
+            if (!text.includes(`// @version      ${CORE_REVIEW_VERSION}`)) throw new Error(`${file} does not contain version ${CORE_REVIEW_VERSION}`);
           }
           const bundle = JSON.parse(fs.readFileSync('dist/dcf-official-plugin-pack.json', 'utf8'));
           if (bundle.schema !== 'dcf.plugin-pack.bundle.v1' || bundle.pack?.id !== 'dcf.official') throw new Error('official plugin pack artifact invalid');
@@ -65,13 +71,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if git diff --quiet -- dcf-chatgpt-next.user.js dcf-chatgpt-next.meta.js dist/dcf-official-plugin-pack.json; then
+          if git diff --quiet -- dcf-chatgpt-next.user.js dcf-chatgpt-next.meta.js dcf-chatgpt-next-core-review.user.js dcf-chatgpt-next-core-review.meta.js dist/dcf-official-plugin-pack.json; then
             echo 'Generated artifacts are already current.'
             exit 0
           fi
 
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add dcf-chatgpt-next.user.js dcf-chatgpt-next.meta.js dist/dcf-official-plugin-pack.json
+          git add dcf-chatgpt-next.user.js dcf-chatgpt-next.meta.js dcf-chatgpt-next-core-review.user.js dcf-chatgpt-next-core-review.meta.js dist/dcf-official-plugin-pack.json
           git commit -m 'chore(next): rebuild generated review artifacts'
           git push origin "HEAD:${GITHUB_REF_NAME}"

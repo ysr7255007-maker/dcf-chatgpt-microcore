@@ -8,9 +8,10 @@
     "verify": "npm run build && npm test && npm run verify:next",
     "build:next": "node scripts/build-next-userscript.js",
     "build:plugin-pack": "node scripts/build-official-plugin-pack.js",
-    "test:next": "node tests/next-core.unit.test.js && node tests/next-survival-box.unit.test.js && node tests/next-data.unit.test.js && node tests/next-local-agent.unit.test.js && node tests/local-agent-bridge.unit.test.js && node tests/next-plugin-pack.unit.test.js",
-    "verify:next": "npm run build:next && npm run build:plugin-pack && npm run test:next && node --check dcf-chatgpt-next.user.js",
-    "bridge:local-agent": "node bridge/local-agent-bridge.js"
+    "test:next": "node tests/next-core.unit.test.js && node tests/next-survival-box.unit.test.js && node tests/next-data.unit.test.js && node tests/next-local-agent.unit.test.js && node tests/local-agent-bridge.unit.test.js && node tests/next-plugin-pack.unit.test.js && node tests/next-core-review.unit.test.js",
+    "verify:next": "npm run build:next && npm run build:plugin-pack && npm run build:core-review && npm run test:next && node --check dcf-chatgpt-next.user.js && node --check dcf-chatgpt-next-core-review.user.js",
+    "bridge:local-agent": "node bridge/local-agent-bridge.js",
+    "build:core-review": "node scripts/build-next-core-review.js"
   },
   "devDependencies": {}
 }

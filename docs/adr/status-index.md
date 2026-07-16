@@ -12,6 +12,7 @@ The status in this file is authoritative. A status line inside an older ADR reco
 - `2026-07-16-dcf-action-generated-artifact-publication.md` — **accepted**; business source and tests are authored explicitly, while GitHub Action performs deterministic build, verification and publication of only the approved generated artifacts. Action is neither a business-code editor nor an architecture judge.
 - `2026-07-17-dcf-local-agent-collaboration-instance.md` — **accepted**; the current webpage registers itself to a loopback local Agent bridge through an ordinary plugin. Local Agent state remains outside the survival box and GitHub/model credentials stay local.
 - `2026-07-17-dcf-official-plugin-pack-source-boundary.md` — **accepted**; official plugin membership is declared by one pack manifest rather than inferred from folders. The same single-copy sources build both the bundled review userscript and an independent deterministic plugin-pack artifact; dynamic loading remains a browser acceptance question.
+- `2026-07-17-dcf-core-review-real-browser-acceptance.md` — **accepted for experiment**; a separate Core Review userscript tests local code storage, exact snapshots and one hash-checked runtime path in real Tampermonkey. It does not replace the bundled review build unless browser acceptance succeeds.
 
 ## Current legacy release facts
 
