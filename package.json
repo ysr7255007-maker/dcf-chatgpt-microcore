@@ -5,7 +5,14 @@
   "scripts": {
     "build": "node scripts/build-userscript.js",
     "test": "node tests/dcf-ammo-protocol.unit.test.js && node tests/dcf-module-supersession.unit.test.js && node tests/dcf-supersession-health.unit.test.js && node tests/dcf-conversation-performance.unit.test.js && node tests/dcf-performance-attribution.unit.test.js && node tests/dcf-conversation-turn-attribution.unit.test.js && node tests/dcf-stateful-command-feedback.unit.test.js && node tests/dcf-bootstrap-package-sync.unit.test.js && node tests/dcf-conversation-environment.unit.test.js && node tests/dcf-capability-reconciliation.unit.test.js && node tests/dcf-declarative-ui-package.unit.test.js && node tests/dcf-core-architecture.unit.test.js && node tests/dcf-artifact-transaction.unit.test.js && node tests/dcf-command-runtime.unit.test.js && node tests/dcf-migration.unit.test.js && node tests/dcf-health-report.unit.test.js && node tests/dcf-module-visibility.unit.test.js && node tests/dcf-package-management-ui.unit.test.js && node tests/dcf-host-bounded-intake.unit.test.js && node tests/dcf-catalog.unit.test.js && node tests/dcf-viewport-fence.unit.test.js && node tests/dcf-release.integration.test.js && node tests/dcf-build-determinism.unit.test.js",
-    "verify": "npm run build && npm test"
+    "verify": "npm run build && npm test && npm run verify:next",
+    "build:next": "node scripts/build-next-userscript.js",
+    "build:plugin-pack": "node scripts/build-official-plugin-pack.js",
+    "build:snapshots": "node scripts/build-next-snapshots.js",
+    "build:core-review": "node scripts/build-next-core-review.js",
+    "test:next": "node tests/next-core.unit.test.js && node tests/next-survival-box.unit.test.js && node tests/next-data.unit.test.js && node tests/next-local-agent.unit.test.js && node tests/local-agent-bridge.unit.test.js && node tests/next-plugin-pack.unit.test.js && node tests/next-core-review.unit.test.js && node tests/next-snapshot-build.unit.test.js",
+    "verify:next": "npm run build:next && npm run build:plugin-pack && npm run build:snapshots && npm run test:next && node --check dcf-chatgpt-next.user.js && node --check dcf-chatgpt-next-snapshot-minimal.user.js && node --check dcf-chatgpt-next-snapshot-standard.user.js && node --check dcf-chatgpt-next-snapshot-complete.user.js",
+    "bridge:local-agent": "node bridge/local-agent-bridge.js"
   },
   "devDependencies": {}
 }

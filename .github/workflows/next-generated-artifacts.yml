@@ -1,0 +1,97 @@
+name: DCF Next Generated Artifacts
+
+on:
+  push:
+    branches:
+      - rewrite-v2-survival-box
+    paths:
+      - 'src-next/**'
+      - 'plugin-packs/**'
+      - 'bridge/**'
+      - 'tests/next-*.unit.test.js'
+      - 'tests/local-agent-bridge.unit.test.js'
+      - 'scripts/build-next-userscript.js'
+      - 'scripts/build-official-plugin-pack.js'
+      - 'scripts/build-next-snapshots.js'
+      - 'package.json'
+      - '.github/workflows/next-generated-artifacts.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dcf-next-generated-artifacts-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build and verify DCF Next
+        run: npm run verify:next
+
+      - name: Enforce generated-artifact boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed="$(git diff --name-only)"
+          unexpected="$(printf '%s\n' "$changed" | sed '/^$/d' | grep -Ev '^(dcf-chatgpt-next\.user\.js|dcf-chatgpt-next\.meta\.js|dcf-chatgpt-next-snapshot-(minimal|standard|complete)\.(user|meta)\.js|dist/dcf-official-plugin-pack\.json)$' || true)"
+          if [[ -n "$unexpected" ]]; then
+            echo 'Build changed files outside the approved generated artifacts:'
+            printf '%s\n' "$unexpected"
+            exit 1
+          fi
+
+          node <<'NODE'
+          const fs = require('fs');
+          const { VERSION } = require('./src-next/survival/constants');
+          for (const file of ['dcf-chatgpt-next.user.js', 'dcf-chatgpt-next.meta.js']) {
+            const text = fs.readFileSync(file, 'utf8');
+            if (!text.includes(`// @version      ${VERSION}`)) throw new Error(`${file} does not contain version ${VERSION}`);
+          }
+          for (const profile of ['minimal', 'standard', 'complete']) {
+            for (const kind of ['user', 'meta']) {
+              const file = `dcf-chatgpt-next-snapshot-${profile}.${kind}.js`;
+              const text = fs.readFileSync(file, 'utf8');
+              if (!text.includes(`// @version      ${VERSION}-${profile}`)) throw new Error(`${file} has wrong profile version`);
+              if (!text.includes(`Compiled DCF boot snapshot (${profile})`)) throw new Error(`${file} has wrong profile marker`);
+            }
+          }
+          const bundle = JSON.parse(fs.readFileSync('dist/dcf-official-plugin-pack.json', 'utf8'));
+          if (bundle.schema !== 'dcf.plugin-pack.bundle.v1' || bundle.pack?.id !== 'dcf.official') throw new Error('official plugin pack artifact invalid');
+          NODE
+
+      - name: Commit generated artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            dcf-chatgpt-next.user.js
+            dcf-chatgpt-next.meta.js
+            dcf-chatgpt-next-snapshot-minimal.user.js
+            dcf-chatgpt-next-snapshot-minimal.meta.js
+            dcf-chatgpt-next-snapshot-standard.user.js
+            dcf-chatgpt-next-snapshot-standard.meta.js
+            dcf-chatgpt-next-snapshot-complete.user.js
+            dcf-chatgpt-next-snapshot-complete.meta.js
+            dist/dcf-official-plugin-pack.json
+          )
+          if git diff --quiet -- "${files[@]}"; then
+            echo 'Generated artifacts are already current.'
+            exit 0
+          fi
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add "${files[@]}"
+          git commit -m 'chore(next): rebuild generated review artifacts'
+          git push origin "HEAD:${GITHUB_REF_NAME}"
