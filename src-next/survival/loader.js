@@ -19,9 +19,9 @@ function defaultState(defaultManifest) {
 function sanitizeState(raw, registry, defaultManifest) {
   const base = defaultState(defaultManifest);
   if (!raw || raw.schema !== STATE_SCHEMA) return base;
-  const current = normalizeManifest(raw.current_manifest, registry, defaultManifest);
+  const current = normalizeManifest(raw.current_manifest, registry, defaultManifest, { appendMissing: true });
   const knownGood = Array.isArray(raw.last_known_good_manifest)
-    ? normalizeManifest(raw.last_known_good_manifest, registry, defaultManifest)
+    ? normalizeManifest(raw.last_known_good_manifest, registry, defaultManifest, { appendMissing: true, missingEnabled: false })
     : null;
   return {
     ...base,
@@ -56,7 +56,7 @@ function createSurvivalLoader(options) {
   function save() { storage.setState(state); }
   function manifest() { return cloneManifest(state.current_manifest); }
   function setManifest(next, { restart = true } = {}) {
-    const normalized = normalizeManifest(next, registry, defaultManifest);
+    const normalized = normalizeManifest(next, registry, defaultManifest, { appendMissing: true });
     if (!normalized.length && next?.length) throw new Error('manifest_has_no_available_plugins');
     state.current_manifest = normalized;
     state.force_safe_mode = false;
@@ -66,7 +66,6 @@ function createSurvivalLoader(options) {
     if (restart) reload();
     return manifest();
   }
-
 
   function publicRuntime() {
     return {

@@ -1,8 +1,9 @@
 'use strict';
 const assert = require('assert');
 const { createPluginRegistry, defaultManifest } = require('../src-next/plugin-registry');
-const { createSurvivalLoader } = require('../src-next/survival/loader');
+const { createSurvivalLoader, sanitizeState } = require('../src-next/survival/loader');
 const { createBrowserStorage } = require('../src-next/survival/storage');
+const { STATE_SCHEMA } = require('../src-next/survival/constants');
 
 function memoryStorage(initial = null) {
   let state = initial;
@@ -45,7 +46,39 @@ function verifyPersistentPluginStorage() {
   if (oldDocument === undefined) delete global.document; else global.document = oldDocument;
 }
 
+function verifyManifestEvolution() {
+  const registry = createPluginRegistry([
+    { id: 'one', version: '1', start: async () => ({}) },
+    { id: 'two', version: '2', start: async () => ({}) },
+    { id: 'new', version: '1', start: async () => ({}) }
+  ]);
+  const defaults = defaultManifest(registry);
+  const upgraded = sanitizeState({
+    schema: STATE_SCHEMA,
+    current_manifest: [
+      { id: 'two', version: '1', enabled: false },
+      { id: 'one', version: '1', enabled: true },
+      { id: 'removed', version: '1', enabled: true }
+    ],
+    last_known_good_manifest: [
+      { id: 'two', version: '1', enabled: false },
+      { id: 'one', version: '1', enabled: true }
+    ]
+  }, registry, defaults);
+  assert.deepEqual(upgraded.current_manifest, [
+    { id: 'two', version: '2', enabled: false },
+    { id: 'one', version: '1', enabled: true },
+    { id: 'new', version: '1', enabled: true }
+  ]);
+  assert.deepEqual(upgraded.last_known_good_manifest, [
+    { id: 'two', version: '2', enabled: false },
+    { id: 'one', version: '1', enabled: true },
+    { id: 'new', version: '1', enabled: false }
+  ]);
+}
+
 verifyPersistentPluginStorage();
+verifyManifestEvolution();
 
 (async () => {
   const starts = [];

@@ -45,6 +45,8 @@ const header = `// ==UserScript==
 // @grant        GM_listValues
 // @grant        GM_xmlhttpRequest
 // @connect      raw.githubusercontent.com
+// @connect      127.0.0.1
+// @connect      localhost
 // @run-at       document-idle
 // ==/UserScript==
 `;

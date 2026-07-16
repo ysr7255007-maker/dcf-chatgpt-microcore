@@ -2,6 +2,7 @@
 
 const { shellPlugin } = require('./plugins/shell');
 const { chatgptPlugin } = require('./plugins/chatgpt');
+const { localAgentPlugin } = require('./plugins/local-agent');
 const { ammoPlugin } = require('./plugins/ammo');
 const { pluginManagerPlugin } = require('./plugins/plugin-manager');
 const { appearancePlugin } = require('./plugins/appearance');
@@ -14,6 +15,7 @@ function createPluginRegistry(plugins) {
   const values = plugins || [
     shellPlugin(),
     chatgptPlugin(),
+    localAgentPlugin(),
     ammoPlugin(),
     conversationPerformancePlugin(),
     attributionPlugin(),

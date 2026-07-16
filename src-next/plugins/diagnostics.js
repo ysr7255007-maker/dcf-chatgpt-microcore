@@ -13,6 +13,7 @@ function diagnosticsPlugin() {
       if (!shell) throw new Error('shell_plugin_required');
       function report() {
         const host = ctx.plugins.get('dcf.next.chatgpt');
+        const localAgent = ctx.plugins.get('dcf.next.local-agent');
         const performancePlugin = ctx.plugins.get('dcf.next.conversation-performance');
         return {
           schema: 'dcf.next.runtime.diagnostics.v1',
@@ -27,13 +28,15 @@ function diagnosticsPlugin() {
             geometry: shell.getGeometry?.() || null
           },
           chatgpt: host?.status?.() || { available: false },
+          local_agent: localAgent?.diagnostics?.() || { available: false },
           conversation_performance: performancePlugin?.report?.() || { available: false },
           privacy: {
             message_text: false,
             prompt_text: false,
             ammo_bodies: false,
             dom_dump: false,
-            authentication: false
+            authentication: false,
+            local_agent_session_token: false
           }
         };
       }

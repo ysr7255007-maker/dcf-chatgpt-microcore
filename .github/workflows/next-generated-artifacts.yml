@@ -6,6 +6,9 @@ on:
       - rewrite-v2-survival-box
     paths:
       - 'src-next/**'
+      - 'bridge/**'
+      - 'tests/next-*.unit.test.js'
+      - 'tests/local-agent-bridge.unit.test.js'
       - 'scripts/build-next-userscript.js'
       - 'package.json'
       - '.github/workflows/next-generated-artifacts.yml'

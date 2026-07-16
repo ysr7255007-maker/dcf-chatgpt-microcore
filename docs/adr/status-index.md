@@ -10,6 +10,7 @@ The status in this file is authoritative. A status line inside an older ADR reco
 - `2026-07-15-dcf-complete-first-pass-before-browser-acceptance.md` — **accepted**; complete the coherent first version before one unified browser acceptance pass. Browser acceptance remains required before formal cutover but is not an interim development gate.
 - `2026-07-15-dcf-portable-language-ammo-library.md` — **accepted**; language ammo is a platform-neutral portable library stored at a fixed GitHub data path. DCF exports and explicitly loads it, while an authorized AI performs uploads without placing GitHub credentials in the userscript.
 - `2026-07-16-dcf-action-generated-artifact-publication.md` — **accepted**; business source and tests are authored explicitly, while GitHub Action performs deterministic build, verification and publication of only the approved userscript/meta generated artifacts. Action is neither a business-code editor nor an architecture judge.
+- `2026-07-16-dcf-local-collaboration-instance-bootstrap.md` — **accepted**; the current webpage actively binds to a loopback local Agent Bridge through an ordinary plugin. This connection supplies the local execution foothold without expanding the survival box or rebuilding GitHub, terminal, diagnostics and upgrade systems inside the userscript.
 
 ## Current legacy release facts
 

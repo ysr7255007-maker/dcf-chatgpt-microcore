@@ -12,16 +12,39 @@ function sameManifest(left, right) {
   });
 }
 
-function normalizeManifest(input, registry, fallback) {
-  const source = Array.isArray(input) ? input : fallback;
+function normalizeManifest(input, registry, fallback, options = {}) {
+  const fallbackEntries = cloneManifest(fallback);
+  const fallbackById = new Map(fallbackEntries.map((entry) => [entry.id, entry]));
+  const source = Array.isArray(input) ? input : fallbackEntries;
   const seen = new Set();
   const normalized = [];
+
   for (const raw of source || []) {
     if (!raw || typeof raw.id !== 'string' || typeof raw.version !== 'string' || seen.has(raw.id)) continue;
-    if (!registry.get(raw.id, raw.version)) continue;
+    const fallbackEntry = fallbackById.get(raw.id);
+    const version = registry.get(raw.id, raw.version)
+      ? raw.version
+      : fallbackEntry && registry.get(fallbackEntry.id, fallbackEntry.version)
+        ? fallbackEntry.version
+        : null;
+    if (!version) continue;
     seen.add(raw.id);
-    normalized.push({ id: raw.id, version: raw.version, enabled: raw.enabled !== false });
+    normalized.push({ id: raw.id, version, enabled: raw.enabled !== false });
   }
+
+  const appendMissing = options.appendMissing !== false;
+  if (appendMissing) {
+    for (const entry of fallbackEntries) {
+      if (seen.has(entry.id) || !registry.get(entry.id, entry.version)) continue;
+      seen.add(entry.id);
+      normalized.push({
+        id: entry.id,
+        version: entry.version,
+        enabled: options.missingEnabled === undefined ? entry.enabled !== false : options.missingEnabled === true
+      });
+    }
+  }
+
   return normalized;
 }
 
