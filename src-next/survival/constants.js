@@ -1,6 +1,6 @@
 'use strict';
 
-const VERSION = '0.2.0-alpha.3';
+const VERSION = '0.2.0-alpha.4';
 const STATE_SCHEMA = 'dcf.next.survival.state.v1';
 const STATE_KEY = 'dcf.next.survival.state.v1';
 const PLUGIN_STORAGE_PREFIX = 'dcf.next.plugin.';
