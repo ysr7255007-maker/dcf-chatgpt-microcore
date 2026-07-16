@@ -11,8 +11,9 @@ The status in this file is authoritative. A status line inside an older ADR reco
 - `2026-07-15-dcf-portable-language-ammo-library.md` — **accepted**; language ammo is a platform-neutral portable library stored at a fixed GitHub data path. DCF exports and explicitly loads it, while an authorized AI performs uploads without placing GitHub credentials in the userscript.
 - `2026-07-16-dcf-action-generated-artifact-publication.md` — **accepted**; business source and tests are authored explicitly, while GitHub Action performs deterministic build, verification and publication of only the approved generated artifacts. Action is neither a business-code editor nor an architecture judge.
 - `2026-07-17-dcf-local-agent-collaboration-instance.md` — **accepted**; the current webpage registers itself to a loopback local Agent bridge through an ordinary plugin. Local Agent state remains outside the survival box and GitHub/model credentials stay local.
-- `2026-07-17-dcf-official-plugin-pack-source-boundary.md` — **accepted**; official plugin membership is declared by one pack manifest rather than inferred from folders. The same single-copy sources build both the bundled review userscript and an independent deterministic plugin-pack artifact; dynamic loading remains a browser acceptance question.
-- `2026-07-17-dcf-core-review-real-browser-acceptance.md` — **accepted for experiment**; a separate Core Review userscript tests local code storage, exact snapshots and one hash-checked runtime path in real Tampermonkey. It does not replace the bundled review build unless browser acceptance succeeds.
+- `2026-07-17-dcf-official-plugin-pack-source-boundary.md` — **accepted**; official plugin membership is declared by one pack manifest rather than inferred from folders. The same single-copy sources build both review userscripts and an independent deterministic plugin-pack artifact.
+- `2026-07-17-dcf-compiled-boot-snapshot.md` — **accepted**; exact plugin selection is materialized before installation as a complete userscript. Tampermonkey remains the raw code loader; DCF does not execute plugin source text at runtime.
+- `2026-07-17-dcf-core-review-real-browser-acceptance.md` — **experiment completed with negative execution result**; package import, persistence, hashes and snapshots were proven, while runtime text-module execution was rejected by the real Chrome/ChatGPT/Tampermonkey environment. The experiment is superseded by compiled boot snapshots.
 
 ## Current legacy release facts
 
@@ -57,4 +58,4 @@ The following decisions remain accepted only as descriptions and maintenance con
 
 - `2026-07-09-dcf-ingestion-guard-0.8.6.md` — current-reply bounded intake outcome is reused inside the ChatGPT plugin; old page-block guard/ledger remains superseded
 - SideRail and ModuleRail layout ADRs — superseded
-- earlier bootloader/chunk/local-engine mitigations in the release-structure history — superseded; the rewrite uses one deterministic review userscript and a minimal built-in module table
+- earlier bootloader/chunk/local-engine mitigations in the release-structure history — superseded; the rewrite uses deterministic compiled snapshots and a minimal built-in module table
