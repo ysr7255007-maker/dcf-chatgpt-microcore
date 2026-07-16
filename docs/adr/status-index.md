@@ -1,6 +1,6 @@
 # DCF ADR canonical status index
 
-Updated: 2026-07-16
+Updated: 2026-07-17
 
 The status in this file is authoritative. A status line inside an older ADR records its status when written and is historical after a later ADR supersedes it.
 
@@ -9,8 +9,9 @@ The status in this file is authoritative. A status line inside an older ADR reco
 - `2026-07-15-dcf-direct-rewrite-survival-box.md` — **accepted**; the new implementation is built independently as a minimal survival box plus ordinary trusted plugins. It supersedes the old platform architecture as the target for `src-next/`, while 0.18.2 remains the stable legacy release until cutover.
 - `2026-07-15-dcf-complete-first-pass-before-browser-acceptance.md` — **accepted**; complete the coherent first version before one unified browser acceptance pass. Browser acceptance remains required before formal cutover but is not an interim development gate.
 - `2026-07-15-dcf-portable-language-ammo-library.md` — **accepted**; language ammo is a platform-neutral portable library stored at a fixed GitHub data path. DCF exports and explicitly loads it, while an authorized AI performs uploads without placing GitHub credentials in the userscript.
-- `2026-07-16-dcf-action-generated-artifact-publication.md` — **accepted**; business source and tests are authored explicitly, while GitHub Action performs deterministic build, verification and publication of only the approved userscript/meta generated artifacts. Action is neither a business-code editor nor an architecture judge.
-- `2026-07-16-dcf-local-collaboration-instance-bootstrap.md` — **accepted**; the current webpage actively binds to a loopback local Agent Bridge through an ordinary plugin. This connection supplies the local execution foothold without expanding the survival box or rebuilding GitHub, terminal, diagnostics and upgrade systems inside the userscript.
+- `2026-07-16-dcf-action-generated-artifact-publication.md` — **accepted**; business source and tests are authored explicitly, while GitHub Action performs deterministic build, verification and publication of only the approved generated artifacts. Action is neither a business-code editor nor an architecture judge.
+- `2026-07-17-dcf-local-agent-collaboration-instance.md` — **accepted**; the current webpage registers itself to a loopback local Agent bridge through an ordinary plugin. Local Agent state remains outside the survival box and GitHub/model credentials stay local.
+- `2026-07-17-dcf-official-plugin-pack-source-boundary.md` — **accepted**; official plugin membership is declared by one pack manifest rather than inferred from folders. The same single-copy sources build both the bundled review userscript and an independent deterministic plugin-pack artifact; dynamic loading remains a browser acceptance question.
 
 ## Current legacy release facts
 

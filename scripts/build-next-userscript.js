@@ -5,6 +5,8 @@ const path = require('path');
 const { VERSION } = require('../src-next/survival/constants');
 
 const root = path.resolve(__dirname, '..');
+const packPath = path.join(root, 'plugin-packs/official/pack.json');
+
 function walk(dir) {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const absolute = path.join(dir, entry.name);
@@ -12,7 +14,12 @@ function walk(dir) {
     return entry.isFile() && entry.name.endsWith('.js') ? [path.relative(root, absolute).replace(/\\/g, '/')] : [];
   });
 }
-const modules = walk(path.join(root, 'src-next')).sort((a, b) => a.localeCompare(b));
+
+function loadOfficialPack() {
+  const pack = JSON.parse(fs.readFileSync(packPath, 'utf8'));
+  if (pack.schema !== 'dcf.plugin-pack.v1' || pack.id !== 'dcf.official' || !Array.isArray(pack.modules)) throw new Error('official_plugin_pack_manifest_invalid');
+  return pack;
+}
 
 function canonical(fromId, request) {
   if (!request.startsWith('.')) return request;
@@ -20,19 +27,27 @@ function canonical(fromId, request) {
   if (!resolved.endsWith('.js')) resolved += '.js';
   return resolved;
 }
+
 function transform(id, source) {
   return source.replace(/require\((['"])([^'"]+)\1\)/g, (_match, _quote, request) => `require(${JSON.stringify(canonical(id, request))})`);
 }
-const moduleTable = modules.map((id) => {
-  const source = transform(id, fs.readFileSync(path.join(root, id), 'utf8'));
-  return `${JSON.stringify(id)}:function(module,exports,require){\n${source}\n}`;
-}).join(',\n');
 
-const header = `// ==UserScript==
+function buildNextUserscript() {
+  const pack = loadOfficialPack();
+  const survivalModules = walk(path.join(root, 'src-next')).filter((id) => !id.startsWith('src-next/plugins/'));
+  const modules = Array.from(new Set([...survivalModules, ...pack.modules])).sort((a, b) => a.localeCompare(b));
+  for (const id of modules) if (!fs.existsSync(path.join(root, id))) throw new Error(`DCF Next module missing: ${id}`);
+
+  const moduleTable = modules.map((id) => {
+    const source = transform(id, fs.readFileSync(path.join(root, id), 'utf8'));
+    return `${JSON.stringify(id)}:function(module,exports,require){\n${source}\n}`;
+  }).join(',\n');
+
+  const header = `// ==UserScript==
 // @name         DCF ChatGPT Next (Review)
 // @namespace    https://chatgpt.com/
 // @version      ${VERSION}
-// @description  Direct DCF rewrite: minimal survival box plus complete first-party plugin set.
+// @description  Minimal survival box plus the explicitly selected DCF official plugin pack.
 // @updateURL    https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rewrite-v2-survival-box/dcf-chatgpt-next.meta.js
 // @downloadURL  https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rewrite-v2-survival-box/dcf-chatgpt-next.user.js
 // @supportURL   https://github.com/ysr7255007-maker/dcf-chatgpt-microcore/pull/21
@@ -50,7 +65,7 @@ const header = `// ==UserScript==
 // @run-at       document-idle
 // ==/UserScript==
 `;
-const runtime = `(function(){'use strict';
+  const runtime = `(function(){'use strict';
 const modules={
 ${moduleTable}
 };
@@ -59,6 +74,11 @@ function require(id){if(cache[id])return cache[id].exports;if(!modules[id])throw
 require('src-next/index.js');
 })();
 `;
-fs.writeFileSync(path.join(root, 'dcf-chatgpt-next.user.js'), header + runtime);
-fs.writeFileSync(path.join(root, 'dcf-chatgpt-next.meta.js'), header);
-console.log(JSON.stringify({ ok: true, version: VERSION, modules: modules.length, bytes: fs.statSync(path.join(root, 'dcf-chatgpt-next.user.js')).size }, null, 2));
+  fs.writeFileSync(path.join(root, 'dcf-chatgpt-next.user.js'), header + runtime);
+  fs.writeFileSync(path.join(root, 'dcf-chatgpt-next.meta.js'), header);
+  return { ok: true, version: VERSION, pack: `${pack.id}@${pack.version}`, modules: modules.length, bytes: fs.statSync(path.join(root, 'dcf-chatgpt-next.user.js')).size };
+}
+
+if (require.main === module) console.log(JSON.stringify(buildNextUserscript(), null, 2));
+
+module.exports = { walk, loadOfficialPack, canonical, transform, buildNextUserscript };
