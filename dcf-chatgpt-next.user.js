@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DCF ChatGPT Next (Review)
 // @namespace    https://chatgpt.com/
-// @version      0.2.0-alpha.3
+// @version      0.2.0-alpha.4
 // @description  Direct DCF rewrite: minimal survival box plus complete first-party plugin set.
 // @updateURL    https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rewrite-v2-survival-box/dcf-chatgpt-next.meta.js
 // @downloadURL  https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rewrite-v2-survival-box/dcf-chatgpt-next.user.js
@@ -1622,13 +1622,12 @@ module.exports = { shellPlugin, DEFAULT_GEOMETRY };
 "src-next/survival/constants.js":function(module,exports,require){
 'use strict';
 
-const VERSION = '0.2.0-alpha.3';
+const VERSION = '0.2.0-alpha.4';
 const STATE_SCHEMA = 'dcf.next.survival.state.v1';
 const STATE_KEY = 'dcf.next.survival.state.v1';
 const PLUGIN_STORAGE_PREFIX = 'dcf.next.plugin.';
 
 module.exports = { VERSION, STATE_SCHEMA, STATE_KEY, PLUGIN_STORAGE_PREFIX };
-
 },
 "src-next/survival/loader.js":function(module,exports,require){
 'use strict';
@@ -1930,25 +1929,35 @@ module.exports = { renderRecovery };
 
 const { STATE_KEY, PLUGIN_STORAGE_PREFIX } = require("src-next/survival/constants.js");
 
-function hasFunction(name) { return typeof globalThis[name] === 'function'; }
+function resolveStorageApi(overrides = {}) {
+  return {
+    getValue: overrides.getValue || (typeof GM_getValue === 'function' ? GM_getValue : null),
+    setValue: overrides.setValue || (typeof GM_setValue === 'function' ? GM_setValue : null),
+    deleteValue: overrides.deleteValue || (typeof GM_deleteValue === 'function' ? GM_deleteValue : null),
+    listValues: overrides.listValues || (typeof GM_listValues === 'function' ? GM_listValues : null)
+  };
+}
 
-function createBrowserStorage() {
+function createBrowserStorage(overrides = {}) {
+  const api = resolveStorageApi(overrides);
   const fallback = new Map();
+  const persistent = Boolean(api.getValue && api.setValue && api.deleteValue && api.listValues);
+  const browserLike = typeof window !== 'undefined' && typeof document !== 'undefined';
+  if (browserLike && !persistent) throw new Error('gm_storage_api_unavailable');
+
   function read(key, defaultValue) {
-    if (hasFunction('GM_getValue')) return GM_getValue(key, defaultValue);
-    return fallback.has(key) ? fallback.get(key) : defaultValue;
+    return persistent ? api.getValue(key, defaultValue) : (fallback.has(key) ? fallback.get(key) : defaultValue);
   }
   function write(key, value) {
-    if (hasFunction('GM_setValue')) return GM_setValue(key, value);
+    if (persistent) return api.setValue(key, value);
     fallback.set(key, value);
   }
   function remove(key) {
-    if (hasFunction('GM_deleteValue')) return GM_deleteValue(key);
+    if (persistent) return api.deleteValue(key);
     fallback.delete(key);
   }
   function list() {
-    if (hasFunction('GM_listValues')) return GM_listValues();
-    return Array.from(fallback.keys());
+    return persistent ? api.listValues() : Array.from(fallback.keys());
   }
   return {
     getState(defaultValue) { return read(STATE_KEY, defaultValue); },
@@ -1969,7 +1978,7 @@ function createBrowserStorage() {
   };
 }
 
-module.exports = { createBrowserStorage };
+module.exports = { createBrowserStorage, resolveStorageApi };
 
 }
 };
