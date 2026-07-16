@@ -4,10 +4,26 @@ const constants = require('./core-review-constants');
 const storage = require('./core-review-storage');
 const modules = require('./core-review-modules');
 const pack = require('./core-review-pack');
+const preflight = require('./core-review-preflight');
 const { createCoreReview } = require('./core-review-runtime');
 
 async function main() {
-  const core = createCoreReview();
+  const coreStorage = storage.createCoreStorage();
+  try {
+    preflight.assertDynamicExecutionEnvironment({ storage: coreStorage });
+  } catch (error) {
+    const core = createCoreReview({ storage: coreStorage });
+    core.renderRecovery('dynamic_execution_unavailable');
+    globalThis.DCF_CORE_REVIEW = Object.freeze({
+      version: constants.CORE_REVIEW_VERSION,
+      result: { ok: false, recovery: true, error: { stage: 'dynamic_execution', message: error?.message || String(error) } },
+      state: core.state,
+      showRecovery: () => core.renderRecovery('manual')
+    });
+    return;
+  }
+
+  const core = createCoreReview({ storage: coreStorage });
   const result = await core.boot();
   globalThis.DCF_CORE_REVIEW = Object.freeze({
     version: constants.CORE_REVIEW_VERSION,
@@ -33,4 +49,4 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
   });
 }
 
-module.exports = { ...constants, ...storage, ...modules, ...pack, createCoreReview };
+module.exports = { ...constants, ...storage, ...modules, ...pack, ...preflight, createCoreReview };

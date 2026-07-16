@@ -51,6 +51,7 @@ function buildCoreReview() {
 // @connect      raw.githubusercontent.com
 // @connect      127.0.0.1
 // @connect      localhost
+// @sandbox      DOM
 // @run-at       document-idle
 // ==/UserScript==
 `;

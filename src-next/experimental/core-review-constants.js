@@ -1,6 +1,6 @@
 'use strict';
 
-const CORE_REVIEW_VERSION = '0.1.0-alpha.1';
+const CORE_REVIEW_VERSION = '0.1.0-alpha.2';
 const CORE_STATE_SCHEMA = 'dcf.core-review.state.v1';
 const CORE_STATE_KEY = 'dcf.core-review.state.v1';
 const MODULE_PREFIX = 'dcf.core-review.module.';
