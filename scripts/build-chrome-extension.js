@@ -9,7 +9,7 @@ const sourceRoot = path.join(root, 'chrome-extension');
 const distRoot = path.join(root, 'dist');
 const extensionRoot = path.join(distRoot, 'dcf-chrome-extension');
 const releaseRoot = path.join(root, 'releases', 'chrome');
-const VERSION_NAME = '1.0.0-rc.2';
+const VERSION_NAME = '1.0.0-rc.3';
 const DEFAULT_REF = process.env.DCF_PLUGIN_INDEX_REF || 'rebuild/chrome-native-host-v2';
 const RAW_ROOT = `https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/${DEFAULT_REF}`;
 
@@ -42,7 +42,7 @@ fs.mkdirSync(extensionRoot, { recursive: true });
 const manifest = JSON.parse(fs.readFileSync(path.join(sourceRoot, 'manifest.template.json'), 'utf8'));
 writeJson(path.join(extensionRoot, 'manifest.json'), manifest);
 for (const file of [
-  'src/core.js', 'src/background.js', 'src/host-state.js', 'src/host-runtime.js', 'src/host-product.js', 'src/host-main.js',
+  'src/core.js', 'src/background.js', 'src/host-state.js', 'src/host-runtime.js', 'src/host-product.js', 'src/host-opencode.js', 'src/host-main.js',
   'static/migration-bridge.js', 'pages/common.css', 'pages/onboarding.html', 'pages/onboarding.js', 'pages/recovery.html', 'pages/recovery.js'
 ]) copy(file);
 
@@ -54,8 +54,9 @@ const specs = [
   ['dcf.firstparty.appearance', '外观', 'DCF 侧栏方向、尺寸与位置。', 'appearance', 50],
   ['dcf.firstparty.backup', '备份恢复', '独立插件数据的一键备份与恢复。', 'backup', 60],
   ['dcf.firstparty.plugin-manager', '功能管理', '低频功能启停与统一 DCF 更新入口。', 'plugin-manager', 70],
+  ['dcf.firstparty.local-agent', '本机 Agent', '连接受限 OpenCode 服务，管理任务、会话、权限、结果与差异。', 'local-agent', 80, '3', false, false],
   ['dcf.firstparty.diagnostics', '诊断', '正常时压缩状态，异常时复制隐私受限证据。', 'diagnostics', 90]
-].map(([id, title, description, folder, phase]) => ({ id, title, description, folder, phase }));
+].map(([id, title, description, folder, phase, hostApi = '2', required = true, defaultEnabled = true]) => ({ id, title, description, folder, phase, hostApi, required, defaultEnabled }));
 
 const units = specs.map((spec) => {
   const relative = `chrome-extension/code-units/${spec.folder}/main.js`;
@@ -70,13 +71,13 @@ const units = specs.map((spec) => {
     matches: ['https://chatgpt.com/*', 'https://chat.openai.com/*'],
     run_at: 'document_idle',
     world_id: worldId(spec.id),
-    host_api: '2',
+    host_api: spec.hostApi,
     phase: spec.phase,
-    required: true,
-    default_enabled: true
+    required: spec.required,
+    default_enabled: spec.defaultEnabled
   };
 });
-const index = { schema: 'dcf.plugin_index.v1', version: VERSION_NAME, defaults: units.map((unit) => unit.id), units };
+const index = { schema: 'dcf.plugin_index.v1', version: VERSION_NAME, defaults: units.filter((unit) => unit.default_enabled !== false).map((unit) => unit.id), units };
 writeJson(path.join(releaseRoot, 'official-index.json'), index);
 writeJson(path.join(extensionRoot, 'config.json'), {
   schema: 'dcf.chrome.config.v1',
@@ -92,7 +93,8 @@ const summary = {
   manifest_version: manifest.manifest_version,
   minimum_chrome_version: manifest.minimum_chrome_version,
   permissions: manifest.permissions,
-  plugins: units.map(({ id, version, hash, phase, world_id, code_url }) => ({ id, version, hash, phase, world_id, code_url })),
+  optional_host_permissions: manifest.optional_host_permissions || [],
+  plugins: units.map(({ id, version, hash, phase, world_id, code_url, host_api, required, default_enabled }) => ({ id, version, hash, phase, world_id, code_url, host_api, required, default_enabled })),
   extension_files: []
 };
 function walk(directory, prefix = '') {
