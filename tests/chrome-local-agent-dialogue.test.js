@@ -9,7 +9,7 @@ const ref = index.units.find((unit) => unit.id === 'dcf.firstparty.local-agent-d
 assert(ref);
 assert(index.defaults.includes(ref.id));
 assert.strictEqual(index.units.length, 10);
-assert.strictEqual(ref.version, '1.0.0-rc.2-local-agent-dialogue.1');
+assert.strictEqual(ref.version, '1.0.0-rc.2-local-agent-dialogue.2');
 assert.strictEqual(ref.phase, 57);
 assert.strictEqual(ref.world_id, 'dcf-firstparty-local-agent-dialogue');
 const code = fs.readFileSync(path.join(root, 'chrome-extension/code-units/local-agent-dialogue/main.js'), 'utf8');
@@ -23,12 +23,18 @@ for (const token of [
   'value.endsWith(REQUEST_END)',
   '[data-message-author-role="assistant"]',
   "plugin_id: LOCAL_AGENT_ID",
-  "apiRequest('/global/health'",
-  "apiRequest('/session'",
+  "request('/global/health'",
+  "request('/session'",
   '/prompt_async',
-  "optionalRequest('/session/status'",
+  "optional('/session/status'",
   '/message?limit=',
-  'setComposerExact',
+  "optionalFallback(['/permission/', '/permission']",
+  "optionalFallback(['/question/', '/question']",
+  "payload(job, 'needs_user'",
+  "state.status = '用户处理完成，继续执行'",
+  'interventionKey',
+  'streaming()',
+  'fillComposer',
   'clickSend',
   'processed_ids',
   'unit.started',
@@ -36,4 +42,4 @@ for (const token of [
   '结果自动发送回对话'
 ]) assert(code.includes(token), `missing ${token}`);
 assert(!code.includes('data-dcf-panel-root'));
-console.log(JSON.stringify({ok:true,plugin_count:10,exact_artifact:true,automatic_return:true,no_new_panel:true}, null, 2));
+console.log(JSON.stringify({ok:true,plugin_count:10,exact_artifact:true,intervention_continuation:true,automatic_return:true,no_new_panel:true}, null, 2));
