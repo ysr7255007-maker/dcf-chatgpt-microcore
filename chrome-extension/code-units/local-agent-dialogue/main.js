@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.local-agent-dialogue';
-  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.2';
+  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.3';
   const LOCAL_AGENT_ID = 'dcf.firstparty.local-agent';
   const LOCAL_AGENT_PANEL_ID = 'dcf-panel-local-agent';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_LOCAL_AGENT_DIALOGUE__';
@@ -10,13 +10,7 @@
   const REQUEST_END = '<<<END_DCF_LOCAL_AGENT_REQUEST>>>';
   const RESULT_START = '<<<DCF_LOCAL_AGENT_RESULT>>>';
   const RESULT_END = '<<<END_DCF_LOCAL_AGENT_RESULT>>>';
-  const DEFAULTS = Object.freeze({
-    enabled: true,
-    auto_send_results: true,
-    poll_interval_ms: 1200,
-    timeout_ms: 20 * 60 * 1000,
-    message_limit: 120
-  });
+  const DEFAULTS = Object.freeze({ enabled: true, auto_send_results: true, poll_interval_ms: 1200, timeout_ms: 20 * 60 * 1000, message_limit: 120 });
 
   const previous = globalThis[GLOBAL_KEY];
   if (previous?.destroy) previous.destroy();
@@ -29,37 +23,28 @@
   let destroyed = false;
   let mainObserver = null;
   let panelObserver = null;
-  let mainRetry = null;
-  let panelRetry = null;
-  let activeJob = null;
+  let currentPanelHost = null;
+  let currentPanelShadow = null;
+  let scanTimer = null;
+  let mountTimer = null;
+  let elapsedTimer = null;
   let queueBusy = false;
+  let activeJob = null;
   let pendingArtifact = '';
   const queue = [];
-  const seen = new WeakSet();
+  const nodeState = new WeakMap();
 
   const state = {
-    settings: { ...DEFAULTS },
-    processed_ids: [],
-    status: '等待请求',
-    error: '',
-    last_request_id: '',
-    last_session_id: ''
+    settings: { ...DEFAULTS }, processed_ids: [], stage: 'idle', status: '等待请求', error: '',
+    last_request_id: '', last_session_id: '', started_at: 0,
+    progress: { status_type: '', messages: 0, todo: 0, diff: 0, permissions: 0, questions: 0, preview: '', last_poll_at: '' }
   };
 
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const list = (value) => Array.isArray(value) ? value : value && typeof value === 'object' ? Object.values(value) : [];
   const json = (value) => { try { return JSON.stringify(value, null, 2); } catch (_) { return String(value); } };
-  const html = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-  }[char]));
-  const hash = (value) => {
-    let result = 2166136261;
-    for (const char of String(value || '')) {
-      result ^= char.charCodeAt(0);
-      result = Math.imul(result, 16777619);
-    }
-    return (result >>> 0).toString(16);
-  };
+  const html = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+  const hash = (value) => { let result = 2166136261; for (const char of String(value || '')) { result ^= char.charCodeAt(0); result = Math.imul(result, 16777619); } return (result >>> 0).toString(16); };
 
   function normalizeSettings(raw) {
     const value = raw && typeof raw === 'object' ? raw : {};
@@ -82,21 +67,11 @@
   }
 
   async function persist() {
-    await sendHost({
-      type: 'plugin.data.set',
-      plugin_id: UNIT_ID,
-      data: {
-        settings: state.settings,
-        processed_ids: state.processed_ids.slice(-80),
-        last_request_id: state.last_request_id,
-        last_session_id: state.last_session_id
-      }
-    });
+    await sendHost({ type: 'plugin.data.set', plugin_id: UNIT_ID, data: { settings: state.settings, processed_ids: state.processed_ids.slice(-80), last_request_id: state.last_request_id, last_session_id: state.last_session_id } });
   }
 
-  function localPanelShadow() {
-    return document.getElementById(LOCAL_AGENT_PANEL_ID)?.shadowRoot || null;
-  }
+  function localPanelHost() { return document.getElementById(LOCAL_AGENT_PANEL_ID); }
+  function localPanelShadow() { return localPanelHost()?.shadowRoot || null; }
 
   async function connectionConfig() {
     const saved = await sendHost({ type: 'plugin.data.get', plugin_id: LOCAL_AGENT_ID });
@@ -107,8 +82,7 @@
       base_url: String(shadow?.querySelector('[data-field="base-url"]')?.value || config.base_url || 'http://127.0.0.1:4096').trim(),
       username: String(shadow?.querySelector('[data-field="username"]')?.value || config.username || 'opencode').trim() || 'opencode',
       password: String(shadow?.querySelector('[data-field="password"]')?.value || ''),
-      agent: String(config.agent || ''),
-      model: config.model && typeof config.model === 'object' ? config.model : null
+      agent: String(config.agent || ''), model: config.model && typeof config.model === 'object' ? config.model : null
     };
   }
 
@@ -116,19 +90,14 @@
     let url;
     try { url = new URL(String(raw || 'http://127.0.0.1:4096').trim().replace(/\/$/, '')); }
     catch (_) { throw new Error('OpenCode 地址无效'); }
-    if (!['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) || !['http:', 'https:'].includes(url.protocol)) {
-      throw new Error('对话闭环只允许连接本机 loopback 地址');
-    }
-    if ((url.pathname && url.pathname !== '/') || url.search || url.hash || url.username || url.password) {
-      throw new Error('OpenCode 地址只能包含协议、主机与端口');
-    }
+    if (!['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) || !['http:', 'https:'].includes(url.protocol)) throw new Error('对话闭环只允许连接本机 loopback 地址');
+    if ((url.pathname && url.pathname !== '/') || url.search || url.hash || url.username || url.password) throw new Error('OpenCode 地址只能包含协议、主机与端口');
     const host = url.hostname === '[::1]' ? '[::1]' : url.hostname;
     return `${url.protocol}//${host}:${url.port || '4096'}`;
   }
 
   function auth(username, password) {
-    const bytes = new TextEncoder().encode(`${username}:${password}`);
-    let binary = '';
+    const bytes = new TextEncoder().encode(`${username}:${password}`); let binary = '';
     for (const byte of bytes) binary += String.fromCharCode(byte);
     return `Basic ${btoa(binary)}`;
   }
@@ -136,16 +105,8 @@
   function classify(error, path) {
     const raw = String(error?.message || error);
     if (error?.name === 'AbortError') return { code: 'timeout', message: `OpenCode 请求超时：${path}`, raw };
-    if (/401|403|Unauthorized|Forbidden/i.test(raw)) return {
-      code: 'auth',
-      message: 'OpenCode 服务已响应，但认证未通过。请检查用户名和本页密码，或确认当前服务为无认证模式。',
-      raw
-    };
-    if (/Failed to fetch|NetworkError|Load failed|CORS/i.test(raw)) return {
-      code: 'network_or_cors',
-      message: `浏览器无法读取 OpenCode 响应。服务可能未启动，也可能缺少 ${location.origin} 的 CORS 允许。`,
-      raw
-    };
+    if (/401|403|Unauthorized|Forbidden/i.test(raw)) return { code: 'auth', message: 'OpenCode 服务已响应，但认证未通过。请检查用户名和本页密码，或确认当前服务为无认证模式。', raw };
+    if (/Failed to fetch|NetworkError|Load failed|CORS/i.test(raw)) return { code: 'network_or_cors', message: `浏览器无法读取 OpenCode 响应。服务可能未启动，也可能缺少 ${location.origin} 的 CORS 允许。`, raw };
     return { code: 'request_failed', message: raw, raw };
   }
 
@@ -157,75 +118,41 @@
       const headers = { Accept: 'application/json' };
       if (config.password) headers.Authorization = auth(config.username, config.password);
       if (options.body !== undefined) headers['Content-Type'] = 'application/json';
-      const response = await fetch(`${baseUrl(config.base_url)}${path}`, {
-        method: options.method || 'GET',
-        headers,
-        body: options.body === undefined ? undefined : JSON.stringify(options.body),
-        cache: 'no-store', credentials: 'omit', mode: 'cors', redirect: 'error', signal: controller.signal
-      });
+      const response = await fetch(`${baseUrl(config.base_url)}${path}`, { method: options.method || 'GET', headers, body: options.body === undefined ? undefined : JSON.stringify(options.body), cache: 'no-store', credentials: 'omit', mode: 'cors', redirect: 'error', signal: controller.signal });
       const text = response.status === 204 ? '' : await response.text();
       let payload = null;
       if (text) { try { payload = JSON.parse(text); } catch (_) { payload = text; } }
       if (!response.ok) {
         const detail = typeof payload === 'string' ? payload : payload?.error || payload?.message || '';
-        const error = new Error(`OpenCode HTTP ${response.status}${detail ? `：${detail}` : ''}`);
-        error.status = response.status;
-        throw error;
+        const failed = new Error(`OpenCode HTTP ${response.status}${detail ? `：${detail}` : ''}`); failed.status = response.status; throw failed;
       }
       return payload;
     } catch (error) {
-      const detail = classify(error, path);
-      const wrapped = new Error(detail.message);
-      wrapped.code = detail.code;
-      wrapped.raw = detail.raw;
-      wrapped.path = path;
-      throw wrapped;
-    } finally {
-      clearTimeout(timer);
-    }
+      const detail = classify(error, path); const wrapped = new Error(detail.message);
+      wrapped.code = detail.code; wrapped.raw = detail.raw; wrapped.path = path; throw wrapped;
+    } finally { clearTimeout(timer); }
   }
 
-  async function optional(path, config) {
-    try { return { ok: true, data: await request(path, { config }) }; }
-    catch (error) { return { ok: false, error: String(error?.message || error) }; }
-  }
-
+  async function optional(path, config) { try { return { ok: true, data: await request(path, { config }) }; } catch (error) { return { ok: false, error: String(error?.message || error) }; } }
   async function optionalFallback(paths, config) {
     let last;
-    for (const path of paths) {
-      const result = await optional(path, config);
-      if (result.ok || !/404|405/.test(result.error || '')) return result;
-      last = result;
-    }
+    for (const path of paths) { const result = await optional(path, config); if (result.ok || !/404|405/.test(result.error || '')) return result; last = result; }
     return last || { ok: false, error: 'endpoint unavailable' };
   }
 
   const sessionId = (session) => String(session?.id || session?.sessionID || session?.session_id || '');
   const statusType = (value) => String(typeof value === 'string' ? value : value?.type || value?.status || value?.state || 'unknown').toLowerCase();
   const messageRole = (record) => String(record?.info?.role || record?.info?.type || '').toLowerCase();
-
   function partText(part) {
     if (!part || typeof part !== 'object') return '';
     if (part.type === 'text' || part.type === 'reasoning') return String(part.text || '');
-    if (part.type === 'tool') {
-      const title = part.state?.title || part.state?.error || '';
-      return `[${part.tool || part.name || 'tool'} · ${statusType(part.state)}${title ? ` · ${title}` : ''}]`;
-    }
+    if (part.type === 'tool') { const title = part.state?.title || part.state?.error || ''; return `[${part.tool || part.name || 'tool'} · ${statusType(part.state)}${title ? ` · ${title}` : ''}]`; }
     if (part.type === 'step-finish' && part.reason) return `[步骤结束 · ${part.reason}]`;
     if (part.type === 'patch' && part.hash) return `[补丁 · ${part.hash}]`;
     return '';
   }
-
   const messageText = (record) => list(record?.parts).map(partText).filter(Boolean).join('\n').trim();
-  function latestAssistant(messages) {
-    for (let index = messages.length - 1; index >= 0; index -= 1) {
-      if (messageRole(messages[index]).includes('assistant')) {
-        const text = messageText(messages[index]);
-        if (text) return text;
-      }
-    }
-    return '';
-  }
+  function latestAssistant(messages) { for (let index = messages.length - 1; index >= 0; index -= 1) { if (messageRole(messages[index]).includes('assistant')) { const text = messageText(messages[index]); if (text) return text; } } return ''; }
 
   function parseRequest(text) {
     const value = String(text || '').trim();
@@ -234,236 +161,126 @@
     try { payload = JSON.parse(value.slice(REQUEST_START.length, value.length - REQUEST_END.length).trim()); }
     catch (_) { throw new Error('DCF_LOCAL_AGENT_REQUEST 不是有效 JSON'); }
     if (payload?.schema !== 'dcf.local-agent.request.v1') throw new Error('DCF_LOCAL_AGENT_REQUEST schema 无效');
-    const id = String(payload.id || '').trim();
-    const task = String(payload.task || '').trim();
+    const id = String(payload.id || '').trim(); const task = String(payload.task || '').trim();
     if (!/^[A-Za-z0-9._:-]{1,128}$/.test(id)) throw new Error('DCF_LOCAL_AGENT_REQUEST id 无效');
     if (!task || task.length > 30000) throw new Error('DCF_LOCAL_AGENT_REQUEST task 无效');
     if (String(payload.mode || 'new') !== 'new') throw new Error('闭环 v1 只允许新建独立 OpenCode 会话');
-    return {
-      id, task,
-      title: String(payload.title || `DCF · ${task.slice(0, 56)}`).slice(0, 240),
-      return_mode: payload.return_mode === 'full' ? 'full' : 'summary',
-      timeout_ms: Math.max(30000, Math.min(60 * 60 * 1000, Number(payload.timeout_ms) || state.settings.timeout_ms))
-    };
+    return { id, task, title: String(payload.title || `DCF · ${task.slice(0, 56)}`).slice(0, 240), return_mode: payload.return_mode === 'full' ? 'full' : 'summary', timeout_ms: Math.max(30000, Math.min(60 * 60 * 1000, Number(payload.timeout_ms) || state.settings.timeout_ms)) };
   }
 
-  function enqueue(job) {
-    if (!job || state.processed_ids.includes(job.id) || queue.some((item) => item.id === job.id) || activeJob?.request.id === job.id) return;
-    queue.push(job);
-    state.status = `已接收请求 ${job.id}`;
-    renderCard();
-    processQueue().catch(reportFatal);
+  function assistantNode(value) {
+    if (!(value instanceof Node)) return null;
+    const element = value.nodeType === Node.ELEMENT_NODE ? value : value.parentElement;
+    return element?.closest?.('[data-message-author-role="assistant"]') || null;
   }
 
-  async function inspect(node) {
-    if (!state.settings.enabled || !(node instanceof Element) || seen.has(node)) return;
-    seen.add(node);
-    await sleep(900);
-    if (!node.isConnected) return;
-    try {
-      const parsed = parseRequest(node.innerText || node.textContent || '');
-      if (parsed) enqueue(parsed);
-    } catch (error) {
-      state.status = '发现无效的委派工件';
-      state.error = String(error?.message || error);
-      renderCard();
-    }
+  function scheduleInspect(node, force = false) {
+    if (!(node instanceof Element)) return;
+    const previousState = nodeState.get(node) || {}; clearTimeout(previousState.timer);
+    const timer = setTimeout(() => inspectNode(node, force).catch(() => {}), force ? 0 : 260);
+    nodeState.set(node, { ...previousState, timer });
   }
 
-  function scan(root = document) {
-    for (const node of Array.from(root.querySelectorAll?.('[data-message-author-role="assistant"]') || []).slice(-10)) inspect(node).catch(() => {});
+  async function inspectNode(node, force = false) {
+    if (!state.settings.enabled || !(node instanceof Element) || !node.isConnected) return;
+    const text = String(node.innerText || node.textContent || '').trim(); const previousState = nodeState.get(node) || {};
+    if (!force && previousState.text === text) return;
+    nodeState.set(node, { text, timer: null });
+    if (!text.includes(REQUEST_START)) return;
+    if (!text.endsWith(REQUEST_END)) { state.stage = 'detecting'; state.status = '检测到委派工件，等待回复生成完成'; state.error = ''; renderCard(); return; }
+    try { const parsed = parseRequest(text); if (parsed) enqueue(parsed); }
+    catch (error) { state.stage = 'invalid'; state.status = '发现无效的委派工件'; state.error = String(error?.message || error); renderCard(); }
+  }
+
+  function scan(root = document, force = false) { for (const node of Array.from(root.querySelectorAll?.('[data-message-author-role="assistant"]') || []).slice(-20)) scheduleInspect(node, force); }
+
+  function enqueue(requestData) {
+    if (!requestData || state.processed_ids.includes(requestData.id) || queue.some((item) => item.id === requestData.id) || activeJob?.request.id === requestData.id) return;
+    queue.push(requestData); state.stage = 'received'; state.status = '已识别完整工件，等待委派'; state.error = ''; state.last_request_id = requestData.id; renderCard(); processQueue().catch(reportFatal);
   }
 
   function attachMain() {
-    const main = document.querySelector('main') || document.querySelector('[role="main"]');
-    if (!main) { mainRetry = setTimeout(attachMain, 900); return; }
     mainObserver?.disconnect();
     mainObserver = new MutationObserver((records) => {
-      for (const record of records) for (const node of record.addedNodes) {
-        if (!(node instanceof Element)) continue;
-        if (node.matches?.('[data-message-author-role="assistant"]')) inspect(node).catch(() => {});
-        for (const child of node.querySelectorAll?.('[data-message-author-role="assistant"]') || []) inspect(child).catch(() => {});
+      for (const record of records) {
+        const direct = assistantNode(record.target); if (direct) scheduleInspect(direct);
+        for (const node of record.addedNodes) {
+          const parent = assistantNode(node); if (parent) scheduleInspect(parent);
+          if (node instanceof Element) { if (node.matches?.('[data-message-author-role="assistant"]')) scheduleInspect(node); for (const child of node.querySelectorAll?.('[data-message-author-role="assistant"]') || []) scheduleInspect(child); }
+        }
       }
     });
-    mainObserver.observe(main, { childList: true, subtree: true });
-    scan(main);
+    mainObserver.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+    scan(document, true);
   }
 
-  async function createSession(config, title) {
-    const session = await request('/session', { config, method: 'POST', body: { title } });
-    const id = sessionId(session);
-    if (!id) throw new Error('OpenCode 未返回 session ID');
-    return id;
-  }
+  async function createSession(config, title) { const session = await request('/session', { config, method: 'POST', body: { title } }); const id = sessionId(session); if (!id) throw new Error('OpenCode 未返回 session ID'); return id; }
 
   async function snapshot(job) {
     const encoded = encodeURIComponent(job.session_id);
     const [statuses, messages, todo, diff, permissions, questions] = await Promise.all([
-      optional('/session/status', job.config),
-      optional(`/session/${encoded}/message?limit=${state.settings.message_limit}`, job.config),
-      optional(`/session/${encoded}/todo`, job.config),
-      optional(`/session/${encoded}/diff`, job.config),
-      optionalFallback(['/permission/', '/permission'], job.config),
-      optionalFallback(['/question/', '/question'], job.config)
+      optional('/session/status', job.config), optional(`/session/${encoded}/message?limit=${state.settings.message_limit}`, job.config), optional(`/session/${encoded}/todo`, job.config), optional(`/session/${encoded}/diff`, job.config), optionalFallback(['/permission/', '/permission'], job.config), optionalFallback(['/question/', '/question'], job.config)
     ]);
     const statusesData = statuses.ok ? statuses.data : null;
     const sessionStatus = statusesData?.[job.session_id] || list(statusesData).find((item) => String(item?.sessionID || item?.session_id || item?.id || '') === job.session_id) || null;
-    const belongs = (item) => {
-      const id = String(item?.sessionID || item?.session_id || item?.sessionId || '');
-      return !id || id === job.session_id;
-    };
+    const belongs = (item) => { const id = String(item?.sessionID || item?.session_id || item?.sessionId || ''); return !id || id === job.session_id; };
     return {
-      status: sessionStatus,
-      status_type: statusType(sessionStatus),
-      messages: messages.ok ? list(messages.data) : [],
-      todo: todo.ok ? list(todo.data) : [],
-      diff: diff.ok ? list(diff.data) : [],
-      permissions: permissions.ok ? list(permissions.data).filter(belongs) : [],
-      questions: questions.ok ? list(questions.data).filter(belongs) : [],
-      endpoint_errors: {
-        status: statuses.ok ? null : statuses.error,
-        messages: messages.ok ? null : messages.error,
-        todo: todo.ok ? null : todo.error,
-        diff: diff.ok ? null : diff.error,
-        permissions: permissions.ok ? null : permissions.error,
-        questions: questions.ok ? null : questions.error
-      }
+      status: sessionStatus, status_type: statusType(sessionStatus), messages: messages.ok ? list(messages.data) : [], todo: todo.ok ? list(todo.data) : [], diff: diff.ok ? list(diff.data) : [], permissions: permissions.ok ? list(permissions.data).filter(belongs) : [], questions: questions.ok ? list(questions.data).filter(belongs) : [],
+      endpoint_errors: { status: statuses.ok ? null : statuses.error, messages: messages.ok ? null : messages.error, todo: todo.ok ? null : todo.error, diff: diff.ok ? null : diff.error, permissions: permissions.ok ? null : permissions.error, questions: questions.ok ? null : questions.error }
     };
   }
 
+  function updateProgress(snap) {
+    const preview = latestAssistant(snap.messages);
+    state.progress = { status_type: snap.status_type, messages: snap.messages.length, todo: snap.todo.length, diff: snap.diff.length, permissions: snap.permissions.length, questions: snap.questions.length, preview: preview.slice(-900), last_poll_at: new Date().toLocaleTimeString() };
+  }
+
   function payload(job, status, snap, elapsed) {
-    return {
-      schema: 'dcf.local-agent.result.v1',
-      request_id: job.request.id,
-      status,
-      session_id: job.session_id,
-      assistant_result: latestAssistant(snap.messages),
-      todo: snap.todo,
-      diff: snap.diff,
-      permissions: snap.permissions,
-      questions: snap.questions,
-      messages: job.request.return_mode === 'full' ? snap.messages : undefined,
-      execution: {
-        elapsed_ms: elapsed,
-        status_type: snap.status_type,
-        base_url: baseUrl(job.config.base_url),
-        endpoint_errors: snap.endpoint_errors
-      }
-    };
+    return { schema: 'dcf.local-agent.result.v1', request_id: job.request.id, status, session_id: job.session_id, assistant_result: latestAssistant(snap.messages), todo: snap.todo, diff: snap.diff, permissions: snap.permissions, questions: snap.questions, messages: job.request.return_mode === 'full' ? snap.messages : undefined, execution: { elapsed_ms: elapsed, status_type: snap.status_type, base_url: baseUrl(job.config.base_url), endpoint_errors: snap.endpoint_errors } };
   }
 
   const artifact = (value) => `${RESULT_START}\n${json(value)}\n${RESULT_END}`;
   const composer = () => document.querySelector('#prompt-textarea') || document.querySelector('[data-testid="composer-text-input"]') || document.querySelector('form textarea') || document.querySelector('main [contenteditable="true"]');
   const composerValue = (target) => target ? String('value' in target ? target.value || '' : target.innerText || target.textContent || '') : '';
   const streaming = () => Boolean(document.querySelector('[data-testid="stop-button"],button[aria-label*="Stop"],button[aria-label*="停止"]'));
-
-  function dispatchInput(target, text) {
-    try { target.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text })); }
-    catch (_) { target.dispatchEvent(new Event('input', { bubbles: true })); }
-  }
-
+  function dispatchInput(target, text) { try { target.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text })); } catch (_) { target.dispatchEvent(new Event('input', { bubbles: true })); } }
   function fillComposer(text) {
-    const target = composer();
-    if (!target) throw new Error('未找到 ChatGPT 输入框');
-    if (composerValue(target).trim()) throw new Error('输入框中已有未发送内容');
-    target.focus();
-    if ('value' in target) {
-      const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(target), 'value')?.set;
-      if (setter) setter.call(target, text); else target.value = text;
-      target.setSelectionRange?.(text.length, text.length);
-    } else {
-      const selection = getSelection();
-      if (selection) {
-        const range = document.createRange();
-        range.selectNodeContents(target);
-        selection.removeAllRanges();
-        selection.addRange(range);
-      }
-      if (!document.execCommand?.('insertText', false, text)) target.textContent = text;
-    }
+    const target = composer(); if (!target) throw new Error('未找到 ChatGPT 输入框'); if (composerValue(target).trim()) throw new Error('输入框中已有未发送内容'); target.focus();
+    if ('value' in target) { const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(target), 'value')?.set; if (setter) setter.call(target, text); else target.value = text; target.setSelectionRange?.(text.length, text.length); }
+    else { const selection = getSelection(); if (selection) { const range = document.createRange(); range.selectNodeContents(target); selection.removeAllRanges(); selection.addRange(range); } if (!document.execCommand?.('insertText', false, text)) target.textContent = text; }
     dispatchInput(target, text);
   }
-
   const sendButton = () => document.querySelector('[data-testid="send-button"]') || document.querySelector('button[aria-label*="Send"]') || document.querySelector('button[aria-label*="发送"]');
-  async function clickSend() {
-    for (let attempt = 0; attempt < 200; attempt += 1) {
-      const button = sendButton();
-      if (!streaming() && button && !button.disabled && button.getAttribute('aria-disabled') !== 'true') { button.click(); return; }
-      await sleep(50);
-    }
-    throw new Error('闭环结果已写入输入框，但发送按钮暂不可用');
-  }
+  async function clickSend() { for (let attempt = 0; attempt < 200; attempt += 1) { const button = sendButton(); if (!streaming() && button && !button.disabled && button.getAttribute('aria-disabled') !== 'true') { button.click(); return; } await sleep(50); } throw new Error('闭环结果已写入输入框，但发送按钮暂不可用'); }
 
   async function returnPayload(value) {
-    const text = artifact(value);
-    pendingArtifact = text;
-    const started = Date.now();
+    const text = artifact(value); pendingArtifact = text; const started = Date.now();
     while (!destroyed && pendingArtifact === text && Date.now() - started < 120000) {
       const target = composer();
-      if (target && !composerValue(target).trim() && !streaming()) {
-        fillComposer(text);
-        if (state.settings.auto_send_results) await clickSend();
-        pendingArtifact = '';
-        state.status = state.settings.auto_send_results ? '结果已自动回传' : '结果已填入输入框';
-        state.error = '';
-        renderCard();
-        return true;
-      }
+      if (target && !composerValue(target).trim() && !streaming()) { fillComposer(text); if (state.settings.auto_send_results) await clickSend(); pendingArtifact = ''; state.status = state.settings.auto_send_results ? '结果已自动回传' : '结果已填入输入框'; state.error = ''; renderCard(); return true; }
       await sleep(500);
     }
-    state.status = '结果等待回传';
-    state.error = '当前对话尚未空闲，未覆盖输入框';
-    renderCard();
-    return false;
+    state.stage = 'return_wait'; state.status = '结果等待回传'; state.error = '当前对话尚未空闲，未覆盖输入框'; renderCard(); return false;
   }
 
   async function focusSession(id) {
-    try {
-      localPanelShadow()?.querySelector('[data-action="refresh-all"]')?.click();
-      await sleep(1200);
-      const select = localPanelShadow()?.querySelector('[data-field="session"]');
-      if (select && Array.from(select.options || []).some((option) => option.value === id)) {
-        select.value = id;
-        select.dispatchEvent(new Event('change', { bubbles: true }));
-      }
-    } catch (_) {}
+    try { localPanelShadow()?.querySelector('[data-action="refresh-all"]')?.click(); await sleep(1200); const select = localPanelShadow()?.querySelector('[data-field="session"]'); if (select && Array.from(select.options || []).some((option) => option.value === id)) { select.value = id; select.dispatchEvent(new Event('change', { bubbles: true })); } }
+    catch (_) {}
   }
 
   async function poll(job) {
-    const started = Date.now();
-    let lastText = '';
-    let stableSince = 0;
-    let observedRunning = false;
-    let interventionKey = '';
+    const started = Date.now(); let lastText = ''; let stableSince = 0; let observedRunning = false; let interventionKey = '';
     while (!destroyed && activeJob === job) {
-      const snap = await snapshot(job);
-      const text = latestAssistant(snap.messages);
+      const snap = await snapshot(job); updateProgress(snap); const text = latestAssistant(snap.messages);
       if (text !== lastText) { lastText = text; stableSince = Date.now(); }
       if (!['idle', 'completed', 'failed', 'error', 'unknown'].includes(snap.status_type)) observedRunning = true;
-      const currentIntervention = snap.permissions.length || snap.questions.length
-        ? hash(json({ permissions: snap.permissions, questions: snap.questions }))
-        : '';
-
-      if (currentIntervention && currentIntervention !== interventionKey) {
-        interventionKey = currentIntervention;
-        state.status = '等待本机权限或回答';
-        await focusSession(job.session_id);
-        await returnPayload(payload(job, 'needs_user', snap, Date.now() - started));
-      } else if (!currentIntervention && interventionKey) {
-        interventionKey = '';
-        state.status = '用户处理完成，继续执行';
-        renderCard();
-      } else {
-        state.status = `本机执行中 · ${snap.status_type}`;
-        renderCard();
-      }
-
+      const currentIntervention = snap.permissions.length || snap.questions.length ? hash(json({ permissions: snap.permissions, questions: snap.questions })) : '';
+      if (currentIntervention && currentIntervention !== interventionKey) { interventionKey = currentIntervention; state.stage = 'needs_user'; state.status = '等待本机权限或回答'; renderCard(); await focusSession(job.session_id); await returnPayload(payload(job, 'needs_user', snap, Date.now() - started)); }
+      else if (!currentIntervention && interventionKey) { interventionKey = ''; state.stage = 'running'; state.status = '用户处理完成，继续执行'; renderCard(); }
+      else { state.stage = 'running'; state.status = `本机执行中 · ${snap.status_type}`; renderCard(); }
       const terminal = ['idle', 'completed', 'failed', 'error', 'cancelled', 'canceled'].includes(snap.status_type);
       const stable = Boolean(lastText) && stableSince && Date.now() - stableSince >= 1600;
-      if (!currentIntervention && terminal && stable && (observedRunning || Date.now() - started >= 2500)) {
-        const result = ['failed', 'error', 'cancelled', 'canceled'].includes(snap.status_type) ? 'failed' : 'completed';
-        return payload(job, result, snap, Date.now() - started);
-      }
+      if (!currentIntervention && terminal && stable && (observedRunning || Date.now() - started >= 2500)) { const result = ['failed', 'error', 'cancelled', 'canceled'].includes(snap.status_type) ? 'failed' : 'completed'; return payload(job, result, snap, Date.now() - started); }
       if (Date.now() - started >= job.request.timeout_ms) return payload(job, 'timeout', snap, Date.now() - started);
       await sleep(state.settings.poll_interval_ms);
     }
@@ -471,162 +288,92 @@
   }
 
   async function run(requestData) {
-    const config = await connectionConfig();
-    await request('/global/health', { config, timeout: 8000 });
+    state.started_at = Date.now(); state.stage = 'checking'; state.status = '正在检查 OpenCode 服务'; renderCard();
+    const config = await connectionConfig(); await request('/global/health', { config, timeout: 8000 });
+    state.stage = 'creating'; state.status = '服务已连接，正在创建会话'; renderCard();
     const session_id = await createSession(config, requestData.title);
-    const body = { parts: [{ type: 'text', text: requestData.task }] };
-    if (config.agent) body.agent = config.agent;
-    if (config.model) body.model = config.model;
+    state.stage = 'submitting'; state.status = '会话已创建，正在提交任务'; state.last_session_id = session_id; renderCard();
+    const body = { parts: [{ type: 'text', text: requestData.task }] }; if (config.agent) body.agent = config.agent; if (config.model) body.model = config.model;
     await request(`/session/${encodeURIComponent(session_id)}/prompt_async`, { config, method: 'POST', body, timeout: 30000 });
-    const job = { request: requestData, config, session_id };
-    activeJob = job;
-    state.last_request_id = requestData.id;
-    state.last_session_id = session_id;
+    const job = { request: requestData, config, session_id }; activeJob = job; state.last_request_id = requestData.id; state.last_session_id = session_id;
     state.processed_ids = [...state.processed_ids.filter((id) => id !== requestData.id), requestData.id].slice(-80);
-    state.status = `已委派 ${requestData.id}`;
-    state.error = '';
-    await persist();
-    renderCard();
-    await focusSession(session_id);
-    const finalPayload = await poll(job);
-    await returnPayload(finalPayload);
+    state.stage = 'running'; state.status = '任务已提交，等待本机输出'; state.error = ''; await persist(); renderCard(); await focusSession(session_id);
+    const finalPayload = await poll(job); state.stage = finalPayload.status === 'completed' ? 'completed' : finalPayload.status;
+    state.status = finalPayload.status === 'completed' ? '本机任务完成，正在回传' : `本机任务结束 · ${finalPayload.status}`; renderCard(); await returnPayload(finalPayload);
   }
 
   async function returnFailure(error, requestData) {
     const job = activeJob;
-    const failure = {
-      schema: 'dcf.local-agent.result.v1',
-      request_id: requestData?.id || job?.request.id || 'unknown',
-      status: 'bridge_error', session_id: job?.session_id || '', assistant_result: '',
-      todo: [], diff: [], permissions: [], questions: [],
-      execution: {
-        elapsed_ms: 0, status_type: 'bridge_error', base_url: job ? baseUrl(job.config.base_url) : '',
-        endpoint_errors: { bridge: String(error?.message || error), code: error?.code || '', raw: error?.raw || '' }
-      }
-    };
-    state.status = '委派失败，正在回传';
-    state.error = String(error?.message || error);
-    renderCard();
-    await returnPayload(failure).catch(() => {});
+    const failure = { schema: 'dcf.local-agent.result.v1', request_id: requestData?.id || job?.request.id || 'unknown', status: 'bridge_error', session_id: job?.session_id || '', assistant_result: '', todo: [], diff: [], permissions: [], questions: [], execution: { elapsed_ms: state.started_at ? Date.now() - state.started_at : 0, status_type: 'bridge_error', base_url: job ? baseUrl(job.config.base_url) : '', endpoint_errors: { bridge: String(error?.message || error), code: error?.code || '', raw: error?.raw || '' } } };
+    state.stage = 'failed'; state.status = '委派失败，正在回传'; state.error = String(error?.message || error); renderCard(); await returnPayload(failure).catch(() => {});
   }
 
   async function processQueue() {
     if (queueBusy || activeJob || !state.settings.enabled || !queue.length) return;
-    queueBusy = true;
-    const requestData = queue.shift();
-    state.processed_ids = [...state.processed_ids.filter((id) => id !== requestData.id), requestData.id].slice(-80);
-    state.last_request_id = requestData.id;
-    await persist();
-    try { await run(requestData); }
-    catch (error) { await returnFailure(error, requestData); }
-    finally {
-      activeJob = null;
-      queueBusy = false;
-      persist().catch(() => {});
-      renderCard();
-      if (queue.length) processQueue().catch(reportFatal);
-    }
+    queueBusy = true; const requestData = queue.shift(); state.last_request_id = requestData.id; await persist();
+    try { await run(requestData); } catch (error) { await returnFailure(error, requestData); }
+    finally { activeJob = null; queueBusy = false; persist().catch(() => {}); renderCard(); if (queue.length) processQueue().catch(reportFatal); }
   }
 
-  function reportFatal(error) {
-    state.status = '闭环异常';
-    state.error = String(error?.message || error);
-    renderCard();
-  }
+  function reportFatal(error) { state.stage = 'failed'; state.status = '闭环异常'; state.error = String(error?.message || error); renderCard(); }
+  function elapsedText() { if (!state.started_at || !['checking', 'creating', 'submitting', 'running', 'needs_user'].includes(state.stage)) return ''; const seconds = Math.max(0, Math.floor((Date.now() - state.started_at) / 1000)); const minutes = Math.floor(seconds / 60); return minutes ? `${minutes}分${seconds % 60}秒` : `${seconds}秒`; }
+  function bridgeStyle() { return `.dcf-dialogue-progress{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.dcf-dialogue-metric{border:1px solid #ddd;border-radius:8px;padding:6px;display:grid;gap:2px;min-width:0}.dcf-dialogue-metric b{font-size:14px}.dcf-dialogue-stage{font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;overflow-wrap:anywhere}.dcf-dialogue-preview{max-height:150px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:#f6f6f6;border-radius:7px;padding:8px;font:11px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace}@media(max-width:340px){.dcf-dialogue-progress{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(prefers-color-scheme:dark){.dcf-dialogue-metric{border-color:#444}.dcf-dialogue-preview{background:#181818}}`; }
 
   function cardHtml() {
-    const active = Boolean(activeJob);
+    const active = Boolean(activeJob) || ['checking', 'creating', 'submitting'].includes(state.stage); const progress = state.progress;
     return `<section class="card" data-dcf-local-agent-dialogue-card="true">
       <div class="title-row"><b>对话闭环</b><span class="status ${active ? 'busy' : state.settings.enabled ? 'ready' : ''}">${active ? '执行中' : state.settings.enabled ? '已开启' : '已关闭'}</span></div>
-      <div class="muted">只有完整的 DCF_LOCAL_AGENT_REQUEST 工件会触发；普通对话不会执行本机任务。</div>
-      <div class="row">
-        <label class="row"><input type="checkbox" data-bridge-field="enabled" ${state.settings.enabled ? 'checked' : ''}>允许对话自动委派</label>
-        <label class="row"><input type="checkbox" data-bridge-field="auto-send" ${state.settings.auto_send_results ? 'checked' : ''}>结果自动发送回对话</label>
-      </div>
-      <div class="button-grid">
-        <button data-bridge-action="scan">检查当前对话</button>
-        <button data-bridge-action="return" ${pendingArtifact ? '' : 'disabled'}>回传待发送结果</button>
-        <button data-bridge-action="clear">清除已处理记录</button>
-      </div>
-      <div class="muted">${html(state.status)}${state.last_request_id ? ` · ${html(state.last_request_id)}` : ''}${state.last_session_id ? ` · ${html(state.last_session_id.slice(-8))}` : ''}</div>
+      <div class="muted">完整委派工件会自动交给本机 OpenCode。这里显示识别、提交与执行进度。</div>
+      <div class="row"><label class="row"><input type="checkbox" data-bridge-field="enabled" ${state.settings.enabled ? 'checked' : ''}>允许对话自动委派</label><label class="row"><input type="checkbox" data-bridge-field="auto-send" ${state.settings.auto_send_results ? 'checked' : ''}>结果自动发送回对话</label></div>
+      <div class="dcf-dialogue-stage"><b>${html(state.status)}</b>${elapsedText() ? ` · ${html(elapsedText())}` : ''}<br>阶段：${html(state.stage)}${state.last_request_id ? `<br>请求：${html(state.last_request_id)}` : ''}${state.last_session_id ? `<br>会话：${html(state.last_session_id)}` : ''}</div>
+      <div class="dcf-dialogue-progress"><div class="dcf-dialogue-metric"><span class="muted">状态</span><b>${html(progress.status_type || '—')}</b></div><div class="dcf-dialogue-metric"><span class="muted">消息</span><b>${progress.messages}</b></div><div class="dcf-dialogue-metric"><span class="muted">Todo</span><b>${progress.todo}</b></div><div class="dcf-dialogue-metric"><span class="muted">Diff</span><b>${progress.diff}</b></div><div class="dcf-dialogue-metric"><span class="muted">权限</span><b>${progress.permissions}</b></div><div class="dcf-dialogue-metric"><span class="muted">提问</span><b>${progress.questions}</b></div></div>
+      ${progress.preview ? `<div><div class="muted">最近本机输出 · ${html(progress.last_poll_at)}</div><div class="dcf-dialogue-preview">${html(progress.preview)}</div></div>` : ''}
+      <div class="button-grid"><button data-bridge-action="scan">重新扫描当前对话</button><button data-bridge-action="focus" ${state.last_session_id ? '' : 'disabled'}>查看执行会话</button><button data-bridge-action="return" ${pendingArtifact ? '' : 'disabled'}>回传待发送结果</button><button data-bridge-action="clear">清除已处理记录</button></div>
       ${state.error ? `<div class="notice error">${html(state.error)}</div>` : ''}
     </section>`;
   }
 
   function renderCard() {
-    const shadow = localPanelShadow();
-    const content = shadow?.querySelector('.content');
-    if (!content) return;
-    const wrapper = document.createElement('div');
-    wrapper.innerHTML = cardHtml().trim();
-    const next = wrapper.firstElementChild;
-    const current = content.querySelector('[data-dcf-local-agent-dialogue-card="true"]');
-    if (current) current.replaceWith(next);
-    else {
-      const first = content.querySelector('.card');
-      if (first?.nextSibling) content.insertBefore(next, first.nextSibling); else content.append(next);
-    }
-    next.querySelector('[data-bridge-field="enabled"]').onchange = async (event) => {
-      state.settings.enabled = event.target.checked;
-      state.status = state.settings.enabled ? '等待请求' : '闭环已关闭';
-      await persist();
-      renderCard();
-      if (state.settings.enabled) { scan(); processQueue().catch(reportFatal); }
-    };
-    next.querySelector('[data-bridge-field="auto-send"]').onchange = async (event) => {
-      state.settings.auto_send_results = event.target.checked;
-      await persist();
-      renderCard();
-    };
-    next.querySelector('[data-bridge-action="scan"]').onclick = () => { state.status = '正在检查当前对话'; renderCard(); scan(); };
-    next.querySelector('[data-bridge-action="clear"]').onclick = async () => {
-      state.processed_ids = []; state.last_request_id = ''; state.status = '已清除处理记录'; await persist(); renderCard();
-    };
-    next.querySelector('[data-bridge-action="return"]').onclick = async () => {
-      if (!pendingArtifact) return;
-      try {
-        if (composerValue(composer()).trim() || streaming()) throw new Error('当前对话或输入框尚未空闲');
-        const text = pendingArtifact;
-        fillComposer(text);
-        if (state.settings.auto_send_results) await clickSend();
-        pendingArtifact = ''; state.status = state.settings.auto_send_results ? '结果已自动回传' : '结果已填入输入框'; state.error = '';
-      } catch (error) { state.error = String(error?.message || error); }
-      renderCard();
-    };
+    const shadow = localPanelShadow(); if (!shadow) return;
+    let style = shadow.querySelector('style[data-dcf-local-agent-dialogue-style="true"]');
+    if (!style) { style = document.createElement('style'); style.dataset.dcfLocalAgentDialogueStyle = 'true'; style.textContent = bridgeStyle(); shadow.append(style); }
+    const wrapper = document.createElement('div'); wrapper.innerHTML = cardHtml().trim(); const next = wrapper.firstElementChild;
+    const current = shadow.querySelector('[data-dcf-local-agent-dialogue-card="true"]'); if (current) current.replaceWith(next); else shadow.append(next);
+    next.querySelector('[data-bridge-field="enabled"]').onchange = async (event) => { state.settings.enabled = event.target.checked; state.stage = state.settings.enabled ? 'idle' : 'disabled'; state.status = state.settings.enabled ? '等待请求' : '闭环已关闭'; await persist(); renderCard(); if (state.settings.enabled) scan(document, true); };
+    next.querySelector('[data-bridge-field="auto-send"]').onchange = async (event) => { state.settings.auto_send_results = event.target.checked; await persist(); renderCard(); };
+    next.querySelector('[data-bridge-action="scan"]').onclick = () => { state.stage = 'scanning'; state.status = '正在重新扫描最近助手消息'; state.error = ''; renderCard(); scan(document, true); setTimeout(() => { if (state.stage === 'scanning') { state.stage = 'idle'; state.status = '扫描完成，未发现新的完整工件'; renderCard(); } }, 900); };
+    next.querySelector('[data-bridge-action="focus"]').onclick = () => focusSession(state.last_session_id);
+    next.querySelector('[data-bridge-action="clear"]').onclick = async () => { state.processed_ids = []; state.last_request_id = ''; state.stage = 'idle'; state.status = '已清除处理记录'; await persist(); renderCard(); };
+    next.querySelector('[data-bridge-action="return"]').onclick = async () => { if (!pendingArtifact) return; try { if (composerValue(composer()).trim() || streaming()) throw new Error('当前对话或输入框尚未空闲'); const text = pendingArtifact; fillComposer(text); if (state.settings.auto_send_results) await clickSend(); pendingArtifact = ''; state.status = state.settings.auto_send_results ? '结果已自动回传' : '结果已填入输入框'; state.error = ''; } catch (error) { state.error = String(error?.message || error); } renderCard(); };
   }
 
-  function attachPanel() {
-    const shadow = localPanelShadow();
-    if (!shadow) { panelRetry = setTimeout(attachPanel, 700); return; }
-    panelObserver?.disconnect();
-    panelObserver = new MutationObserver(() => {
-      if (!shadow.querySelector('[data-dcf-local-agent-dialogue-card="true"]')) queueMicrotask(renderCard);
-    });
-    panelObserver.observe(shadow, { childList: true, subtree: true });
-    renderCard();
+  function ensurePanelMount() {
+    const host = localPanelHost(); const shadow = host?.shadowRoot || null; if (!host || !shadow) return;
+    if (host !== currentPanelHost || shadow !== currentPanelShadow) {
+      panelObserver?.disconnect(); currentPanelHost = host; currentPanelShadow = shadow;
+      panelObserver = new MutationObserver(() => { if (!shadow.querySelector('[data-dcf-local-agent-dialogue-card="true"]')) queueMicrotask(renderCard); });
+      panelObserver.observe(shadow, { childList: true, subtree: true });
+    }
+    if (!shadow.querySelector('[data-dcf-local-agent-dialogue-card="true"]')) renderCard();
   }
 
   function destroy() {
-    destroyed = true;
-    mainObserver?.disconnect(); panelObserver?.disconnect();
-    clearTimeout(mainRetry); clearTimeout(panelRetry);
-    localPanelShadow()?.querySelector('[data-dcf-local-agent-dialogue-card="true"]')?.remove();
+    destroyed = true; mainObserver?.disconnect(); panelObserver?.disconnect(); clearInterval(scanTimer); clearInterval(mountTimer); clearInterval(elapsedTimer);
+    currentPanelShadow?.querySelector('[data-dcf-local-agent-dialogue-card="true"]')?.remove(); currentPanelShadow?.querySelector('style[data-dcf-local-agent-dialogue-style="true"]')?.remove();
+    for (const node of document.querySelectorAll('[data-message-author-role="assistant"]')) { const info = nodeState.get(node); if (info?.timer) clearTimeout(info.timer); }
     queue.length = 0; activeJob = null;
   }
 
-  globalThis[GLOBAL_KEY] = {
-    version: UNIT_VERSION, destroy,
-    request_markers: { start: REQUEST_START, end: REQUEST_END },
-    result_markers: { start: RESULT_START, end: RESULT_END }
-  };
+  globalThis[GLOBAL_KEY] = { version: UNIT_VERSION, destroy, request_markers: { start: REQUEST_START, end: REQUEST_END }, result_markers: { start: RESULT_START, end: RESULT_END } };
 
   try {
     loadState().then(async () => {
-      attachPanel(); attachMain();
+      attachMain(); ensurePanelMount(); mountTimer = setInterval(ensurePanelMount, 700);
+      scanTimer = setInterval(() => { if (state.settings.enabled && !activeJob) scan(document, false); }, 1600);
+      elapsedTimer = setInterval(() => { if (state.started_at && ['checking', 'creating', 'submitting', 'running', 'needs_user'].includes(state.stage)) renderCard(); }, 1000);
       await sendHost({ type: 'unit.started', unit_id: UNIT_ID, version: UNIT_VERSION });
     }).catch((error) => sendHost({ type: 'unit.failed', unit_id: UNIT_ID, version: UNIT_VERSION, error: String(error?.message || error) }).catch(() => {}));
   } catch (error) {
-    destroy();
-    sendHost({ type: 'unit.failed', unit_id: UNIT_ID, version: UNIT_VERSION, error: String(error?.message || error) }).catch(() => {});
+    destroy(); sendHost({ type: 'unit.failed', unit_id: UNIT_ID, version: UNIT_VERSION, error: String(error?.message || error) }).catch(() => {});
   }
 })();

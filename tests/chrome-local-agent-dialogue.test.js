@@ -9,7 +9,7 @@ const ref = index.units.find((unit) => unit.id === 'dcf.firstparty.local-agent-d
 assert(ref);
 assert(index.defaults.includes(ref.id));
 assert.strictEqual(index.units.length, 10);
-assert.strictEqual(ref.version, '1.0.0-rc.2-local-agent-dialogue.2');
+assert.strictEqual(ref.version, '1.0.0-rc.2-local-agent-dialogue.3');
 assert.strictEqual(ref.phase, 57);
 assert.strictEqual(ref.world_id, 'dcf-firstparty-local-agent-dialogue');
 const code = fs.readFileSync(path.join(root, 'chrome-extension/code-units/local-agent-dialogue/main.js'), 'utf8');
@@ -19,27 +19,19 @@ for (const token of [
   '<<<DCF_LOCAL_AGENT_RESULT>>>',
   'dcf.local-agent.request.v1',
   'dcf.local-agent.result.v1',
-  'value.startsWith(REQUEST_START)',
-  'value.endsWith(REQUEST_END)',
-  '[data-message-author-role="assistant"]',
-  "plugin_id: LOCAL_AGENT_ID",
-  "request('/global/health'",
-  "request('/session'",
-  '/prompt_async',
-  "optional('/session/status'",
-  '/message?limit=',
-  "optionalFallback(['/permission/', '/permission']",
-  "optionalFallback(['/question/', '/question']",
-  "payload(job, 'needs_user'",
-  "state.status = '用户处理完成，继续执行'",
-  'interventionKey',
-  'streaming()',
-  'fillComposer',
-  'clickSend',
+  'characterData: true',
+  'function scheduleInspect(node, force = false)',
+  '检测到委派工件，等待回复生成完成',
+  'scan(document, true)',
+  '这里显示识别、提交与执行进度',
+  'dcf-dialogue-progress',
+  '最近本机输出',
+  '查看执行会话',
+  'shadow.append(next)',
+  'setInterval(ensurePanelMount, 700)',
   'processed_ids',
-  'unit.started',
-  '允许对话自动委派',
-  '结果自动发送回对话'
+  'unit.started'
 ]) assert(code.includes(token), `missing ${token}`);
 assert(!code.includes('data-dcf-panel-root'));
-console.log(JSON.stringify({ok:true,plugin_count:10,exact_artifact:true,intervention_continuation:true,automatic_return:true,no_new_panel:true}, null, 2));
+assert(!code.includes('content.append(next)'));
+console.log(JSON.stringify({ok:true,plugin_count:10,streaming_completion_detection:true,manual_rescan:true,visible_progress:true,repaint_resilient_card:true,no_new_panel:true}, null, 2));
