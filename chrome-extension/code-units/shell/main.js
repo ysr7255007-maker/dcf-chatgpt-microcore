@@ -1,11 +1,15 @@
 (function () {
   'use strict';
   const UNIT_ID = 'dcf.firstparty.shell';
-  const UNIT_VERSION = '1.0.0-rc.2-shell.2';
+  const UNIT_VERSION = '1.0.0-rc.2-shell.3';
   const HOST_ID = 'dcf-chrome-shell-host';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_SHELL__';
   const PANEL_SELECTOR = '[data-dcf-panel-root="true"]';
-  const send = (message) => chrome.runtime.sendMessage(message).then((result) => { if (!result || result.ok === false) throw new Error(result && result.error || 'DCF host rejected request'); return result; });
+  const send = (message) => chrome.runtime.sendMessage(message).then((result) => {
+    if (!result || result.ok === false) throw new Error(result && result.error || 'DCF host rejected request');
+    return result;
+  });
+
   const previous = globalThis[GLOBAL_KEY];
   const previousHost = document.getElementById(HOST_ID);
   if (previousHost?.shadowRoot) {
@@ -17,14 +21,20 @@
   }
   if (previous && typeof previous.destroy === 'function') previous.destroy();
 
-  let host; let observer; let panelListener; let activeId = null;
+  let host;
+  let observer;
+  let panelListener;
+  let activeId = null;
+  let appearanceState = {};
   const panels = new Map();
   const cleanup = [];
+
   function setPanelVisible(record, visible) {
     if (!record || !record.host) return;
     record.host.hidden = !visible;
     record.host.style.setProperty('display', visible ? '' : 'none', 'important');
   }
+
   function releasePanels() {
     for (const record of panels.values()) {
       const panelHost = record && record.host;
@@ -33,10 +43,13 @@
       document.documentElement.append(panelHost);
     }
   }
+
   function destroy() {
     observer?.disconnect();
     if (panelListener) document.removeEventListener('dcf:panel-ready', panelListener, true);
-    for (const fn of cleanup.splice(0)) { try { fn(); } catch (_) {} }
+    for (const fn of cleanup.splice(0)) {
+      try { fn(); } catch (_) {}
+    }
     releasePanels();
     host?.remove();
     panels.clear();
@@ -54,34 +67,57 @@
       .head{display:flex;align-items:center;gap:8px;padding:9px 10px;background:#f0f0f0;border-bottom:1px solid #ddd}.brand{font-weight:700;flex:1}.status{font-size:11px;color:#666}.head button,.tabs button{border:0;background:transparent;cursor:pointer;color:inherit;font:inherit}.tabs{display:flex;gap:4px;padding:7px;overflow:auto;border-bottom:1px solid #e2e2e2}.tabs button{padding:6px 8px;border-radius:8px;white-space:nowrap}.tabs button.active{background:#202124;color:#fff}.body{flex:1;overflow:auto;padding:10px}.shell.collapsed .tabs,.shell.collapsed .body{display:none!important}.empty{padding:24px;text-align:center;color:#777}
       @media(prefers-color-scheme:dark){.shell{background:#181818;color:#f3f3f3;border-color:#444}.head{background:#222;border-color:#444}.tabs{border-color:#444}.tabs button.active{background:#f3f3f3;color:#181818}.status,.empty{color:#aaa}}
     </style>`;
-    const shell = document.createElement('section'); shell.className = 'shell';
-    const head = document.createElement('div'); head.className = 'head';
-    const brand = document.createElement('div'); brand.className = 'brand'; brand.textContent = 'DCF';
-    const status = document.createElement('div'); status.className = 'status'; status.textContent = '已启动';
-    const recovery = document.createElement('button'); recovery.textContent = '维护'; recovery.title = '恢复与诊断';
-    const collapse = document.createElement('button'); collapse.textContent = '收起';
+
+    const shell = document.createElement('section');
+    shell.className = 'shell';
+    const head = document.createElement('div');
+    head.className = 'head';
+    const brand = document.createElement('div');
+    brand.className = 'brand';
+    brand.textContent = 'DCF';
+    const status = document.createElement('div');
+    status.className = 'status';
+    status.textContent = '已启动';
+    const recovery = document.createElement('button');
+    recovery.textContent = '维护';
+    recovery.title = '恢复与诊断';
+    const collapse = document.createElement('button');
+    collapse.textContent = '收起';
     head.append(brand, status, recovery, collapse);
-    const tabs = document.createElement('nav'); tabs.className = 'tabs';
-    const body = document.createElement('main'); body.className = 'body';
-    shell.append(head, tabs, body); shadow.append(shell); document.documentElement.append(host);
+    const tabs = document.createElement('nav');
+    tabs.className = 'tabs';
+    const body = document.createElement('main');
+    body.className = 'body';
+    shell.append(head, tabs, body);
+    shadow.append(shell);
+    document.documentElement.append(host);
 
     function applyAppearance(raw) {
-      const value = raw && typeof raw === 'object' ? raw : {};
+      const patch = raw && typeof raw === 'object' ? raw : {};
+      appearanceState = { ...appearanceState, ...patch };
+      const value = appearanceState;
       const viewportWidth = globalThis.visualViewport?.width || globalThis.innerWidth || 1280;
       const viewportHeight = globalThis.visualViewport?.height || globalThis.innerHeight || 800;
       const width = Math.max(280, Math.min(Number(value.width) || 380, viewportWidth - 24));
       const top = Math.max(8, Math.min(Number(value.top) || 72, viewportHeight - 120));
       const height = Math.max(240, Math.min(Number(value.height) || 680, viewportHeight - top - 12));
       const margin = Math.max(0, Math.min(Number(value.margin) || 12, 80));
-      shell.style.setProperty('--dcf-width', `${width}px`); shell.style.setProperty('--dcf-top', `${top}px`); shell.style.setProperty('--dcf-height', `${height}px`); shell.style.setProperty('--dcf-margin', `${margin}px`);
-      shell.classList.toggle('left', value.side === 'left'); shell.classList.toggle('collapsed', value.collapsed === true); collapse.textContent = value.collapsed === true ? '展开' : '收起';
+      shell.style.setProperty('--dcf-width', `${width}px`);
+      shell.style.setProperty('--dcf-top', `${top}px`);
+      shell.style.setProperty('--dcf-height', `${height}px`);
+      shell.style.setProperty('--dcf-margin', `${margin}px`);
+      shell.classList.toggle('left', value.side === 'left');
+      shell.classList.toggle('collapsed', value.collapsed === true);
+      collapse.textContent = value.collapsed === true ? '展开' : '收起';
     }
+
     async function saveShellState(patch) {
       const current = await send({ type: 'plugin.data.get', plugin_id: UNIT_ID });
       const next = Object.assign({}, current.data || {}, patch || {});
       await send({ type: 'plugin.data.set', plugin_id: UNIT_ID, data: next });
       return next;
     }
+
     function activate(id) {
       if (!panels.has(id)) return;
       activeId = id;
@@ -91,45 +127,75 @@
       }
       saveShellState({ active_panel: id }).catch(() => undefined);
     }
+
     function registerPanel(panelHost) {
       if (!(panelHost instanceof Element)) return;
       const id = String(panelHost.dataset.dcfPanelId || '').trim();
       if (!id || panels.get(id)?.host === panelHost) return;
-      const old = panels.get(id); const wasActive = activeId === id;
+      const old = panels.get(id);
+      const wasActive = activeId === id;
       old?.button.remove();
       if (old?.host && old.host !== panelHost) old.host.remove();
-      const button = document.createElement('button'); button.textContent = panelHost.dataset.dcfPanelTitle || id; button.onclick = () => activate(id);
+      const button = document.createElement('button');
+      button.textContent = panelHost.dataset.dcfPanelTitle || id;
+      button.onclick = () => activate(id);
       const record = { button, host: panelHost };
       setPanelVisible(record, false);
-      panels.set(id, record); tabs.append(button); body.append(panelHost);
+      panels.set(id, record);
+      tabs.append(button);
+      body.append(panelHost);
       if (wasActive || !activeId || !panels.has(activeId)) activate(id);
     }
+
     function scanPanels(root = document) {
       if (root.matches?.(PANEL_SELECTOR)) registerPanel(root);
       for (const panel of root.querySelectorAll?.(PANEL_SELECTOR) || []) registerPanel(panel);
       if (!panels.size) body.innerHTML = '<div class="empty">正在等待 DCF 功能插件…</div>';
       else body.querySelector('.empty')?.remove();
     }
-    panelListener = (event) => { const id = event && event.detail && String(event.detail); const found = id ? document.querySelector(`${PANEL_SELECTOR}[data-dcf-panel-id="${CSS.escape(id)}"]`) : null; if (found) registerPanel(found); else scanPanels(); };
+
+    panelListener = (event) => {
+      const id = event && event.detail && String(event.detail);
+      const found = id ? document.querySelector(`${PANEL_SELECTOR}[data-dcf-panel-id="${CSS.escape(id)}"]`) : null;
+      if (found) registerPanel(found);
+      else scanPanels();
+    };
     document.addEventListener('dcf:panel-ready', panelListener, true);
-    observer = new MutationObserver((records) => { for (const record of records) for (const node of record.addedNodes) if (node instanceof Element) scanPanels(node); });
+    observer = new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) {
+          if (node instanceof Element) scanPanels(node);
+        }
+      }
+    });
     observer.observe(document.documentElement, { childList: true, subtree: true });
-    collapse.onclick = async () => { const current = await send({ type: 'plugin.data.get', plugin_id: UNIT_ID }); const next = await saveShellState({ ...(current.data || {}), collapsed: !shell.classList.contains('collapsed') }); applyAppearance(next); };
+
+    collapse.onclick = async () => {
+      const collapsed = !shell.classList.contains('collapsed');
+      await saveShellState({ collapsed });
+      applyAppearance({ collapsed });
+    };
     recovery.onclick = () => send({ type: 'host.open_recovery' }).catch(() => undefined);
-    const appearanceListener = (event) => { try { applyAppearance(JSON.parse(String(event.detail || '{}'))); } catch (_) {} };
-    document.addEventListener('dcf:appearance', appearanceListener, true); cleanup.push(() => document.removeEventListener('dcf:appearance', appearanceListener, true));
+
+    const appearanceListener = (event) => {
+      try { applyAppearance(JSON.parse(String(event.detail || '{}'))); } catch (_) {}
+    };
+    document.addEventListener('dcf:appearance', appearanceListener, true);
+    cleanup.push(() => document.removeEventListener('dcf:appearance', appearanceListener, true));
 
     Promise.all([
       send({ type: 'plugin.data.get', plugin_id: UNIT_ID }),
       send({ type: 'plugin.data.get', plugin_id: 'dcf.firstparty.appearance' })
     ]).then(([shellState, appearance]) => {
       activeId = shellState.data && shellState.data.active_panel || null;
-      applyAppearance(Object.assign({}, shellState.data || {}, appearance.data || {}));
+      applyAppearance(Object.assign({}, appearance.data || {}, shellState.data || {}));
       scanPanels();
       if (activeId && panels.has(activeId)) activate(activeId);
       document.dispatchEvent(new CustomEvent('dcf:shell-ready'));
       return send({ type: 'unit.started', unit_id: UNIT_ID, version: UNIT_VERSION });
-    }).catch((error) => { send({ type: 'unit.failed', unit_id: UNIT_ID, version: UNIT_VERSION, error: String(error && error.message || error) }).catch(() => undefined); });
+    }).catch((error) => {
+      send({ type: 'unit.failed', unit_id: UNIT_ID, version: UNIT_VERSION, error: String(error && error.message || error) }).catch(() => undefined);
+    });
   } catch (error) {
     destroy();
     send({ type: 'unit.failed', unit_id: UNIT_ID, version: UNIT_VERSION, error: String(error && error.message || error) }).catch(() => undefined);
