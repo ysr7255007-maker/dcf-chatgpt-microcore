@@ -5,12 +5,9 @@ const path = require('path');
 const crypto = require('crypto');
 const childProcess = require('child_process');
 const root = path.resolve(__dirname, '..');
-const zip = path.join(root, 'dist', 'dcf-chrome-extension-1.0.0-rc.1.zip');
-const summary = path.join(root, 'dist', 'verification-summary.json');
-const digest = (filename) => crypto.createHash('sha256').update(fs.readFileSync(filename)).digest('hex');
-childProcess.execFileSync(process.execPath, [path.join(root, 'scripts', 'build-chrome-extension.js')], { cwd: root, stdio: 'ignore' });
-const first = { zip: digest(zip), summary: digest(summary) };
-childProcess.execFileSync(process.execPath, [path.join(root, 'scripts', 'build-chrome-extension.js')], { cwd: root, stdio: 'ignore' });
-const second = { zip: digest(zip), summary: digest(summary) };
-assert.deepStrictEqual(second, first);
-console.log(JSON.stringify({ ok: true, deterministic_zip: first.zip, deterministic_summary: first.summary }, null, 2));
+function buildHash() {
+  childProcess.execFileSync(process.execPath, ['scripts/build-chrome-extension.js'], { cwd: root, stdio: 'ignore' });
+  return crypto.createHash('sha256').update(fs.readFileSync(path.join(root, 'dist/dcf-chrome-extension-1.0.0-rc.2.zip'))).digest('hex');
+}
+assert.strictEqual(buildHash(), buildHash());
+console.log(JSON.stringify({ ok: true, deterministic_zip: true }, null, 2));

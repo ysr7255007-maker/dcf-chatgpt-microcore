@@ -9,62 +9,85 @@ const sourceRoot = path.join(root, 'chrome-extension');
 const distRoot = path.join(root, 'dist');
 const extensionRoot = path.join(distRoot, 'dcf-chrome-extension');
 const releaseRoot = path.join(root, 'releases', 'chrome');
-const VERSION_NAME = '1.0.0-rc.1';
+const VERSION_NAME = '1.0.0-rc.2';
+const DEFAULT_REF = process.env.DCF_PLUGIN_INDEX_REF || 'rebuild/chrome-native-host-v2';
+const RAW_ROOT = `https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/${DEFAULT_REF}`;
 
-function sha256(text) { return crypto.createHash('sha256').update(text, 'utf8').digest('hex'); }
+function sha256(value) { return crypto.createHash('sha256').update(value).digest('hex'); }
+function stable(value) {
+  if (Array.isArray(value)) return value.map(stable);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, stable(value[key])]));
+}
+function writeJson(filename, value) {
+  fs.mkdirSync(path.dirname(filename), { recursive: true });
+  fs.writeFileSync(filename, `${JSON.stringify(stable(value), null, 2)}\n`);
+}
 function copy(relative) {
   const from = path.join(sourceRoot, relative);
   const to = path.join(extensionRoot, relative);
   fs.mkdirSync(path.dirname(to), { recursive: true });
   fs.copyFileSync(from, to);
 }
-function stable(value) {
-  if (Array.isArray(value)) return value.map(stable);
-  if (!value || typeof value !== 'object') return value;
-  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, stable(value[key])]));
-}
-function writeJson(filename, value) { fs.mkdirSync(path.dirname(filename), { recursive: true }); fs.writeFileSync(filename, `${JSON.stringify(stable(value), null, 2)}\n`); }
+function worldId(id) { return `dcf-${id.replace(/^dcf\./, '').replace(/[^a-zA-Z0-9_-]+/g, '-')}`.slice(0, 64); }
 
 fs.rmSync(distRoot, { recursive: true, force: true });
 fs.mkdirSync(extensionRoot, { recursive: true });
 
 const manifest = JSON.parse(fs.readFileSync(path.join(sourceRoot, 'manifest.template.json'), 'utf8'));
 writeJson(path.join(extensionRoot, 'manifest.json'), manifest);
-for (const file of ['src/core.js', 'src/background.js', 'src/host-state.js', 'src/host-runtime.js', 'src/host-product.js', 'src/host-main.js', 'static/migration-bridge.js', 'pages/common.css', 'pages/onboarding.html', 'pages/onboarding.js', 'pages/recovery.html', 'pages/recovery.js']) copy(file);
+for (const file of [
+  'src/core.js', 'src/background.js', 'src/host-state.js', 'src/host-runtime.js', 'src/host-product.js', 'src/host-main.js',
+  'static/migration-bridge.js', 'pages/common.css', 'pages/onboarding.html', 'pages/onboarding.js', 'pages/recovery.html', 'pages/recovery.js'
+]) copy(file);
 
-const unitSpecs = [
-  { id: 'dcf.firstparty.ammo', version: VERSION_NAME, title: '语言弹药闭环', description: 'ChatGPT 页面接入、自动装填、同 ID 更新、查看、编辑、发射、导入与导出。', file: 'code-units/ammo/main.js', phase: 20, required: true },
-  { id: 'dcf.firstparty.diagnostics', version: VERSION_NAME, title: '启动诊断证据', description: '独立返回代码单元启动证据，验证普通代码单元可以单独替换与回滚。', file: 'code-units/diagnostics/main.js', phase: 90, required: true }
-];
-const units = unitSpecs.map((spec) => {
-  const code = fs.readFileSync(path.join(sourceRoot, spec.file), 'utf8');
-  const hash = sha256(code);
+const specs = [
+  ['dcf.firstparty.shell', '基础界面', 'DCF 的统一可见入口与独立插件面板挂载。', 'shell', 10],
+  ['dcf.firstparty.ammo', '语言弹药', '语言弹药工作台、自动装填、发射、更新与 GitHub 便携库。', 'ammo', 20],
+  ['dcf.firstparty.conversation-performance', '长对话减负', '可逆的长对话渲染减负与历史窗口。', 'conversation-performance', 30],
+  ['dcf.firstparty.attribution', '问答性能归因', '从下一次发送到回复完成的有界性能样本。', 'attribution', 40],
+  ['dcf.firstparty.appearance', '外观', 'DCF 侧栏方向、尺寸与位置。', 'appearance', 50],
+  ['dcf.firstparty.backup', '备份恢复', '独立插件数据的一键备份与恢复。', 'backup', 60],
+  ['dcf.firstparty.plugin-manager', '功能管理', '低频功能启停与统一 DCF 更新入口。', 'plugin-manager', 70],
+  ['dcf.firstparty.diagnostics', '诊断', '正常时压缩状态，异常时复制隐私受限证据。', 'diagnostics', 90]
+].map(([id, title, description, folder, phase]) => ({ id, title, description, folder, phase }));
+
+const units = specs.map((spec) => {
+  const relative = `chrome-extension/code-units/${spec.folder}/main.js`;
+  const code = fs.readFileSync(path.join(root, relative), 'utf8');
   return {
-    schema: 'dcf.code_unit.v1', id: spec.id, version: spec.version, title: spec.title, description: spec.description,
-    code, hash, source: { kind: 'bundled-official', release: VERSION_NAME },
-    matches: ['https://chatgpt.com/*', 'https://chat.openai.com/*'], run_at: 'document_idle', world: 'USER_SCRIPT', world_id: 'dcf-runtime', host_api: '1', phase: spec.phase, required: spec.required
+    id: spec.id,
+    version: VERSION_NAME,
+    title: spec.title,
+    description: spec.description,
+    hash: sha256(Buffer.from(code, 'utf8')),
+    code_url: `${RAW_ROOT}/${relative}`,
+    matches: ['https://chatgpt.com/*', 'https://chat.openai.com/*'],
+    run_at: 'document_idle',
+    world_id: worldId(spec.id),
+    host_api: '2',
+    phase: spec.phase,
+    required: true,
+    default_enabled: true
   };
 });
-
-const bundle = { schema: 'dcf.code_unit_bundle.v1', version: VERSION_NAME, generated_at: 'deterministic-build', units };
-writeJson(path.join(extensionRoot, 'official', 'code-units.json'), bundle);
-
-const index = { schema: 'dcf.code_unit_index.v1', version: VERSION_NAME, units: [] };
-for (const [position, unit] of units.entries()) {
-  const spec = unitSpecs[position];
-  index.units.push({
-    id: unit.id, version: unit.version, title: unit.title, description: unit.description, hash: unit.hash,
-    code_url: `https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/chrome-extension/${spec.file}`,
-    matches: unit.matches, run_at: unit.run_at, world_id: unit.world_id, host_api: unit.host_api,
-    phase: unit.phase, required: unit.required
-  });
-}
+const index = { schema: 'dcf.plugin_index.v1', version: VERSION_NAME, defaults: units.map((unit) => unit.id), units };
 writeJson(path.join(releaseRoot, 'official-index.json'), index);
+writeJson(path.join(extensionRoot, 'config.json'), {
+  schema: 'dcf.chrome.config.v1',
+  version: VERSION_NAME,
+  plugin_index_url: `${RAW_ROOT}/releases/chrome/official-index.json`,
+  trusted_origin: 'https://raw.githubusercontent.com'
+});
 
 const summary = {
-  schema: 'dcf.chrome.build.summary.v1', version: VERSION_NAME, manifest_version: manifest.manifest_version,
-  minimum_chrome_version: manifest.minimum_chrome_version, permissions: manifest.permissions,
-  code_units: units.map((unit) => ({ id: unit.id, version: unit.version, hash: unit.hash, bytes: Buffer.byteLength(unit.code), phase: unit.phase })),
+  schema: 'dcf.chrome.build.summary.v2',
+  version: VERSION_NAME,
+  plugin_index_ref: DEFAULT_REF,
+  manifest_version: manifest.manifest_version,
+  minimum_chrome_version: manifest.minimum_chrome_version,
+  permissions: manifest.permissions,
+  plugins: units.map(({ id, version, hash, phase, world_id, code_url }) => ({ id, version, hash, phase, world_id, code_url })),
   extension_files: []
 };
 function walk(directory, prefix = '') {
@@ -78,8 +101,6 @@ function walk(directory, prefix = '') {
 walk(extensionRoot);
 writeJson(path.join(distRoot, 'verification-summary.json'), summary);
 
-const zipName = `dcf-chrome-extension-${VERSION_NAME}.zip`;
-const zipPath = path.join(distRoot, zipName);
 const fixedTime = new Date('2020-01-01T00:00:00.000Z');
 const zipFiles = [];
 function normalizeTimes(directory, prefix = '') {
@@ -92,9 +113,6 @@ function normalizeTimes(directory, prefix = '') {
   fs.utimesSync(directory, fixedTime, fixedTime);
 }
 normalizeTimes(extensionRoot);
-try {
-  childProcess.execFileSync('zip', ['-X', '-q', zipPath, ...zipFiles], { cwd: distRoot });
-} catch (error) {
-  console.warn('zip command unavailable; extension directory remains installable');
-}
-console.log(JSON.stringify({ ok: true, version: VERSION_NAME, extension_dir: path.relative(root, extensionRoot), zip: fs.existsSync(zipPath) ? path.relative(root, zipPath) : null, code_units: units.length, files: summary.extension_files.length }, null, 2));
+const zipPath = path.join(distRoot, `dcf-chrome-extension-${VERSION_NAME}.zip`);
+childProcess.execFileSync('zip', ['-X', '-q', zipPath, ...zipFiles], { cwd: distRoot });
+console.log(JSON.stringify({ ok: true, version: VERSION_NAME, plugin_index_ref: DEFAULT_REF, extension_dir: path.relative(root, extensionRoot), zip: path.relative(root, zipPath), plugins: units.length, extension_files: summary.extension_files.length }, null, 2));

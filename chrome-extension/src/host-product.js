@@ -1,95 +1,136 @@
 'use strict';
-(function initHostProduct(root) {
+(function initHostPlugins(root) {
   const H = root.DCFHost;
   const C = H.C;
-  const REMOTE_INDEX = 'https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/main/releases/chrome/official-index.json';
   const TRUSTED_REMOTE_ORIGIN = 'https://raw.githubusercontent.com';
+  const AUTO_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+  let configPromise = null;
 
-  H.upsertAmmo = async function upsertAmmo(item, source) {
-    return H.mutate(async (state) => {
-      const normalized = C.normalizeAmmo(item);
-      const previous = state.product.ammo[normalized.id];
-      const record = await C.ammoRecord(normalized, previous);
-      state.product.ammo[normalized.id] = record;
-      C.appendEvidence(state, { type: previous ? 'ammo.updated' : 'ammo.created', item_id: normalized.id, content_hash: record._meta.content_hash, source: source || 'unknown' });
-      return record;
+  H.loadConfig = function loadConfig() {
+    if (!configPromise) configPromise = fetch(chrome.runtime.getURL('config.json')).then((response) => {
+      if (!response.ok) throw new Error(`config HTTP ${response.status}`);
+      return response.json();
     });
+    return configPromise;
   };
-
-  H.ingestAmmoText = async function ingestAmmoText(text, source) {
-    const decoded = C.decodeAmmoArtifacts(text);
-    const results = [];
-    for (const item of decoded.items) results.push((await H.upsertAmmo(item, source)).result);
-    if (decoded.errors.length) await H.mutate(async (state) => C.appendEvidence(state, { type: 'ammo.ingest.errors', count: decoded.errors.length, detail: decoded.errors.join('; ') }));
-    return { imported: results.length, items: results.map((item) => ({ id: item.id, version: item._meta.version, hash: item._meta.content_hash })), errors: decoded.errors };
+  H.fetchPluginIndex = async function fetchPluginIndex() {
+    const config = await H.loadConfig();
+    const url = new URL(String(config.plugin_index_url || ''));
+    if (url.origin !== TRUSTED_REMOTE_ORIGIN) throw new Error(`untrusted plugin index origin ${url.origin}`);
+    const response = await fetch(url.href, { cache: 'no-store' });
+    if (!response.ok) throw new Error(`plugin index HTTP ${response.status}`);
+    const index = await response.json();
+    if (!index || index.schema !== 'dcf.plugin_index.v1' || !Array.isArray(index.units)) throw new Error('invalid plugin index');
+    return { index, url: url.href };
   };
-
-  H.importLegacy = async function importLegacy(payload) {
-    const items = Array.isArray(payload && payload.items) ? payload.items : [];
-    const settings = payload && payload.settings || {};
-    const normalized = items.map(C.normalizeAmmo);
-    const unique = new Map(normalized.map((item) => [item.id, item]));
-    if (unique.size !== normalized.length) throw new Error('legacy migration contains duplicate ammo ids');
-    return H.mutate(async (state) => {
-      let imported = 0;
-      let updated = 0;
-      const conflicts = [];
-      for (const item of unique.values()) {
-        const existing = state.product.ammo[item.id];
-        const incomingHash = await C.sha256Text(C.canonicalJson(item));
-        if (existing && existing._meta && existing._meta.content_hash !== incomingHash) { conflicts.push(item.id); continue; }
-        const record = await C.ammoRecord(item, existing);
-        state.product.ammo[item.id] = record;
-        if (existing) updated += 1; else imported += 1;
+  H.downloadIndexUnits = async function downloadIndexUnits(index) {
+    const units = [];
+    for (const ref of index.units) {
+      const url = new URL(String(ref.code_url || ''));
+      if (url.origin !== TRUSTED_REMOTE_ORIGIN) throw new Error(`untrusted plugin origin ${url.origin}`);
+      const response = await fetch(url.href, { cache: 'no-store' });
+      if (!response.ok) throw new Error(`plugin ${ref.id} HTTP ${response.status}`);
+      const code = await response.text();
+      units.push(await C.verifyUnit({
+        id: ref.id, version: ref.version, title: ref.title, description: ref.description,
+        code, hash: ref.hash, source: { kind: 'github-personal-plugin-library', index_version: index.version, code_url: url.href },
+        matches: ref.matches, run_at: ref.run_at, world_id: ref.world_id, host_api: ref.host_api,
+        phase: ref.phase, required: ref.required, default_enabled: ref.default_enabled
+      }));
+    }
+    return units;
+  };
+  H.checkRemoteUpdates = async function checkRemoteUpdates(reason = 'user') {
+    const checkedAt = C.nowIso();
+    try {
+      const { index, url } = await H.fetchPluginIndex();
+      const units = await H.downloadIndexUnits(index);
+      const state = await H.storageGet();
+      const changed = units.filter((unit) => {
+        const current = state.snapshots.current && state.snapshots.current.entries.find((entry) => entry.id === unit.id);
+        return !current || current.version !== unit.version || current.hash !== unit.hash;
+      });
+      await H.mutate(async (next) => {
+        for (const unit of units) C.storeUnit(next, unit);
+        next.update.plugins = { last_checked_at: checkedAt, last_result: { status: changed.length ? 'downloaded' : 'current', reason, index_url: url, index_version: index.version, changed: changed.map((unit) => C.unitKey(unit.id, unit.version)) } };
+        C.appendEvidence(next, { type: 'plugin.update.checked', reason, changed: changed.map((unit) => C.unitKey(unit.id, unit.version)) });
+      });
+      if (!state.snapshots.current && !state.snapshots.last_known_good) {
+        await H.stageSnapshotFromVersions(Object.fromEntries(units.map((unit) => [unit.id, unit.version])), 'first-install-github-default', { replace: true });
+        return { ok: true, status: 'installed_default', downloaded: units.length, activation: await H.reconcileTarget('first-install-github-default') };
       }
-      if (settings.ammo_fire_mode === 'send' || settings.ammo_fire_mode === 'insert') state.product.settings.ammo_fire_mode = settings.ammo_fire_mode;
-      if (C.isObject(settings.appearance)) state.product.settings.appearance = C.clone(settings.appearance);
-      const result = {
-        schema: 'dcf.legacy.migration.result.v1', at: C.nowIso(), source_count: items.length, unique_source_count: unique.size,
-        imported, updated, conflicts, target_count: Object.keys(state.product.ammo).length,
-        verified_ids: [...unique.keys()].filter((id) => !!state.product.ammo[id]),
-        status: conflicts.length ? 'partial' : items.length === unique.size ? 'success' : 'failed'
+      if (!changed.length) return { ok: true, status: 'current', downloaded: 0 };
+      await H.stageSnapshotFromVersions(Object.fromEntries(changed.map((unit) => [unit.id, unit.version])), 'github-plugin-update');
+      return { ok: true, status: 'candidate', downloaded: changed.length, activation: await H.reconcileTarget('github-plugin-update') };
+    } catch (error) {
+      const message = String(error && error.message || error);
+      await H.mutate(async (state) => { state.update.plugins = { last_checked_at: checkedAt, last_result: { status: 'failed', reason, error: message } }; C.appendEvidence(state, { type: 'plugin.update.failed', reason, detail: message }); });
+      return { ok: false, error: message };
+    }
+  };
+  H.maybeCheckRemoteUpdates = async function maybeCheckRemoteUpdates(reason) {
+    const state = await H.storageGet();
+    const last = Date.parse(state.update.plugins.last_checked_at || 0) || 0;
+    if (Date.now() - last < AUTO_CHECK_INTERVAL_MS) return { ok: true, status: 'throttled' };
+    return H.checkRemoteUpdates(reason || 'automatic');
+  };
+  H.checkBaseUpdate = async function checkBaseUpdate() {
+    const checkedAt = C.nowIso();
+    try {
+      if (typeof chrome.runtime.requestUpdateCheck !== 'function') throw new Error('base_update_check_unavailable');
+      const result = await chrome.runtime.requestUpdateCheck();
+      await H.mutate(async (state) => {
+        state.update.base = { last_checked_at: checkedAt, available_version: result && result.version || null, last_result: C.clone(result || { status: 'unknown' }) };
+        C.appendEvidence(state, { type: 'base.update.checked', result: C.clone(result || {}) });
+      });
+      return { ok: true, result };
+    } catch (error) {
+      const message = String(error && error.message || error);
+      await H.mutate(async (state) => { state.update.base = { ...state.update.base, last_checked_at: checkedAt, last_result: { status: 'failed', error: message } }; });
+      return { ok: false, error: message };
+    }
+  };
+  H.importNextMigration = async function importNextMigration(payload) {
+    if (!payload || payload.schema !== 'dcf.next.dom-export.v1') throw new Error('invalid_next_migration');
+    const items = Array.isArray(payload.items) ? payload.items : [];
+    const unique = new Map();
+    for (const raw of items) {
+      if (!raw || !String(raw.id || '').trim() || !String(raw.body || '').trim()) throw new Error('invalid_next_ammo_item');
+      const item = { id: String(raw.id).trim(), title: String(raw.title || raw.id).trim(), purpose: String(raw.purpose || '').trim(), body: String(raw.body).trim() };
+      const tags = Array.isArray(raw.tags) ? raw.tags.map(String).map((value) => value.trim()).filter(Boolean) : [];
+      if (tags.length) item.tags = tags;
+      unique.set(item.id, item);
+    }
+    return H.mutate(async (state) => {
+      const ammoData = C.isObject(state.plugin_data['dcf.firstparty.ammo']) ? state.plugin_data['dcf.firstparty.ammo'] : {};
+      const currentItems = C.isObject(ammoData.items) ? ammoData.items : {};
+      let added = 0; let updated = 0; let unchanged = 0;
+      for (const [id, item] of unique) {
+        const existing = currentItems[id];
+        if (!existing) { currentItems[id] = item; added += 1; }
+        else if (C.canonicalJson(existing) === C.canonicalJson(item)) unchanged += 1;
+        else { currentItems[id] = item; updated += 1; }
+      }
+      state.plugin_data['dcf.firstparty.ammo'] = {
+        ...ammoData,
+        items: currentItems,
+        settings: { ...(C.isObject(ammoData.settings) ? ammoData.settings : {}), fire_mode: payload.settings && payload.settings.fire_mode === 'send' ? 'send' : 'insert' }
       };
-      state.product.migration = { status: result.status, last_result: result };
-      C.appendEvidence(state, { type: 'legacy.migration', result });
+      if (C.isObject(payload.appearance)) state.plugin_data['dcf.firstparty.appearance'] = { ...(C.isObject(state.plugin_data['dcf.firstparty.appearance']) ? state.plugin_data['dcf.firstparty.appearance'] : {}), ...C.clone(payload.appearance) };
+      const result = { status: 'success', at: C.nowIso(), source_count: items.length, added, updated, unchanged, target_count: Object.keys(currentItems).length };
+      state.migration.next = { status: 'success', last_result: result };
+      C.appendEvidence(state, { type: 'next.migration', result });
       return result;
     });
   };
-
-  H.checkRemoteUpdates = async function checkRemoteUpdates() {
-    const checkedAt = C.nowIso();
-    try {
-      const indexUrl = new URL(REMOTE_INDEX);
-      if (indexUrl.origin !== TRUSTED_REMOTE_ORIGIN) throw new Error('untrusted official index origin');
-      const response = await fetch(indexUrl.href, { cache: 'no-store' });
-      if (!response.ok) throw new Error(`official index HTTP ${response.status}`);
-      const index = await response.json();
-      if (!index || index.schema !== 'dcf.code_unit_index.v1' || !Array.isArray(index.units)) throw new Error('invalid official index');
-      const downloaded = [];
-      for (const ref of index.units) {
-        const url = new URL(String(ref.code_url || ''));
-        if (url.origin !== TRUSTED_REMOTE_ORIGIN) throw new Error(`untrusted unit origin ${url.origin}`);
-        const unitResponse = await fetch(url.href, { cache: 'no-store' });
-        if (!unitResponse.ok) throw new Error(`unit ${ref.id} HTTP ${unitResponse.status}`);
-        const code = await unitResponse.text();
-        const unit = await C.verifyUnit({
-          schema: 'dcf.code_unit.v1', id: ref.id, version: ref.version, title: ref.title, description: ref.description,
-          code, hash: ref.hash, source: { kind: 'official-github', release: index.version, code_url: url.href },
-          matches: ref.matches, run_at: ref.run_at, world: 'USER_SCRIPT', world_id: ref.world_id,
-          host_api: ref.host_api, phase: ref.phase, required: ref.required
-        });
-        downloaded.push(unit);
-      }
-      await H.mutate(async (state) => {
-        for (const unit of downloaded) C.storeUnit(state, unit);
-        state.update = { last_checked_at: checkedAt, last_result: { status: 'downloaded', units: downloaded.map((unit) => C.unitKey(unit.id, unit.version)) } };
-      });
-      await H.stageSnapshotFromVersions(Object.fromEntries(downloaded.map((unit) => [unit.id, unit.version])), 'official-remote-update');
-      return { ok: true, downloaded: downloaded.length, activation: await H.reconcileTarget('official-remote-update') };
-    } catch (error) {
-      const message = String(error && error.message || error);
-      await H.mutate(async (state) => { state.update = { last_checked_at: checkedAt, last_result: { status: 'failed', error: message } }; });
-      return { ok: false, error: message };
-    }
+  H.statusPayload = async function statusPayload() {
+    const state = await H.storageGet();
+    let scripts = []; let available = true;
+    try { scripts = await H.actualDcfScripts(); } catch (_) { available = false; }
+    return {
+      ok: true, host_version: C.HOST_VERSION, user_scripts_available: available, state_revision: state.revision,
+      snapshots: C.clone(state.snapshots), code_units: Object.fromEntries(Object.entries(state.code_units).map(([id, entry]) => [id, Object.keys(entry.versions || {}).sort()])),
+      actual_scripts: scripts.map((item) => item.id), migration: C.clone(state.migration), update: C.clone(state.update), plugin_ids: Object.keys(state.plugin_data).sort()
+    };
   };
 })(self);

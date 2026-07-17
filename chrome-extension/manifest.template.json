@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
-  "name": "DCF Chrome",
-  "version": "1.0.0.1",
-  "version_name": "1.0.0-rc.1",
-  "description": "DCF 的 Chrome 原生轻宿主与低摩擦语言弹药闭环。",
   "minimum_chrome_version": "138",
+  "name": "DCF Chrome",
+  "description": "DCF 的 Chrome 纯底座与个人独立功能插件。",
+  "version": "1.0.0.2",
+  "version_name": "1.0.0-rc.2",
   "permissions": ["userScripts", "storage", "tabs", "alarms", "clipboardWrite"],
   "host_permissions": [
     "https://chatgpt.com/*",
@@ -12,7 +12,6 @@
     "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/*"
   ],
   "background": { "service_worker": "src/background.js" },
-  "action": { "default_title": "打开 DCF 恢复与管理" },
   "content_scripts": [
     {
       "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
@@ -20,5 +19,6 @@
       "run_at": "document_idle",
       "world": "ISOLATED"
     }
-  ]
+  ],
+  "action": { "default_title": "打开 DCF 恢复与管理" }
 }

@@ -12,77 +12,56 @@ Use this file when changing, diagnosing, releasing or migrating DCF.
 6. the relevant current ADR
 7. source, tests and generated verification summary
 
-The current Chrome candidate supersedes Tampermonkey as the target architecture. Root userscript files remain a fallback and historical evidence, not a source of current architecture truth.
-
 ## Value discipline
 
-Language ammunition owns product value. Before changing engineering structure, verify that the change preserves or improves automatic loading, same-ID updating, contextual firing, visibility, migration, privacy and recovery without transferring maintenance work to the user.
+DCF exists to reduce the user's cognitive and operational load. Internally independent plugins must still appear as one complete product. A change that adds repeated installation, manual copying, dependency judgment, version selection, staged acceptance or routine log reading is a regression.
 
-A simpler implementation that requires manual copying, multiple installations, repeated confirmations or staged user testing is a regression.
-
-## Current architecture invariants
+## Current invariants
 
 - one Chrome extension is the only user installation;
-- the static survival core is independent of dynamic code units;
-- code-unit versions are immutable and SHA-256 verified;
-- installed code and active startup snapshots are separate facts;
-- candidate/current/last-known-good are explicit exact snapshots;
-- every lifecycle change uses the code-unit + snapshot path;
-- candidate registration never overwrites LKG before complete startup evidence;
-- failure restores LKG and retains minimal evidence;
-- dynamic units use `USER_SCRIPT` world and a narrow message API;
-- the survival core does not learn ammo or ChatGPT business semantics;
-- product data stays in local extension storage unless the user explicitly exports;
-- old GM state is read only through a bounded one-time migration bridge, never guessed.
+- the static base contains no normal product feature;
+- every feature is an independently stored self-contained plugin;
+- every plugin version is immutable and SHA-256 verified;
+- every plugin has its own USER_SCRIPT world and registration;
+- candidate/current/LKG are exact combinations;
+- candidates commit only after complete startup evidence;
+- failure restores LKG and leaves minimal evidence;
+- plugin data is generic and namespaced by plugin ID;
+- static recovery never depends on Shell or plugin manager;
+- plugin updates pull from the fixed GitHub personal index;
+- base updates are built from GitHub and distributed through a non-public Chrome Web Store workflow;
+- data continuity covers DCF Next and Chrome rc.1 only.
 
 ## Change workflow
 
-1. Read enough of the repository to understand the current fact model.
-2. Decide whether the change belongs to the static survival core, a code unit, product data or build tooling.
-3. Prefer changing the fact model over adding lifecycle-specific branches.
+1. Identify whether the change belongs to the static base, one plugin, data migration or build/release tooling.
+2. Keep ordinary feature changes inside one plugin directory.
+3. Do not add a platform layer for a hypothetical future need.
 4. Prepare the complete source change locally.
-5. Run `npm run verify`.
-6. Produce one atomic business commit on a branch.
+5. Run `npm run verify:chrome`, then repository `npm run verify` before publication.
+6. Produce one atomic business commit.
 7. Read one structured CI result and artifact summary.
-8. Only create a second complete commit when CI found a real defect.
-9. Update the ADR, status index, current architecture, current state and this skill when architecture changes.
+8. Create a second complete commit only for a real CI defect.
+9. Update ADR/current state/architecture when an invariant changes.
 
-Do not commit files one by one. Do not turn CI into a source-modifying agent. Do not add a platform layer merely to satisfy documentation shape.
+## Plugin rules
 
-## Code-unit rules
+A plugin is one self-contained built JavaScript file. It may use a source build tool, but runtime does not resolve npm packages. Plugins must own their primary data and UI, clean up the previous instance on replacement, and must not import another plugin's source.
 
-A release unit must be self-contained built JavaScript. Browser runtime does not resolve npm dependencies or execute TypeScript/build scripts.
+Shell is a normal plugin. It may expose a thin DOM mounting convention, but must not become a business SDK or a condition for static recovery.
 
-Every unit manifest includes ID, version, code, hash, source, matches, run time, world, world ID, host API, phase and required state. The host verifies hash before storage and again through generated build evidence.
+## Update rules
 
-Remote official code is accepted only from the fixed trusted origin and only when index identity, unit identity and SHA-256 all agree. It then enters candidate activation exactly like bundled code.
+Remote plugin code is accepted only from the fixed raw GitHub origin when index identity, plugin identity, version and SHA-256 agree. It enters the normal candidate path.
 
-## Recovery rules
-
-The static recovery page must always be able to:
-
-- show saved code versions;
-- show candidate/current/LKG;
-- query actual Chrome registrations;
-- display minimal deviations and recent evidence;
-- restore LKG;
-- disable a code unit through a new candidate;
-- copy one complete privacy-bounded diagnostic package.
-
-If recovery requires the page code unit or plugin manager to work, the architecture is broken.
-
-## Language-ammunition source truth
-
-The ammo unit must observe only new/current assistant replies plus a small startup compensation window. Work per reply must not grow with conversation length.
-
-Ammo writes are keyed by stable ID. A revised artifact replaces the same logical item and increments its visible version. Extraction and update prompts return complete `DCF_AMMO`; firing adds the contextual invocation marker while copying exports raw body.
+The Chrome base is not self-replaced from GitHub. GitHub Actions produces the verified ZIP and, once one-time Chrome Web Store credentials are configured, submits it through the official API. Do not require recurring local reloads.
 
 ## Validation
 
-`npm run verify` must cover the Chrome candidate and the retained old formal fallback. The Chrome suite must prove manifest validity, hashes, snapshots, registration reconciliation, extension-update restoration, failed-candidate rollback, migration, ammo semantics, recovery availability and deterministic packaging.
+`npm run verify:chrome` must cover pure-base boundaries, plugin independence, hashes, unique worlds, snapshots, GitHub install/update, startup evidence, rollback, extension-update reconstruction, DCF Next/rc.1 continuity, dark static pages, recovery and deterministic packaging.
 
-Do not report a real browser pass unless a real Chrome instance loaded the extension and produced direct evidence. The one user acceptance remains the final truth for live ChatGPT compatibility.
+Never report a real browser pass or a Chrome Web Store publication without direct evidence.
 
-## Mandatory stop conditions
+## Stop conditions
 
-Stop implementation and present root options when independent updates still require reinstalling the whole extension, multiple user installations are needed, a local runtime becomes necessary, migration requires repeated manual transfer, language-ammo automation must be reduced, recovery depends on a dynamic unit, special lifecycle branches multiply, or GitHub iteration expands into many serial commits.
+Stop and present root options if independent plugin updates require rebuilding the extension, normal base updates require repeated local loading, recovery depends on a dynamic plugin, DCF Next data cannot be preserved, language-ammo automation is reduced, or a proposed mechanism adds more user friction than it removes.

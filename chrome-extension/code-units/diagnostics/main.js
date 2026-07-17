@@ -1,16 +1,8 @@
-(function () {
-  'use strict';
-  const UNIT_ID = 'dcf.firstparty.diagnostics';
-  const UNIT_VERSION = '1.0.0-rc.1';
-  if (globalThis.__DCF_FIRSTPARTY_DIAGNOSTICS__) {
-    chrome.runtime.sendMessage({ type: 'unit.started', unit_id: UNIT_ID, version: UNIT_VERSION }).catch(() => undefined);
-    return;
-  }
-  globalThis.__DCF_FIRSTPARTY_DIAGNOSTICS__ = { version: UNIT_VERSION, started_at: new Date().toISOString() };
-  try {
-    if (!document.documentElement) throw new Error('document root unavailable');
-    chrome.runtime.sendMessage({ type: 'unit.started', unit_id: UNIT_ID, version: UNIT_VERSION }).catch(() => undefined);
-  } catch (error) {
-    chrome.runtime.sendMessage({ type: 'unit.failed', unit_id: UNIT_ID, version: UNIT_VERSION, error: String(error && error.message || error) }).catch(() => undefined);
-  }
+(function(){'use strict';
+const UNIT_ID='dcf.firstparty.diagnostics',UNIT_VERSION='1.0.0-rc.2',PANEL_ID='diagnostics',HOST_ID='dcf-panel-diagnostics',GLOBAL='__DCF_FIRSTPARTY_DIAGNOSTICS__';const send=m=>chrome.runtime.sendMessage(m).then(r=>{if(!r||r.ok===false)throw new Error(r&&r.error||'DCF host rejected request');return r;});const prev=globalThis[GLOBAL];if(prev?.destroy)prev.destroy();let panel,report=null,notice='';
+function style(){return`:host{display:block;font:13px/1.5 system-ui;color:inherit}.card{border:1px solid #ddd;border-radius:10px;padding:10px;background:#fff;display:grid;gap:9px}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.good{color:#15803d}.warn{color:#b45309}button{font:inherit;color:inherit;border:1px solid #bbb;background:#fff;border-radius:8px;padding:6px 9px}pre{white-space:pre-wrap;max-height:280px;overflow:auto;font:11px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;background:#f4f4f4;padding:8px;border-radius:8px}@media(prefers-color-scheme:dark){.card{background:#222;border-color:#444}button{background:#292929;color:#f3f3f3;border-color:#555}pre{background:#171717}.good{color:#5ee28a}.warn{color:#f6b94c}}`;}
+async function refresh(){report=(await send({type:'host.diagnostics'})).report;render();}
+function render(){if(!report)return;const ok=report.user_scripts_available&&report.deviations.length===0,r=panel.shadowRoot;r.querySelector('.content').innerHTML=`<section class="card"><b class="${ok?'good':'warn'}">${ok?'DCF 正常':`发现 ${report.deviations.length} 项偏差`}</b><div class="row"><button data-action="copy">复制诊断包</button><button data-action="recovery">打开最低恢复面</button><button data-action="refresh">刷新</button></div><div>${notice}</div><pre>${JSON.stringify({host_version:report.host_version,current:report.current_snapshot?.id||null,candidate:report.candidate_snapshot?.id||null,registered:report.actual_registered_scripts.length,deviations:report.deviations,update:report.update,migration:report.migration},null,2)}</pre></section>`;r.querySelector('[data-action="copy"]').onclick=async()=>{await navigator.clipboard.writeText(JSON.stringify(report,null,2));notice='诊断包已复制，可直接交给 AI';render();};r.querySelector('[data-action="recovery"]').onclick=()=>send({type:'host.open_recovery'});r.querySelector('[data-action="refresh"]').onclick=refresh;}
+function create(){panel=document.createElement('section');panel.id=HOST_ID;panel.dataset.dcfPanelRoot='true';panel.dataset.dcfPanelId=PANEL_ID;panel.dataset.dcfPanelTitle='诊断';panel.style.display='none';const r=panel.attachShadow({mode:'open'});r.innerHTML=`<style>${style()}</style><div class="content"></div>`;document.documentElement.append(panel);document.dispatchEvent(new CustomEvent('dcf:panel-ready',{detail:PANEL_ID}));}
+function destroy(){panel?.remove();}globalThis[GLOBAL]={version:UNIT_VERSION,destroy};try{document.getElementById(HOST_ID)?.remove();create();refresh().then(()=>send({type:'unit.started',unit_id:UNIT_ID,version:UNIT_VERSION})).catch(e=>send({type:'unit.failed',unit_id:UNIT_ID,version:UNIT_VERSION,error:String(e?.message||e)}));}catch(e){destroy();send({type:'unit.failed',unit_id:UNIT_ID,version:UNIT_VERSION,error:String(e?.message||e)}).catch(()=>{});}
 })();

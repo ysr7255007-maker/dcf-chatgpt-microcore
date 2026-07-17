@@ -12,15 +12,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Verify legacy fallback and Chrome candidate
+      - name: Verify Chrome candidate and retained repository baseline
         run: npm run verify
       - name: Candidate summary
         run: cat dist/verification-summary.json
       - name: Upload unique candidate
         uses: actions/upload-artifact@v4
         with:
-          name: dcf-chrome-extension-1.0.0-rc.1
+          name: dcf-chrome-extension-1.0.0-rc.2
           path: |
-            dist/dcf-chrome-extension-1.0.0-rc.1.zip
+            dist/dcf-chrome-extension-1.0.0-rc.2.zip
             dist/verification-summary.json
           if-no-files-found: error

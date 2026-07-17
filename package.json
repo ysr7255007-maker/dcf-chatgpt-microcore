@@ -7,11 +7,12 @@
     "build:chrome": "node scripts/build-chrome-extension.js",
     "build:legacy": "node scripts/build-userscript.js",
     "test": "npm run test:chrome",
-    "test:chrome": "node tests/chrome-host.unit.test.js && node tests/chrome-build.integration.test.js && node tests/chrome-lifecycle.integration.test.js && node tests/chrome-build-determinism.test.js",
+    "test:chrome": "node tests/chrome-host.unit.test.js && node tests/chrome-build.integration.test.js && node tests/chrome-plugin-boundary.test.js && node tests/chrome-lifecycle.integration.test.js && node tests/chrome-build-determinism.test.js",
     "test:legacy": "node tests/dcf-ammo-protocol.unit.test.js && node tests/dcf-module-supersession.unit.test.js && node tests/dcf-supersession-health.unit.test.js && node tests/dcf-conversation-performance.unit.test.js && node tests/dcf-performance-attribution.unit.test.js && node tests/dcf-conversation-turn-attribution.unit.test.js && node tests/dcf-stateful-command-feedback.unit.test.js && node tests/dcf-bootstrap-package-sync.unit.test.js && node tests/dcf-conversation-environment.unit.test.js && node tests/dcf-capability-reconciliation.unit.test.js && node tests/dcf-declarative-ui-package.unit.test.js && node tests/dcf-core-architecture.unit.test.js && node tests/dcf-artifact-transaction.unit.test.js && node tests/dcf-command-runtime.unit.test.js && node tests/dcf-migration.unit.test.js && node tests/dcf-health-report.unit.test.js && node tests/dcf-module-visibility.unit.test.js && node tests/dcf-package-management-ui.unit.test.js && node tests/dcf-host-bounded-intake.unit.test.js && node tests/dcf-catalog.unit.test.js && node tests/dcf-viewport-fence.unit.test.js && node tests/dcf-release.integration.test.js && node tests/dcf-build-determinism.unit.test.js",
     "verify": "npm run verify:chrome && npm run verify:legacy",
-    "verify:chrome": "npm run build:chrome && npm run test:chrome && node --check dist/dcf-chrome-extension/src/background.js && node scripts/validate-json.js dist/dcf-chrome-extension/official/code-units.json",
-    "verify:legacy": "npm run build:legacy && npm run test:legacy && node --check dcf-chatgpt-microcore.user.js"
+    "verify:chrome": "npm run build:chrome && npm run test:chrome && node --check dist/dcf-chrome-extension/src/background.js && node scripts/validate-json.js dist/dcf-chrome-extension/config.json releases/chrome/official-index.json dist/verification-summary.json",
+    "verify:legacy": "npm run build:legacy && npm run test:legacy && node --check dcf-chatgpt-microcore.user.js",
+    "publish:chrome": "node scripts/publish-chrome-web-store.js"
   },
   "devDependencies": {}
 }

@@ -8,22 +8,23 @@
     if (!chrome.userScripts || typeof chrome.userScripts.getScripts !== 'function') throw new Error('USER_SCRIPTS_PERMISSION_REQUIRED');
     return chrome.userScripts;
   };
-
-  H.configureWorld = async function configureWorld() {
+  H.configureWorlds = async function configureWorlds(units) {
     const api = H.userScriptsApi();
-    if (typeof api.configureWorld === 'function') await api.configureWorld({ worldId: C.WORLD_ID, messaging: true, csp: "script-src 'self'; object-src 'none'" });
+    if (typeof api.configureWorld !== 'function') return;
+    for (const worldId of [...new Set((units || []).map((unit) => unit.world_id))]) {
+      await api.configureWorld({ worldId, messaging: true, csp: "script-src 'self'; object-src 'none'" });
+    }
   };
-
   H.actualDcfScripts = async function actualDcfScripts() {
     const scripts = await H.userScriptsApi().getScripts();
     return scripts.filter((item) => String(item.id || '').startsWith(C.SCRIPT_PREFIX));
   };
-
   H.reconcileRegistrations = async function reconcileRegistrations(state, snapshot) {
     const api = H.userScriptsApi();
-    await H.configureWorld();
     const valid = C.validateSnapshot(state, snapshot);
-    const desired = valid.entries.filter((entry) => entry.enabled !== false).map((ref) => C.registrationFor(C.getUnit(state, ref.id, ref.version)));
+    const units = valid.entries.filter((entry) => entry.enabled !== false).map((ref) => C.getUnit(state, ref.id, ref.version));
+    await H.configureWorlds(units);
+    const desired = units.map(C.registrationFor);
     const actual = await H.actualDcfScripts();
     const actualById = new Map(actual.map((item) => [item.id, item]));
     const desiredById = new Map(desired.map((item) => [item.id, item]));
@@ -43,7 +44,6 @@
   };
 
   H.chatGptTabs = function chatGptTabs() { return chrome.tabs.query({ url: ['https://chatgpt.com/*', 'https://chat.openai.com/*'] }); };
-
   H.executeCandidateInOpenTabs = async function executeCandidateInOpenTabs() {
     const state = await H.storageGet();
     const snapshot = state.snapshots.candidate;
@@ -64,19 +64,15 @@
     }
     return { executed, tabs: tabs.length };
   };
-
   H.armCandidateEvidence = async function armCandidateEvidence() {
-    const state = await H.storageGet();
-    if (!state.snapshots.candidate) return;
+    if (!(await H.storageGet()).snapshots.candidate) return;
     await chrome.alarms.create('dcf-candidate-timeout', { delayInMinutes: CANDIDATE_TIMEOUT_MINUTES });
     await H.executeCandidateInOpenTabs();
   };
-
   H.candidateStartedSet = function candidateStartedSet(state) {
     const candidateId = state.snapshots.candidate && state.snapshots.candidate.id;
     return new Set((state.evidence || []).filter((event) => event.type === 'unit.started' && event.snapshot_id === candidateId).map((event) => event.unit_id));
   };
-
   H.maybeCommitCandidate = async function maybeCommitCandidate() {
     return H.mutate(async (state) => {
       const candidate = state.snapshots.candidate;
@@ -94,7 +90,6 @@
       return { committed: true, snapshot_id: candidate.id };
     });
   };
-
   H.recordUnitStarted = async function recordUnitStarted(message, sender) {
     await H.mutate(async (state) => {
       const current = state.snapshots.candidate || state.snapshots.current;
@@ -104,7 +99,6 @@
     });
     return H.maybeCommitCandidate();
   };
-
   H.rollbackToLastKnownGood = async function rollbackToLastKnownGood(reason) {
     const state = await H.storageGet();
     const snapshot = state.snapshots.last_known_good;
@@ -118,7 +112,6 @@
     await H.mutate(async (next) => { next.snapshots.current = C.clone(snapshot); next.snapshots.candidate = null; C.appendEvidence(next, { type: 'rollback.completed', reason, snapshot_id: snapshot.id }); });
     return { ok: true, result };
   };
-
   H.reconcileTarget = async function reconcileTarget(reason) {
     const state = await H.storageGet();
     const target = state.snapshots.candidate || state.snapshots.current || state.snapshots.last_known_good;
@@ -142,27 +135,37 @@
       return { ok: false, status: message === 'USER_SCRIPTS_PERMISSION_REQUIRED' ? 'permission_required' : 'failed', error: message };
     }
   };
-
-  H.stageSnapshotFromVersions = async function stageSnapshotFromVersions(versions, reason) {
+  H.stageSnapshotFromVersions = async function stageSnapshotFromVersions(versions, reason, options = {}) {
     return H.mutate(async (state) => {
-      const base = state.snapshots.current || state.snapshots.last_known_good || { schema: 'dcf.startup.snapshot.v1', entries: [] };
+      const base = options.replace === true ? { schema: 'dcf.startup.snapshot.v2', entries: [] } : (state.snapshots.current || state.snapshots.last_known_good || { schema: 'dcf.startup.snapshot.v2', entries: [] });
       const candidate = C.clone(base);
-      const units = [];
       for (const [id, version] of Object.entries(versions || {})) {
         const unit = C.getUnit(state, id, version);
         if (!unit) throw new Error(`missing ${C.unitKey(id, version)}`);
-        units.push(unit);
         const ref = candidate.entries.find((entry) => entry.id === id);
-        if (ref) Object.assign(ref, { version: unit.version, hash: unit.hash, enabled: true, phase: unit.phase });
-        else candidate.entries.push({ id: unit.id, version: unit.version, hash: unit.hash, enabled: true, phase: unit.phase });
+        const nextRef = { id, version, hash: unit.hash, enabled: unit.default_enabled !== false, phase: unit.phase };
+        if (ref) Object.assign(ref, nextRef); else candidate.entries.push(nextRef);
       }
       candidate.id = `snapshot-${Date.now().toString(36)}`;
       candidate.created_at = C.nowIso();
       candidate.reason = reason;
-      candidate.entries.sort((a, b) => a.phase - b.phase || a.id.localeCompare(b.id));
       state.snapshots.candidate = C.validateSnapshot(state, candidate);
-      C.appendEvidence(state, { type: 'candidate.staged', snapshot_id: candidate.id, reason, units: units.map((unit) => C.unitKey(unit.id, unit.version)) });
-      return candidate;
+      C.appendEvidence(state, { type: 'candidate.staged', snapshot_id: candidate.id, reason, units: Object.entries(versions).map(([id, version]) => C.unitKey(id, version)) });
+      return C.clone(candidate);
     });
+  };
+  H.setUnitEnabled = async function setUnitEnabled(id, enabled) {
+    const state = await H.storageGet();
+    const base = state.snapshots.current || state.snapshots.last_known_good;
+    if (!base) throw new Error('no_snapshot_to_edit');
+    const candidate = C.clone(base);
+    const ref = candidate.entries.find((entry) => entry.id === id);
+    if (!ref) throw new Error(`unit_not_installed:${id}`);
+    ref.enabled = enabled !== false;
+    candidate.id = `snapshot-${Date.now().toString(36)}`;
+    candidate.created_at = C.nowIso();
+    candidate.reason = `${ref.enabled ? 'enable' : 'disable'}-unit:${id}`;
+    await H.mutate(async (next) => { next.snapshots.candidate = C.validateSnapshot(next, candidate); C.appendEvidence(next, { type: 'candidate.staged', reason: candidate.reason, snapshot_id: candidate.id }); });
+    return H.reconcileTarget(candidate.reason);
   };
 })(self);
