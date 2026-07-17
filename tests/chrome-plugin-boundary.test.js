@@ -58,12 +58,45 @@ assert(!ammo.includes('overflow-x:auto'));
 assert(!ammo.includes('flex-wrap:nowrap'));
 assert(!ammo.includes('data-action="mode"'));
 
+const localAgent = fs.readFileSync(path.join(root, 'chrome-extension/code-units/local-agent/main.js'), 'utf8');
+assert(localAgent.includes("const UNIT_VERSION = '1.0.0-rc.2-local-agent.1'"));
+assert(localAgent.includes("fetch(`${base}${path}`"));
+assert(localAgent.includes("mode: 'cors'"));
+assert(localAgent.includes("credentials: 'omit'"));
+assert(localAgent.includes("'/global/health'"));
+assert(localAgent.includes("'/session'"));
+assert(localAgent.includes('/prompt_async'));
+assert(localAgent.includes('/permission/'));
+assert(localAgent.includes('/question/'));
+assert(localAgent.includes('/diff'));
+assert(localAgent.includes('/abort'));
+assert(localAgent.includes('memoryPassword'));
+assert(localAgent.includes('--cors https://chatgpt.com'));
+assert(localAgent.includes('--cors https://chat.openai.com'));
+assert(localAgent.includes('纯插件直连，不经过 DCF 底座'));
+assert(!localAgent.includes("type: 'local_agent."));
+assert(!localAgent.includes('local_agent.host_permission'));
+assert(!localAgent.includes('chrome.permissions'));
+assert(!localAgent.includes('chrome.storage.session'));
+assert(!localAgent.includes("host_api: '3'"));
+assert(localAgent.includes("type: 'plugin.data.get'"));
+assert(localAgent.includes("type: 'plugin.data.set'"));
+
+const manifest = fs.readFileSync(path.join(root, 'chrome-extension/manifest.template.json'), 'utf8');
+const background = fs.readFileSync(path.join(root, 'chrome-extension/src/background.js'), 'utf8');
+const hostMain = fs.readFileSync(path.join(root, 'chrome-extension/src/host-main.js'), 'utf8');
+assert(!manifest.includes('localhost'));
+assert(!manifest.includes('127.0.0.1'));
+assert(!background.includes('host-opencode'));
+assert(!hostMain.includes('local_agent.'));
+
 const versions = Object.fromEntries(index.units.map((unit) => [unit.id, unit.version]));
 assert.strictEqual(versions['dcf.firstparty.shell'], '1.0.0-rc.2-shell.4');
 assert.strictEqual(versions['dcf.firstparty.ammo'], '1.0.0-rc.2-ammo.2');
 assert.strictEqual(versions['dcf.firstparty.appearance'], '1.0.0-rc.2-appearance.1');
+assert.strictEqual(versions['dcf.firstparty.local-agent'], '1.0.0-rc.2-local-agent.1');
 for (const [id, version] of Object.entries(versions)) {
-  if (!['dcf.firstparty.shell', 'dcf.firstparty.ammo', 'dcf.firstparty.appearance'].includes(id)) {
+  if (!['dcf.firstparty.shell', 'dcf.firstparty.ammo', 'dcf.firstparty.appearance', 'dcf.firstparty.local-agent'].includes(id)) {
     assert.strictEqual(version, '1.0.0-rc.2');
   }
 }
@@ -83,5 +116,7 @@ console.log(JSON.stringify({
   ammo_direct_fire: true,
   ammo_cursor_insert: true,
   ammo_340px_grid_actions: true,
+  local_agent_direct_opencode_client: true,
+  local_agent_base_independence: true,
   per_plugin_versions: true
 }, null, 2));
