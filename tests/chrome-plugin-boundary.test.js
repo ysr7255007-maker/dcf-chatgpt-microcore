@@ -18,6 +18,12 @@ for (const ref of index.units) {
 const shell = fs.readFileSync(path.join(root, 'chrome-extension/code-units/shell/main.js'), 'utf8');
 assert(shell.includes('data-dcf-panel-root'));
 assert(!shell.includes('DCF_AMMO'));
+assert(shell.includes("style.setProperty('display',visible?'':'none','important')") || shell.includes("style.setProperty('display', visible ? '' : 'none', 'important')"));
+assert(shell.includes('document.documentElement.append(panelHost)'));
+assert(!shell.includes('record.host.hidden = panelId !== id'));
+const versions = Object.fromEntries(index.units.map((unit) => [unit.id, unit.version]));
+assert.strictEqual(versions['dcf.firstparty.shell'], '1.0.0-rc.2-shell.1');
+for (const [id, version] of Object.entries(versions)) if (id !== 'dcf.firstparty.shell') assert.strictEqual(version, '1.0.0-rc.2');
 const ammo = fs.readFileSync(path.join(root, 'chrome-extension/code-units/ammo/main.js'), 'utf8');
 assert(ammo.includes('language-ammo-library/data/language-ammo/library.json'));
 assert(ammo.includes("slice(-3)"));
@@ -25,4 +31,4 @@ const performance = fs.readFileSync(path.join(root, 'chrome-extension/code-units
 assert(performance.includes('contentVisibility'));
 const attribution = fs.readFileSync(path.join(root, 'chrome-extension/code-units/attribution/main.js'), 'utf8');
 assert(attribution.includes('PerformanceObserver'));
-console.log(JSON.stringify({ ok: true, self_contained_plugins: index.units.length, cleanup_boundary: true, github_ammo_library: true, next_features_present: true }, null, 2));
+console.log(JSON.stringify({ ok: true, self_contained_plugins: index.units.length, cleanup_boundary: true, shell_tab_visibility: true, shell_hot_update_preserves_panels: true, per_plugin_versions: true, github_ammo_library: true, next_features_present: true }, null, 2));
