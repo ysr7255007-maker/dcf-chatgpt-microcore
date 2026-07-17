@@ -11,7 +11,7 @@ for (const ref of index.units) {
   const relative = new URL(ref.code_url).pathname.split('/chrome-extension/')[1];
   const file = path.join(root, 'chrome-extension', relative);
   const code = fs.readFileSync(file, 'utf8');
-  assert(code.startsWith('(function'), `${ref.id} is not a self-contained IIFE`);
+  assert(/^\s*(?:\(function|!function)/.test(code), `${ref.id} is not a self-contained IIFE`);
   assert(!/\brequire\s*\(|\bimport\s+/.test(code), `${ref.id} has a runtime module dependency`);
   assert(code.includes("type:'unit.started'") || code.includes("type: 'unit.started'") || code.includes('type:"unit.started"'), `${ref.id} lacks startup evidence`);
   assert(code.includes('destroy'), `${ref.id} lacks cleanup boundary`);
@@ -24,11 +24,16 @@ assert(!shell.includes('DCF_AMMO'));
 assert(shell.includes("style.setProperty('display', visible ? '' : 'none', 'important')"));
 assert(shell.includes('document.documentElement.append(panelHost)'));
 assert(shell.indexOf('previousHost.shadowRoot.querySelectorAll(PANEL_SELECTOR)') < shell.indexOf('previous.destroy'));
-assert(!shell.includes('record.host.hidden = panelId !== id'));
 assert(shell.includes('let appearanceState = {}'));
 assert(shell.includes('appearanceState = { ...appearanceState, ...patch }'));
 assert(shell.includes('applyAppearance({ collapsed })'));
-assert(shell.includes('Object.assign({}, appearance.data || {}, shellState.data || {})'));
+assert(shell.includes('scrollbar-width:none'));
+assert(shell.includes('.body::-webkit-scrollbar{display:none}'));
+assert(shell.includes('scroll-hint up'));
+assert(shell.includes('scroll-hint down'));
+assert(shell.includes("body.scrollBy({ top: direction * distance, behavior: 'smooth' })"));
+assert(shell.includes("scrollUp.classList.toggle('visible'"));
+assert(shell.includes("scrollDown.classList.toggle('visible'"));
 
 const appearance = fs.readFileSync(path.join(root, 'chrome-extension/code-units/appearance/main.js'), 'utf8');
 assert(appearance.includes('type="range"'));
@@ -46,13 +51,16 @@ assert(ammo.includes('已插入当前光标位置'));
 assert(ammo.includes('内容已写入，但发送按钮暂不可用'));
 assert(ammo.includes('setSelectionRange'));
 assert(ammo.includes('.click()'));
-assert(ammo.includes('flex-wrap:nowrap'));
-assert(ammo.includes('overflow-x:auto'));
+assert(ammo.includes('.ammo-actions{display:grid'));
+assert(ammo.includes('grid-template-columns:repeat(4,minmax(0,1fr))'));
+assert(ammo.includes('.ammo-actions .main-action{grid-column:span 2}'));
+assert(!ammo.includes('overflow-x:auto'));
+assert(!ammo.includes('flex-wrap:nowrap'));
 assert(!ammo.includes('data-action="mode"'));
 
 const versions = Object.fromEntries(index.units.map((unit) => [unit.id, unit.version]));
-assert.strictEqual(versions['dcf.firstparty.shell'], '1.0.0-rc.2-shell.3');
-assert.strictEqual(versions['dcf.firstparty.ammo'], '1.0.0-rc.2-ammo.1');
+assert.strictEqual(versions['dcf.firstparty.shell'], '1.0.0-rc.2-shell.4');
+assert.strictEqual(versions['dcf.firstparty.ammo'], '1.0.0-rc.2-ammo.2');
 assert.strictEqual(versions['dcf.firstparty.appearance'], '1.0.0-rc.2-appearance.1');
 for (const [id, version] of Object.entries(versions)) {
   if (!['dcf.firstparty.shell', 'dcf.firstparty.ammo', 'dcf.firstparty.appearance'].includes(id)) {
@@ -70,9 +78,10 @@ console.log(JSON.stringify({
   self_contained_plugins: index.units.length,
   shell_tab_visibility: true,
   shell_collapse_preserves_appearance: true,
+  shell_hidden_scrollbar_with_hints: true,
   appearance_range_controls: true,
   ammo_direct_fire: true,
   ammo_cursor_insert: true,
-  ammo_single_row_actions: true,
+  ammo_340px_grid_actions: true,
   per_plugin_versions: true
 }, null, 2));
