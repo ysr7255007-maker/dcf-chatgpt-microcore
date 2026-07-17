@@ -41,9 +41,39 @@ The repair is a Shell-plugin update, not a static-base update:
 - all later Shell replacements release mounted plugin panel hosts through the Shell cleanup boundary before removing the old host;
 - the build reads immutable versions from each plugin source;
 - the lifecycle test updates Shell alone and verifies that the other seven version/hash references are unchanged;
-- both the full DCF verification workflow and Chrome candidate workflow passed for the isolated-update architecture before product acceptance.
+- both the full DCF verification workflow and Chrome candidate workflow passed for the isolated-update architecture;
+- the user completed real-browser acceptance and confirmed that tab switching and the Shell-only update both work.
 
-Real ChatGPT acceptance still determines whether the repaired tabs behave correctly in the user's browser. The automated result proves the isolated-plugin update transaction and regression boundaries, not the final visible browser outcome.
+## rc.2 appearance and ammo usability repair
+
+The next real-browser acceptance found three product-level issues. They remain plugin changes and do not alter the static base.
+
+### Appearance collapse/expand
+
+Shell stored `collapsed`, then immediately passed the returned Shell data object into the full appearance renderer. That object did not contain width, top, height or margin, so the renderer substituted defaults. A page refresh later loaded the complete appearance plugin data again, explaining why the saved values returned.
+
+Decision:
+
+- Shell `1.0.0-rc.2-shell.3` keeps a complete in-memory appearance state;
+- appearance events merge patches into that state;
+- collapse/expand applies only a `{ collapsed }` patch;
+- startup merges appearance data first and Shell state second, so Shell owns collapse while appearance owns dimensions.
+
+### Faster appearance controls
+
+Appearance `1.0.0-rc.2-appearance.1` keeps numeric input but uses larger domain-appropriate steps and adds synchronized range sliders for width, top, height and side margin. Slider movement previews immediately; “保存外观” persists the result. The obsolete `collapsed` field is no longer owned or written by appearance.
+
+### Ammo firing and composition
+
+Ammo `1.0.0-rc.2-ammo.1` makes the semantics explicit:
+
+- “发射” inserts the ammo invocation at the current composer caret and then waits for an enabled send button before clicking it;
+- “插入” inserts at the current caret without checking whether other text exists and without sending, enabling several ammo items and ordinary text to be composed in one turn;
+- textarea selection positions are preserved through controlled value updates; contenteditable composers use the active DOM selection and fall back to the end;
+- the old fire-mode toggle is removed;
+- item action buttons use one non-wrapping row and horizontal overflow only when the available width is genuinely insufficient.
+
+The release changes only Shell, appearance and ammo. The remaining five plugin versions and the Chrome static base remain unchanged.
 
 ## Rejected expansion
 
