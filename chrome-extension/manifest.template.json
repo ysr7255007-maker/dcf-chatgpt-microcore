@@ -11,6 +11,7 @@
     "https://chat.openai.com/*",
     "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/*"
   ],
+  "optional_host_permissions": ["http://localhost:4096/*"],
   "background": { "service_worker": "src/background.js" },
   "content_scripts": [
     {
