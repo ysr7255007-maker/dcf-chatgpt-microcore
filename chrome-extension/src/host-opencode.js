@@ -4,7 +4,7 @@
   const C = H.C;
   const CONFIG_KEY = 'dcf.chrome.local-agent.config.v1';
   const SECRET_KEY = 'dcf.chrome.local-agent.secret.v1';
-  const OPENCODE_ORIGIN = 'http://127.0.0.1:4096';
+  const OPENCODE_ORIGIN = 'http://localhost:4096';
   const OPENCODE_PERMISSION = `${OPENCODE_ORIGIN}/*`;
   const DEFAULT_CONFIG = Object.freeze({
     base_url: OPENCODE_ORIGIN,
@@ -15,6 +15,25 @@
     message_limit: 100
   });
   let memoryPassword = '';
+
+  function runtimeVersion() {
+    try { return String(chrome.runtime.getManifest().version_name || C.HOST_VERSION); }
+    catch (_) { return String(C.HOST_VERSION); }
+  }
+
+  C.HOST_VERSION = runtimeVersion();
+  if (typeof C.diagnostics === 'function') {
+    const previousDiagnostics = C.diagnostics;
+    C.diagnostics = (...args) => ({ ...previousDiagnostics(...args), host_version: runtimeVersion() });
+  }
+  if (typeof H.statusPayload === 'function') {
+    const previousStatusPayload = H.statusPayload;
+    H.statusPayload = async (...args) => ({ ...(await previousStatusPayload(...args)), host_version: runtimeVersion() });
+  }
+  if (typeof H.exportBackup === 'function') {
+    const previousExportBackup = H.exportBackup;
+    H.exportBackup = async (...args) => ({ ...(await previousExportBackup(...args)), host_version: runtimeVersion() });
+  }
 
   function trustedSender(sender) {
     const raw = String(sender && (sender.url || sender.tab && sender.tab.url) || '');
@@ -256,7 +275,7 @@
         report: {
           schema: 'dcf.local-agent.diagnostic.v1',
           generated_at: C.nowIso(),
-          host_version: C.HOST_VERSION,
+          host_version: runtimeVersion(),
           config,
           has_password: Boolean(await passwordGet()),
           host_permission: await hostPermissionGranted(),
