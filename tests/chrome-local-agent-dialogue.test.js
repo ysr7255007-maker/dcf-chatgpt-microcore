@@ -9,7 +9,7 @@ const ref = index.units.find((unit) => unit.id === 'dcf.firstparty.local-agent-d
 assert(ref);
 assert(index.defaults.includes(ref.id));
 assert.strictEqual(index.units.length, 10);
-assert.strictEqual(ref.version, '1.0.0-rc.2-local-agent-dialogue.3');
+assert.strictEqual(ref.version, '1.0.0-rc.2-local-agent-dialogue.4');
 assert.strictEqual(ref.phase, 57);
 assert.strictEqual(ref.world_id, 'dcf-firstparty-local-agent-dialogue');
 const code = fs.readFileSync(path.join(root, 'chrome-extension/code-units/local-agent-dialogue/main.js'), 'utf8');
@@ -23,15 +23,23 @@ for (const token of [
   'function scheduleInspect(node, force = false)',
   '检测到委派工件，等待回复生成完成',
   'scan(document, true)',
-  '这里显示识别、提交与执行进度',
-  'dcf-dialogue-progress',
-  '最近本机输出',
+  "const MOUNT_ID = 'dcf-local-agent-dialogue-mount'",
+  "mountHost.attachShadow({ mode: 'open' })",
+  "mountRoot.addEventListener('click'",
+  'event.composedPath()',
+  '上次操作：',
+  '重新扫描当前对话',
   '查看执行会话',
-  'shadow.append(next)',
+  '回传待发送结果',
+  '清除已处理记录',
+  'pointer-events:auto',
+  'button:active',
+  'function diagnostics()',
   'setInterval(ensurePanelMount, 700)',
   'processed_ids',
   'unit.started'
 ]) assert(code.includes(token), `missing ${token}`);
 assert(!code.includes('data-dcf-panel-root'));
-assert(!code.includes('content.append(next)'));
-console.log(JSON.stringify({ok:true,plugin_count:10,streaming_completion_detection:true,manual_rescan:true,visible_progress:true,repaint_resilient_card:true,no_new_panel:true}, null, 2));
+assert(!code.includes('shadow.append(next)'));
+assert(!code.includes('.onclick ='));
+console.log(JSON.stringify({ok:true,plugin_count:10,streaming_completion_detection:true,manual_rescan:true,stable_nested_shadow_controls:true,delegated_clicks:true,visible_action_feedback:true,repaint_resilient_card:true,no_new_panel:true}, null, 2));
