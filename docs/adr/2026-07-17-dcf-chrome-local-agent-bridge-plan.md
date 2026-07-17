@@ -1,70 +1,84 @@
 # ADR: DCF Chrome 本机 AI 桥梁插件计划
 
 Date: 2026-07-17  
-Status: accepted as a follow-up capability; implementation pending
+Status: accepted as pure plugin implementation; live acceptance pending
 
 ## Context
 
-DCF Next 已经形成过一版 Local Agent 方案与原型，包括网页插件、本机 Bridge、任务协议、配对流程和结果回填。当前 Chrome `rc.2` 没有带入这项能力；现有 Chrome ADR 中的“拒绝 Local Agent expansion”只表示本轮不扩张底座范围，也不建设通用 Agent 平台，不表示永久放弃本机 AI 桥梁。
+DCF Next 已经形成过一版 Local Agent 方案与原型，包括网页插件、本机 Bridge、任务协议、配对流程和结果回填。当前 Chrome `rc.2` 使用静态纯底座和独立第一方插件。用户要求 Local Agent 继续遵守这一边界：插件本身是完整、自由的功能组件，不能因为当前实现运行在 ChatGPT 页面中，就未经批准把 OpenCode 通讯、权限或密码管理下沉到 DCF 底座。
 
-旧版原型依赖 Tampermonkey 的跨域请求能力。当前 Chrome 底座的清单没有 loopback 访问权限，Host API 也没有本机 Agent 的受限消息接口，因此首次迁移不能只发布动态插件。
+OpenCode 提供 `opencode serve`，允许浏览器来源通过 `--cors` 直接访问其 HTTP API，并提供 Basic Auth、会话、异步提示、状态、消息、todo、diff、终止、Agent、模型、权限和提问接口。因此第一版没有证据证明必须修改 DCF 底座。
 
-OpenCode 当前提供 `opencode serve`：一个只需监听 loopback 的无界面 HTTP 服务，具有 OpenAPI、会话、消息、异步提示、状态、差异、终止、Agent、权限响应和事件接口。它已经承担了旧方案中“启动并承载工具型 AI Agent”的主要职责，因此 DCF 不应再重复实现一套通用 Agent 执行进程。
+曾创建过一条 `rc.3` 底座适配器临时分支和 PR #29。该方案因为越过插件边界且未事先获得用户批准而被关闭，不能进入候选分支或 `main`。
 
 ## Decision
 
-1. 新能力作为第一方独立插件存在，暂定 ID 为 `dcf.firstparty.local-agent`。
-2. 插件负责面板、连接状态、任务确认、进度、结果与差异展示，以及回填 ChatGPT 输入框。
-3. 第一版工具型 Agent 暂定为 OpenCode；`opencode serve` 是首选本机 Agent 服务端。
-4. Chrome 后台增加一个受限 OpenCode 适配器，而不是让 ChatGPT 页面或动态插件直接访问 localhost。适配器固定目标、认证和允许的 API，不暴露任意 URL、任意 OpenCode API 或任意 Shell 调用。
-5. 第一版从一个固定工作区启动一个固定端口的 OpenCode 服务；网页侧只提交自然语言任务，不提交本机真实路径。
-6. OpenCode 的服务器密码、模型凭据、GitHub 登录和本机路径不得进入页面插件、语言弹药、普通插件数据或 DCF 备份。
-7. OpenCode 离线是插件普通状态，不能影响其他 DCF 功能或触发整体回滚。
-8. 第一版结果填入当前输入框供用户检查，不自动发送。
-9. 第一版使用独立 OpenCode Agent 权限配置，不采用默认宽松权限，也不启用无边界自动批准。读取、编辑、命令、外部目录和子 Agent 权限必须有明确规则。
-10. Chrome 底座只增加这项功能必需的受限 loopback 权限与固定协议消息，不扩展成通用网络或 Agent 平台。
-11. 第一次交付包含一次小型底座升级、一个独立 Local Agent 插件和 OpenCode 连接配置；不再把自研 Node Bridge 作为必需组件。
-12. 只有当自动启动 OpenCode、多工作区映射、多个 Agent 宿主或跨平台共用确实成为阻塞时，才重新考虑额外的本机启动器或路由 Bridge。
+1. 新能力作为第一方独立插件存在，ID 为 `dcf.firstparty.local-agent`。
+2. DCF Chrome 底座、Manifest、后台消息路由、Host API 和底座版本保持不变。
+3. Local Agent 插件直接以浏览器客户端身份连接 `opencode serve`，不经过 DCF 后台代理。
+4. 插件自行负责 OpenCode 地址、Basic Auth、Agent/模型选择、session、任务、状态、消息、todo、diff、终止、权限回复、提问回复和结果回填。
+5. OpenCode 连接地址必须是 loopback；默认 `http://127.0.0.1:4096`，也允许用户配置其他 localhost/127.0.0.1/::1 端口。
+6. OpenCode 必须由用户显式配置 ChatGPT 来源的 CORS。插件提供可复制的启动命令，不替用户修改 OpenCode 配置。
+7. 用户名、地址、Agent、模型、轮询设置、任务草稿和会话选择可以写入该插件自己的通用插件数据。
+8. OpenCode 密码只保留在当前页面的插件运行时内存；不写 `plugin.data`、DCF 备份、Manifest、底座存储或诊断正文。页面刷新或插件重载后密码自动消失。
+9. OpenCode 离线、CORS 错误或认证失败是 Local Agent 插件自己的普通状态，不能触发 DCF 整体回滚。
+10. 第一版结果只填入当前 ChatGPT 输入框供用户检查，不自动发送。
+11. 第一次实现尽量覆盖完整小产品功能，不人为拆成只有健康检查或 Echo 的玩具版本；完成后以真实浏览器和真实 OpenCode 服务集中查错。
+12. 只有纯插件方案经过真实验证后出现插件内部无法解决的硬阻塞，才可以重新提出公共底座能力；任何底座修改都必须先单独说明并获得用户明确批准。
 
-## Proposed first workflow
+## First-version workflow
 
 ```text
 ChatGPT 页面中的 Local Agent 插件
-→ Chrome 后台受限 OpenCode 适配器
+→ 直接 fetch 本机 OpenCode HTTP API
 → http://127.0.0.1:4096
-→ 创建 OpenCode session
+→ 创建或选择 OpenCode session
 → 异步提交自然语言任务
-→ 读取状态、消息与 diff
-→ 在 DCF 面板展示
+→ 轮询状态、消息、todo、权限、提问与 diff
+→ 在插件面板展示
 → 用户确认后回填 ChatGPT 输入框
 ```
 
-第一版不以 `/tui` 控制接口作为主链路。DCF 直接使用 session API，使任务具有独立 session ID、状态、终止、消息和 diff；OpenCode TUI 或 Web 客户端可以另外连接同一服务，供用户观察和接手同一组会话。
+建议启动形式：
 
-## Reuse boundary
+```text
+OPENCODE_SERVER_PASSWORD=<密码> opencode serve \
+  --hostname 127.0.0.1 \
+  --port 4096 \
+  --cors https://chatgpt.com \
+  --cors https://chat.openai.com
+```
 
-旧 DCF Next 的以下成果作为迁移依据：
+## Full first-version scope
 
-- `dcf.local-instance.v1` 页面实例注册思想；
-- `dcf.local-task.v1` 自然语言任务边界；
-- 页面侧明确确认后再执行；
-- Bridge 离线不影响普通 DCF 功能；
-- 任务完成后把结果回填到原页面。
+- 本机地址、用户名和本页密码；
+- 连接检测与项目、路径、VCS 信息；
+- Agent 与模型列表和选择；
+- session 列表、新建、继续、重命名、分叉和删除；
+- 从 ChatGPT 输入框读取任务；
+- 新会话执行与继续当前会话；
+- 自动或手动刷新状态；
+- 消息、最新 Assistant 结果和结果回填；
+- todo 展示；
+- 文件 diff 展示与复制；
+- 终止任务；
+- 权限请求的允许一次、始终允许与拒绝；
+- Agent 提问的回答与拒绝；
+- 隐私受限诊断和启动命令复制。
 
-以下旧实现被替换：
+## Acceptance boundary
 
-- 自研 Bridge 的 Agent 启动与任务执行由 OpenCode server/session API 取代；
-- Tampermonkey `GM_xmlhttpRequest` 由 Chrome 后台受限传输取代；
-- 旧配对码可简化为 OpenCode loopback 服务的 Basic Auth 与 DCF 本机连接配置。
+自动化测试只能证明：
 
-旧代码不能直接照搬，因为网络入口、认证、会话生命周期和权限处理都已改变。
+- 插件自包含；
+- OpenCode 请求直接发生在插件源码中；
+- 底座文件和 Manifest 没有 OpenCode 或 localhost 改动；
+- 密码没有进入通用插件数据；
+- 第九插件进入现有哈希、独立 world、启动证据和回滚事务。
 
-## Implementation order
+真实验收仍需确认：
 
-1. 完成当前 Chrome 候选验收并关闭 `rc.2`；
-2. 在固定 DCF 工作区手工启动受密码保护的 `opencode serve`，先验证健康检查和 OpenAPI；
-3. 实现 Chrome 后台最小 OpenCode 适配器，只开放健康检查、创建 session、提交任务、查询状态、读取消息、读取 diff 和终止任务；
-4. 实现 Local Agent 插件的连接、任务确认、进度、结果和 diff 面板；
-5. 使用专用 OpenCode Agent 权限配置完成真实仓库低风险任务；
-6. 验证 OpenCode TUI/Web 能连接同一服务并观察或接手 DCF 创建的 session；
-7. 在出现第二个真实工作区或 Agent 宿主后，再评估目录映射和适配器扩展。
+- Chrome 中 USER_SCRIPT world 对 loopback HTTP 的实际行为；
+- OpenCode CORS 与 Basic Auth 预检；
+- 当前 OpenCode 版本的权限与提问端点形状；
+- ChatGPT 页面中的完整面板交互和结果回填。
