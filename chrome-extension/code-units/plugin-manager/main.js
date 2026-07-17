@@ -1,8 +1,193 @@
-(function(){'use strict';
-const UNIT_ID='dcf.firstparty.plugin-manager',UNIT_VERSION='1.0.0-rc.2',PANEL_ID='plugins',HOST_ID='dcf-panel-plugins',GLOBAL='__DCF_FIRSTPARTY_PLUGIN_MANAGER__';const send=m=>chrome.runtime.sendMessage(m).then(r=>{if(!r||r.ok===false)throw new Error(r&&r.error||'DCF host rejected request');return r;});const prev=globalThis[GLOBAL];if(prev?.destroy)prev.destroy();let panel,status=null,notice='';
-function style(){return`:host{display:block;font:13px/1.5 system-ui;color:inherit}.content{display:grid;gap:9px}.card{border:1px solid #ddd;border-radius:10px;padding:10px;background:#fff}.unit{padding:8px 0;border-top:1px solid #ddd}.unit:first-child{border-top:0}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.grow{flex:1}.technical{font:11px ui-monospace,SFMono-Regular,Menlo,monospace;color:#666}button{font:inherit;color:inherit;border:1px solid #bbb;background:#fff;border-radius:8px;padding:6px 9px}.primary{background:#202124;color:#fff;border-color:#202124}.notice{min-height:18px;color:#666}@media(prefers-color-scheme:dark){.card{background:#222;border-color:#444}.unit{border-color:#444}button{background:#292929;color:#f3f3f3;border-color:#555}.primary{background:#f3f3f3;color:#181818}.technical,.notice{color:#aaa}}`;}
-async function refresh(){status=await send({type:'host.status'});render();}
-function render(){if(!status)return;const r=panel.shadowRoot,current=status.snapshots.current||status.snapshots.last_known_good;r.querySelector('.content').innerHTML=`<section class="card"><div class="row"><b class="grow">DCF 功能</b><button class="primary" data-action="update">检查 DCF 更新</button></div><div class="notice">${notice}</div></section><section class="card">${Object.entries(status.code_units||{}).map(([id,versions])=>{const ref=current?.entries?.find(e=>e.id===id),enabled=!!ref&&ref.enabled!==false;return`<div class="unit"><div class="row"><b class="grow">${id.replace('dcf.firstparty.','')}</b><button data-id="${id}" data-enabled="${enabled}">${enabled?'停用':'启用'}</button></div><div class="technical">${ref?`${ref.version} · ${ref.hash.slice(0,12)}`:`已保存 ${versions.join(', ')}`}</div></div>`;}).join('')||'尚未安装功能插件'}</section>`;r.querySelector('[data-action="update"]').onclick=async()=>{notice='正在检查功能插件和底座更新…';render();const result=await send({type:'host.check_all_updates'});notice=result.plugins?.ok===false?`功能更新失败：${result.plugins.error}`:result.plugins?.status==='current'?'DCF 已是最新版本':'已取得更新，正在完成启动确认';await refresh();};for(const button of r.querySelectorAll('[data-id]'))button.onclick=async()=>{notice=`正在${button.dataset.enabled==='true'?'停用':'启用'} ${button.dataset.id}…`;render();await send({type:'host.set_unit_enabled',id:button.dataset.id,enabled:button.dataset.enabled!=='true'});await refresh();};}
-function create(){panel=document.createElement('section');panel.id=HOST_ID;panel.dataset.dcfPanelRoot='true';panel.dataset.dcfPanelId=PANEL_ID;panel.dataset.dcfPanelTitle='功能';panel.style.display='none';const r=panel.attachShadow({mode:'open'});r.innerHTML=`<style>${style()}</style><div class="content"></div>`;document.documentElement.append(panel);document.dispatchEvent(new CustomEvent('dcf:panel-ready',{detail:PANEL_ID}));}
-function destroy(){panel?.remove();}globalThis[GLOBAL]={version:UNIT_VERSION,destroy};try{document.getElementById(HOST_ID)?.remove();create();refresh().then(()=>send({type:'unit.started',unit_id:UNIT_ID,version:UNIT_VERSION})).catch(e=>send({type:'unit.failed',unit_id:UNIT_ID,version:UNIT_VERSION,error:String(e?.message||e)}));}catch(e){destroy();send({type:'unit.failed',unit_id:UNIT_ID,version:UNIT_VERSION,error:String(e?.message||e)}).catch(()=>{});}
+(function () {
+  'use strict';
+
+  const UNIT_ID = 'dcf.firstparty.plugin-manager';
+  const UNIT_VERSION = '1.0.0-rc.2-plugin-manager.1';
+  const PANEL_ID = 'plugins';
+  const HOST_ID = 'dcf-panel-plugins';
+  const GLOBAL_KEY = '__DCF_FIRSTPARTY_PLUGIN_MANAGER__';
+  const SHELL_UNIT_ID = 'dcf.firstparty.shell';
+  const PANEL_BY_UNIT = {
+    'dcf.firstparty.ammo': { panel_id: 'ammo', title: '语言弹药' },
+    'dcf.firstparty.conversation-performance': { panel_id: 'performance', title: '长对话减负' },
+    'dcf.firstparty.attribution': { panel_id: 'attribution', title: '问答性能归因' },
+    'dcf.firstparty.appearance': { panel_id: 'appearance', title: '外观' },
+    'dcf.firstparty.local-agent': { panel_id: 'local-agent', title: '本机 Agent' },
+    'dcf.firstparty.backup': { panel_id: 'backup', title: '备份恢复' },
+    'dcf.firstparty.plugin-manager': { panel_id: 'plugins', title: '功能' },
+    'dcf.firstparty.diagnostics': { panel_id: 'diagnostics', title: '诊断' }
+  };
+
+  const send = (message) => chrome.runtime.sendMessage(message).then((result) => {
+    if (!result || result.ok === false) throw new Error(result && result.error || 'DCF host rejected request');
+    return result;
+  });
+
+  const previous = globalThis[GLOBAL_KEY];
+  if (previous?.destroy) previous.destroy();
+
+  let panel;
+  let status = null;
+  let notice = '';
+  let shellState = { pinned_panels: ['ammo', 'plugins'], active_panel: null, panels: [] };
+  let shellStateListener;
+
+  function style() {
+    return `:host{display:block;font:13px/1.5 system-ui;color:inherit;min-width:0}.content{display:grid;gap:9px;min-width:0}.card{border:1px solid #ddd;border-radius:10px;padding:10px;background:#fff;min-width:0}.unit{padding:10px 0;border-top:1px solid #ddd;display:grid;gap:6px;min-width:0}.unit:first-child{border-top:0}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-width:0}.grow{flex:1;min-width:0}.title{font-weight:700;overflow-wrap:anywhere}.technical{font:11px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;color:#666;overflow-wrap:anywhere}.description{font-size:12px;color:#666}.badge{font-size:11px;border:1px solid #ccc;border-radius:999px;padding:2px 7px}.actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}button{font:inherit;color:inherit;border:1px solid #bbb;background:#fff;border-radius:8px;padding:6px 9px;min-width:0}.primary{background:#202124;color:#fff;border-color:#202124}.notice{min-height:18px;color:#666;overflow-wrap:anywhere}.locked{opacity:.72}@media(max-width:330px){.actions{grid-template-columns:1fr}}@media(prefers-color-scheme:dark){.card{background:#222;border-color:#444}.unit{border-color:#444}button{background:#292929;color:#f3f3f3;border-color:#555}.primary{background:#f3f3f3;color:#181818}.technical,.notice,.description{color:#aaa}.badge{border-color:#555}}`;
+  }
+
+  function emitShellCommand(action, panelId, activate = true) {
+    document.dispatchEvent(new CustomEvent('dcf:shell-command', {
+      detail: JSON.stringify({ action, panel_id: panelId, activate })
+    }));
+  }
+
+  function queryShellState() {
+    document.dispatchEvent(new CustomEvent('dcf:shell-query'));
+  }
+
+  function panelIsPinned(panelId) {
+    return Array.isArray(shellState.pinned_panels) && shellState.pinned_panels.includes(panelId);
+  }
+
+  function currentSnapshot() {
+    return status && (status.snapshots.current || status.snapshots.last_known_good);
+  }
+
+  function unitDescription(id) {
+    const descriptions = {
+      'dcf.firstparty.shell': 'DCF 可见外壳与工作区标签。',
+      'dcf.firstparty.ammo': '语言弹药选择、发射、插入与便携库。',
+      'dcf.firstparty.conversation-performance': '长对话渲染减负与历史窗口。',
+      'dcf.firstparty.attribution': '记录下一轮问答的浏览器性能归因。',
+      'dcf.firstparty.appearance': '调整 DCF 位置、宽度和高度。',
+      'dcf.firstparty.local-agent': '连接本机 OpenCode，管理会话、任务和结果。',
+      'dcf.firstparty.backup': '导出与恢复各插件数据。',
+      'dcf.firstparty.plugin-manager': '功能启停、更新与标签固定入口。',
+      'dcf.firstparty.diagnostics': '查看和复制隐私受限诊断。'
+    };
+    return descriptions[id] || '';
+  }
+
+  async function refresh() {
+    status = await send({ type: 'host.status' });
+    render();
+    queryShellState();
+  }
+
+  function render() {
+    if (!status || !panel) return;
+    const root = panel.shadowRoot;
+    const current = currentSnapshot();
+    const units = Object.entries(status.code_units || {});
+    root.querySelector('.content').innerHTML = `
+      <section class="card">
+        <div class="row"><b class="grow">DCF 功能库</b><button class="primary" data-action="update">检查 DCF 更新</button></div>
+        <div class="description">标签栏只保留当前固定的工作区。低频功能可以在这里启用，并按需添加到标签栏。</div>
+        <div class="notice">${notice}</div>
+      </section>
+      <section class="card">
+        ${units.map(([id, versions]) => {
+          const ref = current?.entries?.find((entry) => entry.id === id);
+          const enabled = Boolean(ref && ref.enabled !== false);
+          const panelInfo = PANEL_BY_UNIT[id];
+          const pinned = panelInfo ? panelIsPinned(panelInfo.panel_id) : false;
+          const essential = id === SHELL_UNIT_ID || id === UNIT_ID;
+          const title = panelInfo?.title || id.replace('dcf.firstparty.', '');
+          return `<div class="unit ${essential ? 'locked' : ''}" data-unit-id="${id}">
+            <div class="row"><span class="title grow">${title}</span>${essential ? '<span class="badge">核心入口</span>' : enabled ? '<span class="badge">已启用</span>' : '<span class="badge">已停用</span>'}</div>
+            <div class="description">${unitDescription(id)}</div>
+            <div class="technical">${ref ? `${ref.version} · ${ref.hash.slice(0, 12)}` : `已保存 ${versions.join(', ')}`}</div>
+            ${essential ? '' : `<div class="actions"><button data-action="toggle" data-id="${id}" data-enabled="${enabled}">${enabled ? '停用功能' : '启用功能'}</button>${panelInfo ? `<button class="${pinned ? '' : 'primary'}" data-action="pin" data-id="${id}" data-panel-id="${panelInfo.panel_id}" data-enabled="${enabled}" data-pinned="${pinned}">${pinned ? '移出标签栏' : enabled ? '添加到标签栏' : '启用并添加'}</button>` : ''}</div>`}
+          </div>`;
+        }).join('') || '尚未安装功能插件'}
+      </section>`;
+
+    root.querySelector('[data-action="update"]').onclick = async () => {
+      notice = '正在检查功能插件和底座更新…';
+      render();
+      const result = await send({ type: 'host.check_all_updates' });
+      notice = result.plugins?.ok === false
+        ? `功能更新失败：${result.plugins.error}`
+        : result.plugins?.status === 'current'
+          ? 'DCF 已是最新版本'
+          : '已取得更新，正在完成启动确认';
+      await refresh();
+    };
+
+    for (const button of root.querySelectorAll('[data-action="toggle"]')) {
+      button.onclick = async () => {
+        const enabled = button.dataset.enabled === 'true';
+        notice = `正在${enabled ? '停用' : '启用'} ${button.dataset.id}…`;
+        render();
+        await send({ type: 'host.set_unit_enabled', id: button.dataset.id, enabled: !enabled });
+        if (enabled) {
+          const info = PANEL_BY_UNIT[button.dataset.id];
+          if (info && panelIsPinned(info.panel_id)) emitShellCommand('unpin', info.panel_id, false);
+        }
+        await refresh();
+      };
+    }
+
+    for (const button of root.querySelectorAll('[data-action="pin"]')) {
+      button.onclick = async () => {
+        const pinned = button.dataset.pinned === 'true';
+        const enabled = button.dataset.enabled === 'true';
+        const panelId = button.dataset.panelId;
+        if (pinned) {
+          emitShellCommand('unpin', panelId, false);
+          notice = '已移出标签栏，功能仍保持启用';
+          render();
+          return;
+        }
+        if (!enabled) {
+          notice = `正在启用 ${button.dataset.id} 并添加到标签栏…`;
+          render();
+          await send({ type: 'host.set_unit_enabled', id: button.dataset.id, enabled: true });
+        }
+        emitShellCommand('pin', panelId, true);
+        notice = '已添加到标签栏';
+        render();
+        setTimeout(queryShellState, 120);
+      };
+    }
+  }
+
+  function create() {
+    panel = document.createElement('section');
+    panel.id = HOST_ID;
+    panel.dataset.dcfPanelRoot = 'true';
+    panel.dataset.dcfPanelId = PANEL_ID;
+    panel.dataset.dcfPanelTitle = '功能';
+    panel.style.display = 'none';
+    const root = panel.attachShadow({ mode: 'open' });
+    root.innerHTML = `<style>${style()}</style><div class="content"></div>`;
+    document.documentElement.append(panel);
+    document.dispatchEvent(new CustomEvent('dcf:panel-ready', { detail: PANEL_ID }));
+  }
+
+  function destroy() {
+    if (shellStateListener) document.removeEventListener('dcf:shell-state', shellStateListener, true);
+    panel?.remove();
+  }
+
+  globalThis[GLOBAL_KEY] = { version: UNIT_VERSION, destroy };
+
+  try {
+    document.getElementById(HOST_ID)?.remove();
+    create();
+    shellStateListener = (event) => {
+      try {
+        shellState = JSON.parse(String(event.detail || '{}'));
+        render();
+      } catch (_) {}
+    };
+    document.addEventListener('dcf:shell-state', shellStateListener, true);
+    refresh()
+      .then(() => send({ type: 'unit.started', unit_id: UNIT_ID, version: UNIT_VERSION }))
+      .catch((error) => send({ type: 'unit.failed', unit_id: UNIT_ID, version: UNIT_VERSION, error: String(error?.message || error) }));
+  } catch (error) {
+    destroy();
+    send({ type: 'unit.failed', unit_id: UNIT_ID, version: UNIT_VERSION, error: String(error?.message || error) }).catch(() => {});
+  }
 })();
