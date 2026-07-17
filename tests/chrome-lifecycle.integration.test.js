@@ -62,26 +62,26 @@ const H = global.DCFHost;
   assert.strictEqual(state.snapshots.last_known_good.id, candidateId);
 
   const previousRefs = Object.fromEntries(state.snapshots.current.entries.map((entry) => [entry.id, { ...entry }]));
-  const ammoRef = index.units.find((unit) => unit.id === 'dcf.firstparty.ammo');
-  const nextCode = `${fs.readFileSync(path.join(root, 'chrome-extension/code-units/ammo/main.js'), 'utf8')}\n/* update test */\n`;
+  const shellRef = index.units.find((unit) => unit.id === 'dcf.firstparty.shell');
+  const nextCode = `${fs.readFileSync(path.join(root, 'chrome-extension/code-units/shell/main.js'), 'utf8')}\n/* shell update test */\n`;
   const nextHash = crypto.createHash('sha256').update(nextCode).digest('hex');
   const updatedIndex = JSON.parse(JSON.stringify(index));
-  Object.assign(updatedIndex.units.find((unit) => unit.id === ammoRef.id), { version: '1.0.1-test', hash: nextHash, code_url: 'https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/test/ammo.js' });
+  Object.assign(updatedIndex.units.find((unit) => unit.id === shellRef.id), { version: '1.0.0-rc.2-shell.2-test', hash: nextHash, code_url: 'https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/test/shell.js' });
   H.fetchPluginIndex = async () => ({ index: updatedIndex, url: 'https://raw.githubusercontent.com/test/index.json' });
   H.downloadIndexUnits = async (value) => Promise.all(value.units.map(async (ref) => {
-    const code = ref.id === ammoRef.id ? nextCode : fs.readFileSync(path.join(root, 'chrome-extension', new URL(ref.code_url).pathname.split('/chrome-extension/')[1]), 'utf8');
+    const code = ref.id === shellRef.id ? nextCode : fs.readFileSync(path.join(root, 'chrome-extension', new URL(ref.code_url).pathname.split('/chrome-extension/')[1]), 'utf8');
     return H.C.verifyUnit({ ...ref, code, source: { kind: 'test' } });
   }));
-  const update = await H.checkRemoteUpdates('test-update');
+  const update = await H.checkRemoteUpdates('test-shell-update');
   assert.strictEqual(update.downloaded, 1);
   state = await H.storageGet();
-  assert.strictEqual(state.snapshots.candidate.entries.find((entry) => entry.id === ammoRef.id).version, '1.0.1-test');
+  assert.strictEqual(state.snapshots.candidate.entries.find((entry) => entry.id === shellRef.id).version, '1.0.0-rc.2-shell.2-test');
   for (const entry of state.snapshots.candidate.entries) {
-    if (entry.id !== ammoRef.id) assert.deepStrictEqual({ version: entry.version, hash: entry.hash }, { version: previousRefs[entry.id].version, hash: previousRefs[entry.id].hash });
+    if (entry.id !== shellRef.id) assert.deepStrictEqual({ version: entry.version, hash: entry.hash }, { version: previousRefs[entry.id].version, hash: previousRefs[entry.id].hash });
   }
   const base = await H.checkBaseUpdate();
   assert.strictEqual(base.ok, true);
   await H.pluginDataSet('dcf.firstparty.test', { value: 7 });
   assert.deepStrictEqual(await H.pluginDataGet('dcf.firstparty.test'), { value: 7 });
-  console.log(JSON.stringify({ ok: true, github_default_install: 8, startup_evidence_commit: true, one_plugin_update: true, base_update_check: true, generic_plugin_storage: true }, null, 2));
+  console.log(JSON.stringify({ ok: true, github_default_install: 8, startup_evidence_commit: true, one_shell_plugin_update: true, unchanged_plugin_refs: 7, base_update_check: true, generic_plugin_storage: true }, null, 2));
 })().catch((error) => { console.error(error); process.exitCode = 1; });

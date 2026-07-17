@@ -19,6 +19,8 @@ DCF Next before Core Review already established the desired product functions. N
 6. The Chrome base is built from GitHub and automatically submitted to a non-public Chrome Web Store listing after one-time credentials are configured.
 7. Internal plugin independence must not create user-facing assembly. The default complete combination installs automatically, successful updates remain quiet and failures roll back automatically.
 8. Data continuity covers the complete DCF Next and Chrome rc.1 only. `0.18.2` is not a separate migration source because DCF Next already absorbed it.
+9. Plugin versions are immutable per plugin and are derived from each plugin source. A change to one plugin must not manufacture new versions for unchanged plugins.
+10. Shell owns tab selection and panel composition. Its visibility coordination must remain effective even when a mounted plugin Shadow DOM declares its own `:host` display style.
 
 ## Consequences
 
@@ -27,6 +29,20 @@ DCF Next before Core Review already established the desired product functions. N
 - the user does not repeatedly download or reload local extension files;
 - the base remains subject to Chrome Web Store review latency, so changing product features belongs in plugins whenever possible;
 - actual store publication requires one-time external account/listing/secret configuration and cannot be claimed before that evidence exists.
+
+## rc.2 Shell hotfix evidence
+
+The first real-browser acceptance found that tab clicks changed Shell state but all plugin panels remained visible. Shell had relied on the HTML `hidden` attribute while plugin Shadow DOM styles declared `:host { display:block }`, so panel-local styling defeated the coordinator's visibility result.
+
+The repair is a Shell-plugin update, not a static-base update:
+
+- Shell `1.0.0-rc.2-shell.1` explicitly coordinates both `hidden` and an important host `display` value;
+- a Shell hot replacement releases mounted plugin panel hosts before removing the old Shell host, so updating Shell does not destroy or require restarting the seven other feature plugins;
+- the build now reads immutable versions from each plugin source;
+- the lifecycle test updates Shell alone and verifies that the other seven version/hash references are unchanged;
+- both the full DCF verification workflow and Chrome candidate workflow passed on the resulting index.
+
+Real ChatGPT acceptance still determines whether the repaired tabs behave correctly in the user's browser. The automated result proves the isolated-plugin update transaction and regression boundaries, not the final visible browser outcome.
 
 ## Rejected expansion
 
