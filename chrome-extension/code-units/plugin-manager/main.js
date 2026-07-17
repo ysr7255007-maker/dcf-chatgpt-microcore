@@ -56,8 +56,13 @@
   function currentSnapshot() { return status && (status.snapshots.current || status.snapshots.last_known_good); }
 
   async function loadMemory() {
-    const result = await send({ type: 'plugin.data.get', plugin_id: UNIT_ID });
-    remembered = normalizeMemory(result.data || {});
+    const [own, shell] = await Promise.all([
+      send({ type: 'plugin.data.get', plugin_id: UNIT_ID }),
+      send({ type: 'plugin.data.get', plugin_id: SHELL_UNIT_ID })
+    ]);
+    const ownData = own.data && typeof own.data === 'object' ? own.data : {};
+    const shellData = shell.data && typeof shell.data === 'object' ? shell.data : {};
+    remembered = normalizeMemory(Array.isArray(ownData.pinned_panels) ? ownData : shellData);
   }
   async function saveMemory(next = shellState) {
     remembered = normalizeMemory(next);
