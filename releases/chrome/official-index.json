@@ -1,1 +1,160 @@
-{"defaults":["dcf.firstparty.shell","dcf.firstparty.ammo","dcf.firstparty.conversation-performance","dcf.firstparty.attribution","dcf.firstparty.appearance","dcf.firstparty.backup","dcf.firstparty.plugin-manager","dcf.firstparty.diagnostics"],"schema":"dcf.plugin_index.v1","units":[{"code_url":"https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/shell/main.js","default_enabled":true,"description":"DCF 的统一可见入口与独立插件面板挂载。","hash":"c3f7d62c25e2c1780dbc75fa0ab67662cce2ee0e652feb2d611ca6abb95ac17c","host_api":"2","id":"dcf.firstparty.shell","matches":["https://chatgpt.com/*","https://chat.openai.com/*"],"phase":10,"required":true,"run_at":"document_idle","title":"基础界面","version":"1.0.0-rc.2-shell.1","world_id":"dcf-firstparty-shell"},{"code_url":"https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/ammo/main.js","default_enabled":true,"description":"语言弹药工作台、自动装填、发射、更新与 GitHub 便携库。","hash":"00bae29f0e7b154b75639a3016228e5ff156926908891a880db77dcf8e456514","host_api":"2","id":"dcf.firstparty.ammo","matches":["https://chatgpt.com/*","https://chat.openai.com/*"],"phase":20,"required":true,"run_at":"document_idle","title":"语言弹药","version":"1.0.0-rc.2","world_id":"dcf-firstparty-ammo"},{"code_url":"https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/conversation-performance/main.js","default_enabled":true,"description":"可逆的长对话渲染减负与历史窗口。","hash":"111f5349ff319df35287ae2bcb852506cbc302b84ef691ae739b65f704b4947f","host_api":"2","id":"dcf.firstparty.conversation-performance","matches":["https://chatgpt.com/*","https://chat.openai.com/*"],"phase":30,"required":true,"run_at":"document_idle","title":"长对话减负","version":"1.0.0-rc.2","world_id":"dcf-firstparty-conversation-performance"},{"code_url":"https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/attribution/main.js","default_enabled":true,"description":"从下一次发送到回复完成的有界性能样本。","hash":"fc5e8fe1a402dc300fb90f99d957014bd28775ce92eb85aa41342e184ebe19d3","host_api":"2","id":"dcf.firstparty.attribution","matches":["https://chatgpt.com/*","https://chat.openai.com/*"],"phase":40,"required":true,"run_at":"document_idle","title":"问答性能归因","version":"1.0.0-rc.2","world_id":"dcf-firstparty-attribution"},{"code_url":"https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/appearance/main.js","default_enabled":true,"description":"DCF 侧栏方向、尺寸与位置。","hash":"eaea5232b414ab2a654a2e3658a617690b7f9c0723195b409fd1aad34ccab676","host_api":"2","id":"dcf.firstparty.appearance","matches":["https://chatgpt.com/*","https://chat.openai.com/*"],"phase":50,"required":true,"run_at":"document_idle","title":"外观","version":"1.0.0-rc.2","world_id":"dcf-firstparty-appearance"},{"code_url":"https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/backup/main.js","default_enabled":true,"description":"独立插件数据的一键备份与恢复。","hash":"60dfc90c996344f700aefab57f11fdb6788fbd81a9b1263de127922b3e91b5bb","host_api":"2","id":"dcf.firstparty.backup","matches":["https://chatgpt.com/*","https://chat.openai.com/*"],"phase":60,"required":true,"run_at":"document_idle","title":"备份恢复","version":"1.0.0-rc.2","world_id":"dcf-firstparty-backup"},{"code_url":"https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/plugin-manager/main.js","default_enabled":true,"description":"低频功能启停与统一 DCF 更新入口。","hash":"1886af0fe3a358c4a764b7c743e140bc2f7edba0b3ef08207c8c4299df7282fb","host_api":"2","id":"dcf.firstparty.plugin-manager","matches":["https://chatgpt.com/*","https://chat.openai.com/*"],"phase":70,"required":true,"run_at":"document_idle","title":"功能管理","version":"1.0.0-rc.2","world_id":"dcf-firstparty-plugin-manager"},{"code_url":"https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/diagnostics/main.js","default_enabled":true,"description":"正常时压缩状态，异常时复制隐私受限证据。","hash":"3cc2a10c0efa5d9e20ce2cebedc7a4c66fcae5a3497c95b31afc0ee185c85784","host_api":"2","id":"dcf.firstparty.diagnostics","matches":["https://chatgpt.com/*","https://chat.openai.com/*"],"phase":90,"required":true,"run_at":"document_idle","title":"诊断","version":"1.0.0-rc.2","world_id":"dcf-firstparty-diagnostics"}],"version":"1.0.0-rc.2"}
+{
+  "defaults": [
+    "dcf.firstparty.shell",
+    "dcf.firstparty.ammo",
+    "dcf.firstparty.conversation-performance",
+    "dcf.firstparty.attribution",
+    "dcf.firstparty.appearance",
+    "dcf.firstparty.backup",
+    "dcf.firstparty.plugin-manager",
+    "dcf.firstparty.diagnostics"
+  ],
+  "schema": "dcf.plugin_index.v1",
+  "units": [
+    {
+      "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/shell/main.js",
+      "default_enabled": true,
+      "description": "DCF 的统一可见入口与独立插件面板挂载。",
+      "hash": "fa12f2aa405a9f53605821765c5e7cf4422e8c3f3e8a4a4bd1f60347fa8a37d9",
+      "host_api": "2",
+      "id": "dcf.firstparty.shell",
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "phase": 10,
+      "required": true,
+      "run_at": "document_idle",
+      "title": "基础界面",
+      "version": "1.0.0-rc.2-shell.2",
+      "world_id": "dcf-firstparty-shell"
+    },
+    {
+      "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/ammo/main.js",
+      "default_enabled": true,
+      "description": "语言弹药工作台、自动装填、发射、更新与 GitHub 便携库。",
+      "hash": "00bae29f0e7b154b75639a3016228e5ff156926908891a880db77dcf8e456514",
+      "host_api": "2",
+      "id": "dcf.firstparty.ammo",
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "phase": 20,
+      "required": true,
+      "run_at": "document_idle",
+      "title": "语言弹药",
+      "version": "1.0.0-rc.2",
+      "world_id": "dcf-firstparty-ammo"
+    },
+    {
+      "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/conversation-performance/main.js",
+      "default_enabled": true,
+      "description": "可逆的长对话渲染减负与历史窗口。",
+      "hash": "111f5349ff319df35287ae2bcb852506cbc302b84ef691ae739b65f704b4947f",
+      "host_api": "2",
+      "id": "dcf.firstparty.conversation-performance",
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "phase": 30,
+      "required": true,
+      "run_at": "document_idle",
+      "title": "长对话减负",
+      "version": "1.0.0-rc.2",
+      "world_id": "dcf-firstparty-conversation-performance"
+    },
+    {
+      "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/attribution/main.js",
+      "default_enabled": true,
+      "description": "从下一次发送到回复完成的有界性能样本。",
+      "hash": "fc5e8fe1a402dc300fb90f99d957014bd28775ce92eb85aa41342e184ebe19d3",
+      "host_api": "2",
+      "id": "dcf.firstparty.attribution",
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "phase": 40,
+      "required": true,
+      "run_at": "document_idle",
+      "title": "问答性能归因",
+      "version": "1.0.0-rc.2",
+      "world_id": "dcf-firstparty-attribution"
+    },
+    {
+      "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/appearance/main.js",
+      "default_enabled": true,
+      "description": "DCF 侧栏方向、尺寸与位置。",
+      "hash": "eaea5232b414ab2a654a2e3658a617690b7f9c0723195b409fd1aad34ccab676",
+      "host_api": "2",
+      "id": "dcf.firstparty.appearance",
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "phase": 50,
+      "required": true,
+      "run_at": "document_idle",
+      "title": "外观",
+      "version": "1.0.0-rc.2",
+      "world_id": "dcf-firstparty-appearance"
+    },
+    {
+      "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/backup/main.js",
+      "default_enabled": true,
+      "description": "独立插件数据的一键备份与恢复。",
+      "hash": "60dfc90c996344f700aefab57f11fdb6788fbd81a9b1263de127922b3e91b5bb",
+      "host_api": "2",
+      "id": "dcf.firstparty.backup",
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "phase": 60,
+      "required": true,
+      "run_at": "document_idle",
+      "title": "备份恢复",
+      "version": "1.0.0-rc.2",
+      "world_id": "dcf-firstparty-backup"
+    },
+    {
+      "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/plugin-manager/main.js",
+      "default_enabled": true,
+      "description": "低频功能启停与统一 DCF 更新入口。",
+      "hash": "1886af0fe3a358c4a764b7c743e140bc2f7edba0b3ef08207c8c4299df7282fb",
+      "host_api": "2",
+      "id": "dcf.firstparty.plugin-manager",
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "phase": 70,
+      "required": true,
+      "run_at": "document_idle",
+      "title": "功能管理",
+      "version": "1.0.0-rc.2",
+      "world_id": "dcf-firstparty-plugin-manager"
+    },
+    {
+      "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/diagnostics/main.js",
+      "default_enabled": true,
+      "description": "正常时压缩状态，异常时复制隐私受限证据。",
+      "hash": "3cc2a10c0efa5d9e20ce2cebedc7a4c66fcae5a3497c95b31afc0ee185c85784",
+      "host_api": "2",
+      "id": "dcf.firstparty.diagnostics",
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "phase": 90,
+      "required": true,
+      "run_at": "document_idle",
+      "title": "诊断",
+      "version": "1.0.0-rc.2",
+      "world_id": "dcf-firstparty-diagnostics"
+    }
+  ],
+  "version": "1.0.0-rc.2"
+}

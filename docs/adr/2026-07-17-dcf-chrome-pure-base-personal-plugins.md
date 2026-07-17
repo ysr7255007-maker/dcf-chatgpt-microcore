@@ -36,11 +36,12 @@ The first real-browser acceptance found that tab clicks changed Shell state but 
 
 The repair is a Shell-plugin update, not a static-base update:
 
-- Shell `1.0.0-rc.2-shell.1` explicitly coordinates both `hidden` and an important host `display` value;
-- a Shell hot replacement releases mounted plugin panel hosts before removing the old Shell host, so updating Shell does not destroy or require restarting the seven other feature plugins;
-- the build now reads immutable versions from each plugin source;
+- Shell `1.0.0-rc.2-shell.2` explicitly coordinates both `hidden` and an important host `display` value;
+- before replacing an older Shell that does not yet know how to release panels, the new Shell first detaches all mounted panel hosts from the old Shell's open Shadow DOM; this makes the first real Shell-only update preserve the seven unchanged plugins;
+- all later Shell replacements release mounted plugin panel hosts through the Shell cleanup boundary before removing the old host;
+- the build reads immutable versions from each plugin source;
 - the lifecycle test updates Shell alone and verifies that the other seven version/hash references are unchanged;
-- both the full DCF verification workflow and Chrome candidate workflow passed on the resulting index.
+- both the full DCF verification workflow and Chrome candidate workflow passed for the isolated-update architecture before product acceptance.
 
 Real ChatGPT acceptance still determines whether the repaired tabs behave correctly in the user's browser. The automated result proves the isolated-plugin update transaction and regression boundaries, not the final visible browser outcome.
 
