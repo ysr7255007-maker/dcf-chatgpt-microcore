@@ -5,6 +5,7 @@
 
   H.handleMessage = async function handleMessage(message, sender) {
     const type = String(message && message.type || '');
+    if (type.startsWith('local_agent.')) return H.handleLocalAgentMessage(message, sender);
     if (type === 'host.status') return H.statusPayload();
     if (type === 'host.open_recovery') { await chrome.tabs.create({ url: chrome.runtime.getURL('pages/recovery.html') }); return { ok: true }; }
     if (type === 'host.activate') {
