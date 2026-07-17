@@ -70,10 +70,21 @@ Ammo `1.0.0-rc.2-ammo.1` makes the semantics explicit:
 - “发射” inserts the ammo invocation at the current composer caret and then waits for an enabled send button before clicking it;
 - “插入” inserts at the current caret without checking whether other text exists and without sending, enabling several ammo items and ordinary text to be composed in one turn;
 - textarea selection positions are preserved through controlled value updates; contenteditable composers use the active DOM selection and fall back to the end;
-- the old fire-mode toggle is removed;
-- item action buttons use one non-wrapping row and horizontal overflow only when the available width is genuinely insufficient.
+- the old fire-mode toggle is removed.
 
-The release changes only Shell, appearance and ammo. The remaining five plugin versions and the Chrome static base remain unchanged.
+## rc.2 narrow-width and scroll-surface repair
+
+Real use at a 340px Shell width showed that the previous single-row ammo actions technically preserved one row by introducing a horizontal scrollbar. This was visually worse than a compact intentional layout. The native vertical scrollbar was also visually inconsistent with DCF, especially in dark mode.
+
+Decision:
+
+- Ammo `1.0.0-rc.2-ammo.2` uses a two-tier grid at normal narrow widths: “发射/插入” occupy the first row as primary actions, while “复制正文/更新/编辑/删除” occupy the second row;
+- the ammo card and its text use `min-width:0` and safe wrapping so a 340px Shell does not produce horizontal overflow;
+- horizontal scrolling is removed from the ammo action surface rather than hidden;
+- Shell `1.0.0-rc.2-shell.4` hides the browser-native scroll track in the content area;
+- Shell shows a subtle upper or lower arrow only when content can still scroll in that direction;
+- the arrows scroll by a visible page fraction and fade away automatically at the top or bottom;
+- this remains a Shell plus ammo plugin update. Appearance, the five other feature plugins and the Chrome static base remain unchanged.
 
 ## Rejected expansion
 
