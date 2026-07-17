@@ -30,6 +30,11 @@ function copy(relative) {
   fs.copyFileSync(from, to);
 }
 function worldId(id) { return `dcf-${id.replace(/^dcf\./, '').replace(/[^a-zA-Z0-9_-]+/g, '-')}`.slice(0, 64); }
+function declaredUnitVersion(code, id) {
+  const match = String(code).match(/\b(?:const|let|var)\s+(?:[^;]*,\s*)?UNIT_VERSION\s*=\s*(['"])([^'"]+)\1/);
+  if (!match) throw new Error(`plugin ${id} does not declare UNIT_VERSION`);
+  return match[2];
+}
 
 fs.rmSync(distRoot, { recursive: true, force: true });
 fs.mkdirSync(extensionRoot, { recursive: true });
@@ -57,7 +62,7 @@ const units = specs.map((spec) => {
   const code = fs.readFileSync(path.join(root, relative), 'utf8');
   return {
     id: spec.id,
-    version: VERSION_NAME,
+    version: declaredUnitVersion(code, spec.id),
     title: spec.title,
     description: spec.description,
     hash: sha256(Buffer.from(code, 'utf8')),
