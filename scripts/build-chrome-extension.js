@@ -52,6 +52,7 @@ const specs = [
   ['dcf.firstparty.conversation-performance', '长对话减负', '可逆的长对话渲染减负与历史窗口。', 'conversation-performance', 30],
   ['dcf.firstparty.attribution', '问答性能归因', '从下一次发送到回复完成的有界性能样本。', 'attribution', 40],
   ['dcf.firstparty.appearance', '外观', 'DCF 侧栏方向、尺寸与位置。', 'appearance', 50],
+  ['dcf.firstparty.local-agent', '本机 Agent', '纯插件直连 OpenCode，管理会话、任务、权限、结果与文件差异。', 'local-agent', 55],
   ['dcf.firstparty.backup', '备份恢复', '独立插件数据的一键备份与恢复。', 'backup', 60],
   ['dcf.firstparty.plugin-manager', '功能管理', '低频功能启停与统一 DCF 更新入口。', 'plugin-manager', 70],
   ['dcf.firstparty.diagnostics', '诊断', '正常时压缩状态，异常时复制隐私受限证据。', 'diagnostics', 90]
