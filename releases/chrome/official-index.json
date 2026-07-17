@@ -15,7 +15,7 @@
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/shell/main.js",
       "default_enabled": true,
       "description": "DCF 的统一可见入口与独立插件面板挂载。",
-      "hash": "fa12f2aa405a9f53605821765c5e7cf4422e8c3f3e8a4a4bd1f60347fa8a37d9",
+      "hash": "83cd55c7649efc9667589e9ac777cd6889834f79c9b5e34634416c66d56943c8",
       "host_api": "2",
       "id": "dcf.firstparty.shell",
       "matches": [
@@ -26,14 +26,14 @@
       "required": true,
       "run_at": "document_idle",
       "title": "基础界面",
-      "version": "1.0.0-rc.2-shell.2",
+      "version": "1.0.0-rc.2-shell.3",
       "world_id": "dcf-firstparty-shell"
     },
     {
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/ammo/main.js",
       "default_enabled": true,
       "description": "语言弹药工作台、自动装填、发射、更新与 GitHub 便携库。",
-      "hash": "00bae29f0e7b154b75639a3016228e5ff156926908891a880db77dcf8e456514",
+      "hash": "c368678d7622429cc44e172d843a0af8fbb7598c2c66f1262fe3653ab95900bc",
       "host_api": "2",
       "id": "dcf.firstparty.ammo",
       "matches": [
@@ -44,7 +44,7 @@
       "required": true,
       "run_at": "document_idle",
       "title": "语言弹药",
-      "version": "1.0.0-rc.2",
+      "version": "1.0.0-rc.2-ammo.1",
       "world_id": "dcf-firstparty-ammo"
     },
     {
@@ -87,7 +87,7 @@
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/appearance/main.js",
       "default_enabled": true,
       "description": "DCF 侧栏方向、尺寸与位置。",
-      "hash": "eaea5232b414ab2a654a2e3658a617690b7f9c0723195b409fd1aad34ccab676",
+      "hash": "028efc884c250324734fa7749bf79e42e1b74ff0dfbd57d7d48898ca3eebf4bf",
       "host_api": "2",
       "id": "dcf.firstparty.appearance",
       "matches": [
@@ -98,7 +98,7 @@
       "required": true,
       "run_at": "document_idle",
       "title": "外观",
-      "version": "1.0.0-rc.2",
+      "version": "1.0.0-rc.2-appearance.1",
       "world_id": "dcf-firstparty-appearance"
     },
     {
@@ -123,7 +123,7 @@
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/plugin-manager/main.js",
       "default_enabled": true,
       "description": "低频功能启停与统一 DCF 更新入口。",
-      "hash": "1886af0fe3a358c4a764b7c743e140bc2f7edba0b3ef08207c8c4299df7282fb",
+      "hash": "1886af0fe3a358c4a764b7c743e140bc2f7edba0b3e91b5bb",
       "host_api": "2",
       "id": "dcf.firstparty.plugin-manager",
       "matches": [
