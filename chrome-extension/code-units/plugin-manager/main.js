@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.plugin-manager';
-  const UNIT_VERSION = '1.0.0-rc.2-plugin-manager.1';
+  const UNIT_VERSION = '1.0.0-rc.2-plugin-manager.2';
   const PANEL_ID = 'plugins';
   const HOST_ID = 'dcf-panel-plugins';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_PLUGIN_MANAGER__';
@@ -30,28 +30,51 @@
   let status = null;
   let notice = '';
   let shellState = { pinned_panels: ['ammo', 'plugins'], active_panel: null, panels: [] };
+  let remembered = { pinned_panels: ['ammo', 'plugins'], active_panel: null };
   let shellStateListener;
+  let shellReadyListener;
+  let persistTimer = null;
+  let restoring = true;
+
+  const unique = (values) => Array.from(new Set((Array.isArray(values) ? values : []).map(String).map((value) => value.trim()).filter(Boolean)));
+  const normalizeMemory = (value) => {
+    const raw = value && typeof value === 'object' ? value : {};
+    const pinned = unique(raw.pinned_panels).filter((id) => id !== 'plugins');
+    pinned.push('plugins');
+    return { pinned_panels: pinned.length > 1 ? pinned : ['ammo', 'plugins'], active_panel: String(raw.active_panel || '') || null };
+  };
 
   function style() {
     return `:host{display:block;font:13px/1.5 system-ui;color:inherit;min-width:0}.content{display:grid;gap:9px;min-width:0}.card{border:1px solid #ddd;border-radius:10px;padding:10px;background:#fff;min-width:0}.unit{padding:10px 0;border-top:1px solid #ddd;display:grid;gap:6px;min-width:0}.unit:first-child{border-top:0}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-width:0}.grow{flex:1;min-width:0}.title{font-weight:700;overflow-wrap:anywhere}.technical{font:11px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;color:#666;overflow-wrap:anywhere}.description{font-size:12px;color:#666}.badge{font-size:11px;border:1px solid #ccc;border-radius:999px;padding:2px 7px}.actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}button{font:inherit;color:inherit;border:1px solid #bbb;background:#fff;border-radius:8px;padding:6px 9px;min-width:0}.primary{background:#202124;color:#fff;border-color:#202124}.notice{min-height:18px;color:#666;overflow-wrap:anywhere}.locked{opacity:.72}@media(max-width:330px){.actions{grid-template-columns:1fr}}@media(prefers-color-scheme:dark){.card{background:#222;border-color:#444}.unit{border-color:#444}button{background:#292929;color:#f3f3f3;border-color:#555}.primary{background:#f3f3f3;color:#181818}.technical,.notice,.description{color:#aaa}.badge{border-color:#555}}`;
   }
 
   function emitShellCommand(action, panelId, activate = true) {
-    document.dispatchEvent(new CustomEvent('dcf:shell-command', {
-      detail: JSON.stringify({ action, panel_id: panelId, activate })
-    }));
+    document.dispatchEvent(new CustomEvent('dcf:shell-command', { detail: JSON.stringify({ action, panel_id: panelId, activate }) }));
+  }
+  function queryShellState() { document.dispatchEvent(new CustomEvent('dcf:shell-query')); }
+  function panelIsPinned(panelId) { return Array.isArray(shellState.pinned_panels) && shellState.pinned_panels.includes(panelId); }
+  function currentSnapshot() { return status && (status.snapshots.current || status.snapshots.last_known_good); }
+
+  async function loadMemory() {
+    const result = await send({ type: 'plugin.data.get', plugin_id: UNIT_ID });
+    remembered = normalizeMemory(result.data || {});
+  }
+  async function saveMemory(next = shellState) {
+    remembered = normalizeMemory(next);
+    await send({ type: 'plugin.data.set', plugin_id: UNIT_ID, data: remembered });
+  }
+  function scheduleMemorySave() {
+    clearTimeout(persistTimer);
+    persistTimer = setTimeout(() => saveMemory(shellState).catch(() => {}), 120);
   }
 
-  function queryShellState() {
-    document.dispatchEvent(new CustomEvent('dcf:shell-query'));
-  }
-
-  function panelIsPinned(panelId) {
-    return Array.isArray(shellState.pinned_panels) && shellState.pinned_panels.includes(panelId);
-  }
-
-  function currentSnapshot() {
-    return status && (status.snapshots.current || status.snapshots.last_known_good);
+  function restoreRemembered() {
+    const available = new Set((shellState.panels || []).map((item) => String(item.id || '')));
+    const wanted = remembered.pinned_panels.filter((id) => id === 'plugins' || available.has(id));
+    for (const id of wanted) if (id !== 'plugins') emitShellCommand('pin', id, false);
+    const active = remembered.active_panel && wanted.includes(remembered.active_panel) ? remembered.active_panel : wanted[0] || 'plugins';
+    setTimeout(() => emitShellCommand('activate', active, true), 80);
+    setTimeout(() => { restoring = false; queryShellState(); }, 180);
   }
 
   function unitDescription(id) {
@@ -83,7 +106,7 @@
     root.querySelector('.content').innerHTML = `
       <section class="card">
         <div class="row"><b class="grow">DCF 功能库</b><button class="primary" data-action="update">检查 DCF 更新</button></div>
-        <div class="description">标签栏只保留当前固定的工作区。低频功能可以在这里启用，并按需添加到标签栏。</div>
+        <div class="description">标签栏只保留当前固定的工作区。固定状态会跨插件更新保留。</div>
         <div class="notice">${notice}</div>
       </section>
       <section class="card">
@@ -104,14 +127,11 @@
       </section>`;
 
     root.querySelector('[data-action="update"]').onclick = async () => {
-      notice = '正在检查功能插件和底座更新…';
+      notice = '正在保存标签并检查更新…';
       render();
+      await saveMemory(shellState);
       const result = await send({ type: 'host.check_all_updates' });
-      notice = result.plugins?.ok === false
-        ? `功能更新失败：${result.plugins.error}`
-        : result.plugins?.status === 'current'
-          ? 'DCF 已是最新版本'
-          : '已取得更新，正在完成启动确认';
+      notice = result.plugins?.ok === false ? `功能更新失败：${result.plugins.error}` : result.plugins?.status === 'current' ? 'DCF 已是最新版本' : '已取得更新，正在恢复工作区';
       await refresh();
     };
 
@@ -167,7 +187,9 @@
   }
 
   function destroy() {
+    clearTimeout(persistTimer);
     if (shellStateListener) document.removeEventListener('dcf:shell-state', shellStateListener, true);
+    if (shellReadyListener) document.removeEventListener('dcf:shell-ready', shellReadyListener, true);
     panel?.remove();
   }
 
@@ -180,11 +202,15 @@
       try {
         shellState = JSON.parse(String(event.detail || '{}'));
         render();
+        if (!restoring) scheduleMemorySave();
       } catch (_) {}
     };
+    shellReadyListener = () => setTimeout(() => { queryShellState(); setTimeout(restoreRemembered, 80); }, 80);
     document.addEventListener('dcf:shell-state', shellStateListener, true);
-    refresh()
-      .then(() => send({ type: 'unit.started', unit_id: UNIT_ID, version: UNIT_VERSION }))
+    document.addEventListener('dcf:shell-ready', shellReadyListener, true);
+    loadMemory()
+      .then(refresh)
+      .then(() => { setTimeout(restoreRemembered, 220); return send({ type: 'unit.started', unit_id: UNIT_ID, version: UNIT_VERSION }); })
       .catch((error) => send({ type: 'unit.failed', unit_id: UNIT_ID, version: UNIT_VERSION, error: String(error?.message || error) }));
   } catch (error) {
     destroy();
