@@ -60,7 +60,9 @@ The Chrome base is not self-replaced from GitHub. GitHub Actions produces the ve
 
 `npm run verify:chrome` must cover pure-base boundaries, plugin independence, hashes, unique worlds, snapshots, GitHub install/update, startup evidence, rollback, extension-update reconstruction, DCF Next/rc.1 continuity, dark static pages, recovery and deterministic packaging.
 
-Never report a real browser pass or a Chrome Web Store publication without direct evidence.
+When several browser acceptance facts can be observed by the owning plugin, provide one explicit action that gathers a privacy-bounded structured report and returns it to the current conversation. Do not ask the user to transcribe logs or confirm those facts one by one. The report may change only the state that the acceptance operation is specifically testing, must disclose that change, and must never include conversation text, prompts, credentials or complete sensitive payloads.
+
+The user should be asked only for irreducibly experiential judgments or external effects that DCF cannot observe reliably. Never report a real browser pass or a Chrome Web Store publication without direct evidence.
 
 ## Stop conditions
 

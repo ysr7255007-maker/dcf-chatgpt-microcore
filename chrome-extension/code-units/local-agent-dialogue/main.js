@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.local-agent-dialogue';
-  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.7';
+  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.8';
   const LOCAL_AGENT_ID = 'dcf.firstparty.local-agent';
   const LOCAL_AGENT_PANEL_ID = 'dcf-panel-local-agent';
   const SHELL_HOST_ID = 'dcf-chrome-shell-host';
@@ -12,6 +12,8 @@
   const REQUEST_END = '<<<END_DCF_LOCAL_AGENT_REQUEST>>>';
   const RESULT_START = '<<<DCF_LOCAL_AGENT_RESULT>>>';
   const RESULT_END = '<<<END_DCF_LOCAL_AGENT_RESULT>>>';
+  const ACCEPTANCE_START = '<<<DCF_LOCAL_AGENT_DIALOGUE_ACCEPTANCE>>>';
+  const ACCEPTANCE_END = '<<<END_DCF_LOCAL_AGENT_DIALOGUE_ACCEPTANCE>>>';
   const DEFAULTS = Object.freeze({
     enabled: true,
     auto_send_results: true,
@@ -23,6 +25,7 @@
   const previous = globalThis[GLOBAL_KEY];
   if (previous?.destroy) previous.destroy();
 
+  const bootPerformanceMs = performance.now();
   const sendHost = (message) => chrome.runtime.sendMessage(message).then((result) => {
     if (!result || result.ok === false) throw new Error(result?.error || 'DCF host rejected request');
     return result;
@@ -39,6 +42,7 @@
   let currentShellShadow = null;
   let mountHost = null;
   let mountRoot = null;
+  let boundMountRoot = null;
   let mountTimer = null;
   let rootTimer = null;
   let elapsedTimer = null;
@@ -47,9 +51,22 @@
   let queueBusy = false;
   let activeJob = null;
   let pendingArtifact = '';
+  let pendingForceSend = false;
+  let startupMountConfirmed = false;
   const queue = [];
   const baselineNodes = new WeakSet();
   const nodeState = new WeakMap();
+  const counters = {
+    baseline_messages: 0,
+    new_assistant_events: 0,
+    manual_latest_checks: 0,
+    auto_requests_enqueued: 0,
+    manual_requests_enqueued: 0,
+    tasks_started: 0,
+    clear_actions: 0,
+    acceptance_reports: 0,
+    mount_bindings: 0
+  };
 
   const state = {
     settings: { ...DEFAULTS },
@@ -356,7 +373,7 @@
 
   async function inspectNode(node, force = false) {
     if (!state.settings.enabled || !(node instanceof Element) || !node.isConnected) return;
-    if (!force && node !== currentCandidate) return;
+    if (!force && (node !== currentCandidate || baselineNodes.has(node))) return;
     const text = String(node.innerText || node.textContent || '').trim();
     const prior = nodeState.get(node) || {};
     if (!force && prior.text === text) return;
@@ -373,7 +390,7 @@
         state.stage = 'idle'; state.status = `最新回复中的工件已经处理：${parsed.id}`; state.error = '';
         markAction('最新助手回复中的工件已经处理'); render(); return;
       }
-      enqueue(parsed);
+      enqueue(parsed, force ? 'manual-latest' : 'new-assistant-event');
     } catch (error) {
       state.stage = 'invalid'; state.status = '最新助手回复包含无效委派工件';
       state.error = String(error?.message || error); markAction('最新助手回复工件解析失败'); render();
@@ -382,6 +399,7 @@
 
   function considerNewAssistant(node) {
     if (!(node instanceof Element) || baselineNodes.has(node)) return;
+    counters.new_assistant_events += 1;
     if (node !== latestAssistantNode()) { baselineNodes.add(node); return; }
     currentCandidate = node;
     scheduleInspect(node, false);
@@ -390,6 +408,7 @@
   function baselineConversation(root) {
     currentCandidate = null;
     const messages = assistantMessages(root);
+    counters.baseline_messages = messages.length;
     for (const node of messages) baselineNodes.add(node);
     const latest = messages[messages.length - 1] || null;
     if (latest && streaming()) {
@@ -428,6 +447,7 @@
   }
 
   function inspectLatestAssistant() {
+    counters.manual_latest_checks += 1;
     attachConversationRoot();
     const latest = latestAssistantNode();
     if (!latest) {
@@ -444,8 +464,10 @@
     }, 900);
   }
 
-  function enqueue(requestData) {
+  function enqueue(requestData, source = 'new-assistant-event') {
     if (!requestData || state.processed_ids.includes(requestData.id) || queue.some((item) => item.id === requestData.id) || activeJob?.request.id === requestData.id) return;
+    if (source === 'manual-latest') counters.manual_requests_enqueued += 1;
+    else counters.auto_requests_enqueued += 1;
     queue.push(requestData);
     state.stage = 'received'; state.status = '已识别新的完整工件，等待委派'; state.error = '';
     state.last_request_id = requestData.id; markAction(`已接收请求 ${requestData.id}`); render();
@@ -519,6 +541,7 @@
   }
 
   const artifact = (value) => `${RESULT_START}\n${json(value)}\n${RESULT_END}`;
+  const acceptanceArtifact = (value) => `${ACCEPTANCE_START}\n${json(value)}\n${ACCEPTANCE_END}`;
   const composer = () => document.querySelector('#prompt-textarea') || document.querySelector('[data-testid="composer-text-input"]') || document.querySelector('form textarea') || document.querySelector('main [contenteditable="true"]');
   const composerValue = (target) => target ? String('value' in target ? target.value || '' : target.innerText || target.textContent || '') : '';
   const streaming = () => Boolean(document.querySelector('[data-testid="stop-button"],button[aria-label*="Stop"],button[aria-label*="停止"]'));
@@ -558,23 +581,35 @@
     throw new Error('闭环结果已写入输入框，但发送按钮暂不可用');
   }
 
-  async function returnPayload(value) {
-    const text = artifact(value);
+  async function returnArtifactText(text, {
+    forceSend = false,
+    sentStatus = '结果已自动回传',
+    filledStatus = '结果已填入输入框',
+    finalStage = null
+  } = {}) {
     pendingArtifact = text;
+    pendingForceSend = forceSend;
     const started = Date.now();
     while (!destroyed && pendingArtifact === text && Date.now() - started < 120000) {
       const target = composer();
       if (target && !composerValue(target).trim() && !streaming()) {
         fillComposer(text);
-        if (state.settings.auto_send_results) await clickSend();
+        const shouldSend = forceSend || state.settings.auto_send_results;
+        if (shouldSend) await clickSend();
         pendingArtifact = '';
-        state.status = state.settings.auto_send_results ? '结果已自动回传' : '结果已填入输入框';
+        pendingForceSend = false;
+        state.status = shouldSend ? sentStatus : filledStatus;
+        if (finalStage) state.stage = finalStage;
         state.error = ''; markAction(state.status); render(); return true;
       }
       await sleep(500);
     }
     state.stage = 'return_wait'; state.status = '结果等待回传';
     state.error = '当前对话尚未空闲，未覆盖输入框'; render(); return false;
+  }
+
+  async function returnPayload(value) {
+    return returnArtifactText(artifact(value));
   }
 
   async function focusSession(id) {
@@ -591,6 +626,149 @@
       }
     } catch (error) { state.error = String(error?.message || error); }
     render();
+  }
+
+  async function clearProcessedState(label = 'manual') {
+    if (activeJob || queueBusy || queue.length) throw new Error('本机任务正在执行，暂不能清除交接记录');
+    const before = {
+      processed_count: state.processed_ids.length,
+      recent_request_present: Boolean(state.last_request_id),
+      recent_session_present: Boolean(state.last_session_id)
+    };
+    state.processed_ids = [];
+    state.last_request_id = '';
+    state.last_session_id = '';
+    state.stage = label === 'acceptance' ? 'acceptance' : 'idle';
+    state.progress = { status_type: '', messages: 0, todo: 0, diff: 0, permissions: 0, questions: 0, preview: '', last_poll_at: '' };
+    state.status = label === 'acceptance' ? '正在执行一键验收' : '已清除工件去重记录与最近交接；历史消息仍不会自动执行';
+    state.error = '';
+    counters.clear_actions += 1;
+    markAction(label === 'acceptance' ? '一键验收已清除去重记录与最近交接' : '已清除工件去重记录与最近交接');
+    await persist();
+    render();
+    return before;
+  }
+
+  function workspaceEvidence() {
+    const shadow = shellShadow();
+    const tabs = Array.from(shadow?.querySelectorAll('.tabs button[data-panel-id]') || []);
+    const active = tabs.find((button) => button.classList.contains('active')) || null;
+    return {
+      pinned_panel_ids: tabs.map((button) => String(button.dataset.panelId || '')).filter(Boolean),
+      active_panel_id: String(active?.dataset.panelId || ''),
+      local_agent_pinned: tabs.some((button) => button.dataset.panelId === 'local-agent'),
+      local_agent_active: active?.dataset.panelId === 'local-agent'
+    };
+  }
+
+  async function hostVersionEvidence() {
+    try {
+      const host = await sendHost({ type: 'host.status' });
+      const snapshot = host.snapshots?.current || host.snapshots?.last_known_good || null;
+      const entries = Array.isArray(snapshot?.entries) ? snapshot.entries : [];
+      const wanted = new Set([UNIT_ID, LOCAL_AGENT_ID, 'dcf.firstparty.shell', 'dcf.firstparty.plugin-manager']);
+      return Object.fromEntries(entries.filter((entry) => wanted.has(entry.id)).map((entry) => [
+        entry.id,
+        { version: String(entry.version || ''), hash_prefix: String(entry.hash || '').slice(0, 12), enabled: entry.enabled !== false }
+      ]));
+    } catch (error) {
+      return { error: String(error?.message || error) };
+    }
+  }
+
+  async function buildAcceptanceReport(clearBefore) {
+    await sleep(900);
+    const persisted = await sendHost({ type: 'plugin.data.get', plugin_id: UNIT_ID });
+    const saved = persisted.data && typeof persisted.data === 'object' ? persisted.data : {};
+    const workspace = workspaceEvidence();
+    const shell = shellShadow();
+    const panelHost = localPanelHost();
+    const panelShadow = localPanelShadow();
+    const buttonText = String(mountRoot?.querySelector('[data-action="latest"]')?.textContent || '').trim();
+    const cardText = String(mountRoot?.textContent || '');
+    const versions = await hostVersionEvidence();
+    const checks = {
+      dialogue_card_mounted: Boolean(mountHost?.isConnected && mountRoot),
+      click_events_bound: boundMountRoot === mountRoot,
+      startup_mount_confirmed: startupMountConfirmed,
+      latest_only_control: buttonText === '检查最新助手回复',
+      clear_persisted: Array.isArray(saved.processed_ids) && saved.processed_ids.length === 0
+        && !String(saved.last_request_id || '') && !String(saved.last_session_id || ''),
+      no_queue_after_clear: !activeJob && !queueBusy && queue.length === 0,
+      history_not_replayed_after_clear: counters.tasks_started === 0 || counters.auto_requests_enqueued <= counters.new_assistant_events,
+      local_agent_tab_preserved: workspace.local_agent_pinned,
+      idle_status_not_unknown: state.progress.status_type !== 'unknown',
+      recent_handoff_not_labeled_current: !cardText.includes('当前请求：') && !cardText.includes('当前会话：')
+    };
+    return {
+      schema: 'dcf.local-agent-dialogue.acceptance.v1',
+      generated_at: new Date().toISOString(),
+      plugin: {
+        id: UNIT_ID,
+        version: UNIT_VERSION,
+        intake_model: 'new-assistant-event-stream'
+      },
+      page_runtime: {
+        route_kind: /^\/c\//.test(location.pathname) ? '/c/:conversation' : location.pathname === '/' ? '/' : 'other',
+        page_uptime_ms: Math.round(performance.now()),
+        plugin_uptime_ms: Math.round(performance.now() - bootPerformanceMs),
+        page_predates_plugin_ms: Math.round(bootPerformanceMs)
+      },
+      mount: {
+        shell_host_connected: Boolean(document.getElementById(SHELL_HOST_ID)?.isConnected),
+        shell_shadow_open: Boolean(shell),
+        local_agent_panel_connected: Boolean(panelHost?.isConnected),
+        panel_inside_shell_shadow: Boolean(shell && panelHost && shell.contains(panelHost)),
+        local_agent_shadow_open: Boolean(panelShadow),
+        dialogue_mount_connected: Boolean(mountHost?.isConnected),
+        event_root_bound: boundMountRoot === mountRoot,
+        mount_bindings: counters.mount_bindings
+      },
+      workspace,
+      intake: {
+        assistant_message_count: assistantMessages().length,
+        baseline_message_count: counters.baseline_messages,
+        new_assistant_events: counters.new_assistant_events,
+        manual_latest_checks: counters.manual_latest_checks,
+        auto_requests_enqueued: counters.auto_requests_enqueued,
+        manual_requests_enqueued: counters.manual_requests_enqueued,
+        tasks_started: counters.tasks_started
+      },
+      clear_test: {
+        performed: true,
+        before: clearBefore,
+        after: {
+          processed_count: state.processed_ids.length,
+          recent_request_present: Boolean(state.last_request_id),
+          recent_session_present: Boolean(state.last_session_id),
+          persisted_processed_count: Array.isArray(saved.processed_ids) ? saved.processed_ids.length : null,
+          queue_length: queue.length
+        }
+      },
+      versions,
+      checks,
+      passed: Object.values(checks).every(Boolean)
+    };
+  }
+
+  async function runAcceptance() {
+    if (activeJob || queueBusy || queue.length) throw new Error('本机任务正在执行，完成后再生成验收报告');
+    state.stage = 'acceptance';
+    state.status = '正在执行一键验收并生成报告';
+    state.error = '';
+    counters.acceptance_reports += 1;
+    markAction('开始一键验收');
+    render();
+    const clearBefore = await clearProcessedState('acceptance');
+    const report = await buildAcceptanceReport(clearBefore);
+    state.status = report.passed ? '验收检查完成，正在自动回传' : '验收发现偏差，正在自动回传';
+    render();
+    await returnArtifactText(acceptanceArtifact(report), {
+      forceSend: true,
+      sentStatus: report.passed ? '验收报告已自动回传' : '偏差报告已自动回传',
+      filledStatus: '验收报告已写入输入框',
+      finalStage: 'idle'
+    });
   }
 
   async function poll(job) {
@@ -626,6 +804,7 @@
   }
 
   async function run(requestData) {
+    counters.tasks_started += 1;
     state.started_at = Date.now(); state.stage = 'checking'; state.status = '正在检查 OpenCode 服务'; render();
     const config = await connectionConfig();
     await request('/global/health', { config, timeout: 8000 });
@@ -697,18 +876,18 @@
   }
 
   function style() {
-    return `:host{display:block;font:13px/1.5 system-ui;color:inherit;min-width:0}.card{border:1px solid #ddd;border-radius:10px;padding:10px;background:#fff;display:grid;gap:9px;min-width:0}.title-row,.row{display:flex;align-items:center;gap:7px;min-width:0;flex-wrap:wrap}.title-row b,.grow{flex:1;min-width:0}.muted,.notice{color:#666;font-size:12px;overflow-wrap:anywhere}.notice.error{color:#b42318}.status{display:inline-flex;align-items:center;gap:5px;border:1px solid #ccc;border-radius:999px;padding:2px 7px;font-size:11px}.status::before{content:'';width:7px;height:7px;border-radius:50%;background:#999}.status.ready::before{background:#188038}.status.busy::before{background:#d97706}.progress{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.metric{border:1px solid #ddd;border-radius:8px;padding:6px;display:grid;gap:2px;min-width:0}.metric b{font-size:14px}.stage{font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;overflow-wrap:anywhere}.preview{max-height:150px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:#f6f6f6;border-radius:7px;padding:8px;font:11px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace}.buttons{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}button,input{box-sizing:border-box;max-width:100%;min-width:0;font:inherit;color:inherit;border:1px solid #bbb;background:#fff;border-radius:8px;padding:6px 8px}button{cursor:pointer}button:hover{border-color:#777}button:active{transform:translateY(1px)}button:focus-visible{outline:2px solid #4c8bf5;outline-offset:1px}.last-action{border-top:1px solid #ddd;padding-top:7px}@media(max-width:340px){.progress{grid-template-columns:repeat(2,minmax(0,1fr))}.buttons{grid-template-columns:1fr}}@media(prefers-color-scheme:dark){.card{background:#222;border-color:#444}.muted,.notice{color:#aaa}button,input{background:#292929;color:#f3f3f3;border-color:#555}.metric{border-color:#444}.preview{background:#181818}.status{border-color:#555}.last-action{border-color:#444}}`;
+    return `:host{display:block;font:13px/1.5 system-ui;color:inherit;min-width:0}.card{border:1px solid #ddd;border-radius:10px;padding:10px;background:#fff;display:grid;gap:9px;min-width:0}.title-row,.row{display:flex;align-items:center;gap:7px;min-width:0;flex-wrap:wrap}.title-row b,.grow{flex:1;min-width:0}.muted,.notice{color:#666;font-size:12px;overflow-wrap:anywhere}.notice.error{color:#b42318}.status{display:inline-flex;align-items:center;gap:5px;border:1px solid #ccc;border-radius:999px;padding:2px 7px;font-size:11px}.status::before{content:'';width:7px;height:7px;border-radius:50%;background:#999}.status.ready::before{background:#188038}.status.busy::before{background:#d97706}.progress{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.metric{border:1px solid #ddd;border-radius:8px;padding:6px;display:grid;gap:2px;min-width:0}.metric b{font-size:14px}.stage{font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;overflow-wrap:anywhere}.preview{max-height:150px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:#f6f6f6;border-radius:7px;padding:8px;font:11px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace}.buttons{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.buttons .primary{grid-column:1/-1;background:#202124;color:#fff;border-color:#202124}button,input{box-sizing:border-box;max-width:100%;min-width:0;font:inherit;color:inherit;border:1px solid #bbb;background:#fff;border-radius:8px;padding:6px 8px}button{cursor:pointer}button:hover{border-color:#777}button:active{transform:translateY(1px)}button:focus-visible{outline:2px solid #4c8bf5;outline-offset:1px}.last-action{border-top:1px solid #ddd;padding-top:7px}@media(max-width:340px){.progress{grid-template-columns:repeat(2,minmax(0,1fr))}.buttons{grid-template-columns:1fr}.buttons .primary{grid-column:1}}@media(prefers-color-scheme:dark){.card{background:#222;border-color:#444}.muted,.notice{color:#aaa}button,input{background:#292929;color:#f3f3f3;border-color:#555}.buttons .primary{background:#f3f3f3;color:#181818}.metric{border-color:#444}.preview{background:#181818}.status{border-color:#555}.last-action{border-color:#444}}`;
   }
 
   function cardHtml() {
-    const active = Boolean(activeJob) || queueBusy || ['received', 'checking', 'creating', 'submitting', 'running', 'needs_user'].includes(state.stage);
+    const active = Boolean(activeJob) || queueBusy || ['received', 'checking', 'creating', 'submitting', 'running', 'needs_user', 'acceptance'].includes(state.stage);
     const progress = state.progress;
-    const activeRequestId = activeJob?.request?.id || (active ? state.last_request_id : '');
-    const activeSessionId = activeJob?.session_id || (active ? state.last_session_id : '');
+    const activeRequestId = activeJob?.request?.id || (active && state.stage !== 'acceptance' ? state.last_request_id : '');
+    const activeSessionId = activeJob?.session_id || (active && state.stage !== 'acceptance' ? state.last_session_id : '');
     const recent = !active && (state.last_request_id || state.last_session_id)
       ? `<div class="muted">最近交接${state.last_request_id ? ` · 请求 ${html(state.last_request_id)}` : ''}${state.last_session_id ? ` · 会话 ${html(state.last_session_id)}` : ''}</div>`
       : '';
-    return `<section class="card"><div class="title-row"><b>对话闭环</b><span class="status ${active ? 'busy' : state.settings.enabled ? 'ready' : ''}">${active ? '执行中' : state.settings.enabled ? '已开启' : '已关闭'}</span></div><div class="muted">只消费插件启动后新增的助手回复。页面中已有历史消息只建立基线，不会被重新执行。</div><div class="row"><label class="row"><input type="checkbox" data-field="enabled" ${state.settings.enabled ? 'checked' : ''}>允许对话自动委派</label><label class="row"><input type="checkbox" data-field="auto-send" ${state.settings.auto_send_results ? 'checked' : ''}>结果自动发送回对话</label></div><div class="stage"><b>${html(state.status)}</b>${elapsedText() ? ` · ${html(elapsedText())}` : ''}<br>阶段：${html(state.stage)}${activeRequestId ? `<br>当前请求：${html(activeRequestId)}` : ''}${activeSessionId ? `<br>当前会话：${html(activeSessionId)}` : ''}</div>${recent}<div class="progress"><div class="metric"><span class="muted">状态</span><b>${html(progress.status_type || '—')}</b></div><div class="metric"><span class="muted">消息</span><b>${progress.messages}</b></div><div class="metric"><span class="muted">Todo</span><b>${progress.todo}</b></div><div class="metric"><span class="muted">Diff</span><b>${progress.diff}</b></div><div class="metric"><span class="muted">权限</span><b>${progress.permissions}</b></div><div class="metric"><span class="muted">提问</span><b>${progress.questions}</b></div></div>${progress.preview ? `<div><div class="muted">最近本机输出 · ${html(progress.last_poll_at)}</div><div class="preview">${html(progress.preview)}</div></div>` : ''}<div class="buttons"><button data-action="latest">检查最新助手回复</button><button data-action="focus">查看最近执行会话</button><button data-action="return">回传待发送结果</button><button data-action="clear">清除已处理记录</button></div><div class="last-action muted">上次操作：${html(state.last_action)}${state.last_action_at ? ` · ${html(state.last_action_at)}` : ''}</div>${state.error ? `<div class="notice error">${html(state.error)}</div>` : ''}</section>`;
+    return `<section class="card"><div class="title-row"><b>对话闭环</b><span class="status ${active ? 'busy' : state.settings.enabled ? 'ready' : ''}">${active ? '执行中' : state.settings.enabled ? '已开启' : '已关闭'}</span></div><div class="muted">只消费插件启动后新增的助手回复。页面中已有历史消息只建立基线，不会被重新执行。</div><div class="row"><label class="row"><input type="checkbox" data-field="enabled" ${state.settings.enabled ? 'checked' : ''}>允许对话自动委派</label><label class="row"><input type="checkbox" data-field="auto-send" ${state.settings.auto_send_results ? 'checked' : ''}>结果自动发送回对话</label></div><div class="stage"><b>${html(state.status)}</b>${elapsedText() ? ` · ${html(elapsedText())}` : ''}<br>阶段：${html(state.stage)}${activeRequestId ? `<br>当前请求：${html(activeRequestId)}` : ''}${activeSessionId ? `<br>当前会话：${html(activeSessionId)}` : ''}</div>${recent}<div class="progress"><div class="metric"><span class="muted">状态</span><b>${html(progress.status_type || '—')}</b></div><div class="metric"><span class="muted">消息</span><b>${progress.messages}</b></div><div class="metric"><span class="muted">Todo</span><b>${progress.todo}</b></div><div class="metric"><span class="muted">Diff</span><b>${progress.diff}</b></div><div class="metric"><span class="muted">权限</span><b>${progress.permissions}</b></div><div class="metric"><span class="muted">提问</span><b>${progress.questions}</b></div></div>${progress.preview ? `<div><div class="muted">最近本机输出 · ${html(progress.last_poll_at)}</div><div class="preview">${html(progress.preview)}</div></div>` : ''}<div class="buttons"><button class="primary" data-action="acceptance">一键验收并回传</button><button data-action="latest">检查最新助手回复</button><button data-action="focus">查看最近执行会话</button><button data-action="return">回传待发送结果</button><button data-action="clear">清除已处理记录</button></div><div class="last-action muted">上次操作：${html(state.last_action)}${state.last_action_at ? ` · ${html(state.last_action_at)}` : ''}</div>${state.error ? `<div class="notice error">${html(state.error)}</div>` : ''}</section>`;
   }
 
   function render() {
@@ -717,6 +896,7 @@
   }
 
   async function handleAction(action) {
+    if (action === 'acceptance') { await runAcceptance(); return; }
     if (action === 'latest') { inspectLatestAssistant(); return; }
     if (action === 'focus') { await focusSession(state.last_session_id); return; }
     if (action === 'return') {
@@ -724,24 +904,24 @@
       try {
         if (composerValue(composer()).trim() || streaming()) throw new Error('当前对话或输入框尚未空闲');
         const text = pendingArtifact; fillComposer(text);
-        if (state.settings.auto_send_results) await clickSend();
+        const shouldSend = pendingForceSend || state.settings.auto_send_results;
+        if (shouldSend) await clickSend();
         pendingArtifact = '';
-        state.status = state.settings.auto_send_results ? '结果已自动回传' : '结果已填入输入框';
+        pendingForceSend = false;
+        state.status = shouldSend ? '结果已自动回传' : '结果已填入输入框';
         state.error = ''; markAction(state.status);
       } catch (error) { state.error = String(error?.message || error); markAction('手动回传失败'); }
       render(); return;
     }
     if (action === 'clear') {
-      state.processed_ids = []; state.last_request_id = ''; state.last_session_id = ''; state.stage = 'idle';
-      state.progress = { status_type: '', messages: 0, todo: 0, diff: 0, permissions: 0, questions: 0, preview: '', last_poll_at: '' };
-      state.status = '已清除工件去重记录与最近交接；历史消息仍不会自动执行'; state.error = '';
-      markAction('已清除工件去重记录与最近交接'); await persist(); render();
+      await clearProcessedState('manual');
     }
   }
 
   function bindMountEvents() {
-    if (!mountRoot || mountRoot.dataset.bound === UNIT_VERSION) return;
-    mountRoot.dataset.bound = UNIT_VERSION;
+    if (!mountRoot || boundMountRoot === mountRoot) return;
+    boundMountRoot = mountRoot;
+    counters.mount_bindings += 1;
     mountRoot.addEventListener('click', (event) => {
       const button = event.target.closest?.('button[data-action]');
       if (!button) return;
@@ -772,7 +952,7 @@
         if (!shadow.querySelector(`#${MOUNT_ID}`)) queueMicrotask(ensurePanelMount);
       });
       panelObserver.observe(shadow, { childList: true, subtree: true });
-      mountHost = null; mountRoot = null;
+      mountHost = null; mountRoot = null; boundMountRoot = null;
     }
     let host = shadow.querySelector(`#${MOUNT_ID}`);
     if (!host) {
@@ -782,7 +962,7 @@
       mountHost = host; mountRoot = host.shadowRoot || host.attachShadow({ mode: 'open' });
       bindMountEvents(); render();
     }
-    return true;
+    return Boolean(mountHost?.isConnected && mountRoot && boundMountRoot === mountRoot);
   }
 
   function schedulePanelMount() {
@@ -844,6 +1024,7 @@
     if (panelReadyListener) document.removeEventListener('dcf:panel-ready', panelReadyListener, true);
     clearInterval(mountTimer); clearInterval(rootTimer); clearInterval(elapsedTimer);
     mountHost?.remove();
+    boundMountRoot = null;
     for (const node of assistantMessages(currentConversationRoot)) {
       const info = nodeState.get(node); if (info?.timer) clearTimeout(info.timer);
     }
@@ -853,7 +1034,8 @@
   globalThis[GLOBAL_KEY] = {
     version: UNIT_VERSION, destroy, intake_model: 'new-assistant-event-stream',
     request_markers: { start: REQUEST_START, end: REQUEST_END },
-    result_markers: { start: RESULT_START, end: RESULT_END }
+    result_markers: { start: RESULT_START, end: RESULT_END },
+    acceptance_markers: { start: ACCEPTANCE_START, end: ACCEPTANCE_END }
   };
 
   try {
@@ -866,6 +1048,7 @@
     loadState().then(async () => {
       attachConversationRoot();
       if (!await waitForPanelMount(5000)) throw new Error('对话闭环未能挂载到本机 Agent 面板');
+      startupMountConfirmed = true;
       render();
       await sendHost({ type: 'unit.started', unit_id: UNIT_ID, version: UNIT_VERSION });
     }).catch((error) => sendHost({

@@ -11,7 +11,9 @@ Updated: 2026-07-18
   - Shell hot update and exclusive panel switching passed in a real browser;
   - pinned workspace tabs, arrows, wheel switching and selectable ammo UI are in real use;
   - Local Agent connected on the real Mac to an independent OpenCode server at `127.0.0.1:4096`, without authentication and with the required browser origins allowed;
-  - the dialogue loop is implemented in the candidate and awaits its first end-to-end browser task.
+  - dialogue `.7` proved the card can hot-remount inside the Shell-hosted Local Agent panel, history is shown as an inert baseline, the latest-only control is visible and idle status is no longer `unknown`;
+  - the same live check found that dialogue controls were rendered but unbound because `ShadowRoot.dataset` was used as an event-binding marker;
+  - dialogue `.8` fixes the binding boundary and replaces the remaining manual checklist with one-click structured acceptance and automatic return; live acceptance is pending.
 - Data continuity: DCF Next + Chrome `rc.1`; no separate `0.18.2` migration
 
 ## Implemented
@@ -39,6 +41,9 @@ Updated: 2026-07-18
 - Local Agent remains a pure plugin and directly uses the OpenCode HTTP API;
 - the manual workbench covers connection, agent/model, sessions, tasks, status, messages, todo, diff, abort, permissions, questions, result insertion and diagnostics;
 - the dialogue adapter accepts only exact `dcf.local-agent.request.v1` artifacts, creates an independent session, and returns `dcf.local-agent.result.v1` to the same conversation;
+- existing assistant replies form an inert startup baseline; automatic intake consumes only assistant replies added after startup and manual recovery checks only the latest assistant reply;
+- dialogue controls bind to the actual mounted ShadowRoot identity rather than storing metadata on ShadowRoot;
+- `一键验收并回传` clears deduplication/recent-handoff state, verifies persistence, mount, event binding, status semantics and workspace preservation, then returns one `dcf.local-agent-dialogue.acceptance.v1` artifact automatically;
 - request IDs are persisted for deduplication;
 - permission and question waits are surfaced rather than answered automatically;
 - an occupied ChatGPT composer is never overwritten.
@@ -55,12 +60,13 @@ Updated: 2026-07-18
 - deterministic Chrome ZIP generation;
 - workspace tab and selectable ammo boundaries;
 - Local Agent and its dialogue adapter do not add dedicated Manifest, background or Host API behavior;
-- exact request/result markers, persistent deduplication, OpenCode session submission and result-return code paths exist.
+- exact request/result/acceptance markers, persistent deduplication, latest-only intake, ShadowRoot event binding, synchronous OpenCode session submission, structured one-click acceptance and automatic return code paths exist.
 
 ## Known boundary before acceptance
 
-- the dialogue loop still needs real ChatGPT DOM and OpenCode verification;
-- the first task is intentionally reserved for creating and verifying the `DCF OpenCode Service` macOS shortcut;
+- `.8` still needs one real-browser `一键验收并回传` result from the current ChatGPT page;
+- after that report passes, send a fresh request ID for a minimal read-only OpenCode task to prove the actual event stream and result return;
+- only after the minimal task succeeds should the reserved task create and verify the `DCF OpenCode Service` macOS shortcut;
 - automated checks do not claim long-task completion, intervention handoff or automatic composer sending already passed live acceptance;
 - `serve.sh` remains manually managed until that shortcut exists and the start-service control is wired to it;
 - the candidate index points to the candidate branch, while formal store builds point to `main`;
