@@ -9,7 +9,7 @@ const ref = index.units.find((unit) => unit.id === 'dcf.firstparty.local-agent-d
 assert(ref);
 assert(index.defaults.includes(ref.id));
 assert.strictEqual(index.units.length, 10);
-assert.strictEqual(ref.version, '1.0.0-rc.2-local-agent-dialogue.7');
+assert.strictEqual(ref.version, '1.0.0-rc.2-local-agent-dialogue.8');
 assert.strictEqual(ref.phase, 57);
 assert.strictEqual(ref.world_id, 'dcf-firstparty-local-agent-dialogue');
 const code = fs.readFileSync(path.join(root, 'chrome-extension/code-units/local-agent-dialogue/main.js'), 'utf8');
@@ -17,10 +17,14 @@ assert.strictEqual(crypto.createHash('sha256').update(code).digest('hex'), ref.h
 for (const token of [
   '<<<DCF_LOCAL_AGENT_REQUEST>>>',
   '<<<DCF_LOCAL_AGENT_RESULT>>>',
+  '<<<DCF_LOCAL_AGENT_DIALOGUE_ACCEPTANCE>>>',
   'dcf.local-agent.request.v1',
   'dcf.local-agent.result.v1',
+  'dcf.local-agent-dialogue.acceptance.v1',
   "intake_model: 'new-assistant-event-stream'",
   'const baselineNodes = new WeakSet()',
+  'let boundMountRoot = null',
+  'boundMountRoot === mountRoot',
   'function baselineConversation(root)',
   'function considerNewAssistant(node)',
   'function inspectLatestAssistant()',
@@ -39,6 +43,14 @@ for (const token of [
   '最近交接',
   '当前请求：',
   '查看最近执行会话',
+  'function clearProcessedState',
+  'function buildAcceptanceReport',
+  'function runAcceptance',
+  '一键验收并回传',
+  'forceSend: true',
+  "type: 'host.status'",
+  'local_agent_pinned',
+  'page_predates_plugin_ms',
   'function schedulePanelMount()',
   'documentObserver.observe(document.documentElement',
   'async function waitForPanelMount',
@@ -59,6 +71,7 @@ for (const forbidden of [
   'scanTimer',
   'data-dcf-panel-root',
   'shadow.append(next)',
+  'mountRoot.dataset',
   '.onclick ='
 ]) assert(!code.includes(forbidden), `forbidden ${forbidden}`);
 console.log(JSON.stringify({
@@ -72,6 +85,9 @@ console.log(JSON.stringify({
   parallel_intervention_observation: true,
   hot_update_remount_watchers: true,
   shell_shadow_mount_discovery: true,
+  shadow_root_event_binding: true,
+  one_click_acceptance: true,
+  acceptance_auto_return: true,
   normalized_status_semantics: true,
   active_and_recent_handoff_separated: true,
   startup_waits_for_mount: true,
