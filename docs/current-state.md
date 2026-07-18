@@ -1,6 +1,6 @@
 # DCF Current State
 
-Updated: 2026-07-18
+Updated: 2026-07-19
 
 ## Current product state
 
@@ -15,10 +15,12 @@ Updated: 2026-07-18
   - the same live check found that dialogue controls were rendered but unbound because `ShadowRoot.dataset` was used as an event-binding marker;
   - dialogue `.8` fixed the binding boundary and its real-page `一键验收并回传` report passed all ten checks;
   - the accepted report proved true in-page hot replacement, one event binding, inert three-message history baseline, persisted clearing without replay, retained active `local-agent` workspace and matching plugin versions/hashes;
-  - fresh request `dcf-dialogue-readonly-smoke-20260718-1549-01` was detected after startup, created session `ses_08a14519cffe3I29cL7721KlVm` and automatically returned a structured result;
-  - OpenCode synchronous execution then failed at `POST /session/:id/message` with HTTP 500 after 1.314 seconds;
-  - the failed session contains no Assistant result, so manual message copying cannot expose the cause;
-  - diagnostics `.1` now performs one automatic read-only probe of the most recent undiagnosed session and returns privacy-bounded Provider/model/Agent and endpoint evidence to the same conversation; live diagnostic evidence is pending.
+  - fresh request `dcf-dialogue-readonly-smoke-20260718-1549-01` was detected after startup, created session `ses_08a14519cffe3I29cL7721KlVm` and automatically returned a structured `bridge_error` result after synchronous `POST /session/:id/message` returned HTTP 500;
+  - diagnostics `.1` was downloaded, registered, started and committed successfully, but its one-shot recovery report was not generated because the persisted dialogue `last_session_id` was already empty when diagnostics started;
+  - browser CDP, the original Chrome extension LevelDB, OpenCode HTTP/SQLite data and server logs established that the HTTP 500 was not a DCF, Provider, model or Agent error: standalone OpenCode CLI `1.17.8` was incompatible with the database schema already used by the regularly updated Desktop App and failed with `SQLiteError: no such column: replacement_seq`;
+  - the standalone CLI was upgraded to `1.18.3`, the old `serve` process was stopped gracefully and the service was restarted with the same port, CORS and no-password behavior;
+  - native OpenCode smoke `OPENCODE_SCHEMA_OK` then passed and `POST /session/:id/message` returned HTTP 200;
+  - fresh DCF request `dcf-dialogue-readonly-smoke-20260719-upgrade-01` created session `ses_089953d95ffe3kyJBThTifGIoj`, completed in 6.452 seconds and automatically returned `DCF_READ_ONLY_SMOKE_OK` with no endpoint, permission, question, todo or diff errors.
 - Data continuity: DCF Next + Chrome `rc.1`; no separate `0.18.2` migration
 
 ## Implemented
@@ -49,7 +51,7 @@ Updated: 2026-07-18
 - existing assistant replies form an inert startup baseline; automatic intake consumes only assistant replies added after startup and manual recovery checks only the latest assistant reply;
 - dialogue controls bind to the actual mounted ShadowRoot identity rather than storing metadata on ShadowRoot;
 - `一键验收并回传` clears deduplication/recent-handoff state, verifies persistence, mount, event binding, status semantics and workspace preservation, then returns one `dcf.local-agent-dialogue.acceptance.v1` artifact automatically;
-- diagnostics reads the latest dialogue request/session identifiers, performs loopback GET-only evidence recovery and returns one `dcf.local-agent.diagnostic.v1` artifact automatically;
+- diagnostics reads the latest dialogue request/session identifiers, performs loopback GET-only evidence recovery and returns one `dcf.local-agent.diagnostic.v1` artifact automatically when a persisted recent session exists;
 - automatic Local Agent diagnostics excludes message/task text, credentials, Provider private options and raw OpenCode configuration;
 - the same failed session is automatically diagnosed only once;
 - request IDs are persisted for deduplication;
@@ -74,14 +76,13 @@ Updated: 2026-07-18
 ## Current live boundary
 
 - runtime acceptance for dialogue `.8` is complete;
-- actual post-start request detection, new-session creation and automatic result return are also proven;
-- successful OpenCode execution is not proven: the first read-only task reached `/session/:id/message` and received HTTP 500;
-- the next step is to update diagnostics `.1`; it will automatically probe existing session `ses_08a14519cffe3I29cL7721KlVm` without another model request and return `dcf.local-agent.diagnostic.v1`;
-- use that report to repair the actual Provider/model/Agent or OpenCode configuration cause;
-- a later dialogue revision must also preserve synchronous HTTP and session-side failure evidence directly in `dcf.local-agent.result.v1`;
-- after the cause is repaired, send a new read-only request ID and require `DCF_READ_ONLY_SMOKE_OK`;
-- only after that minimal task succeeds should the reserved task create and verify the `DCF OpenCode Service` macOS shortcut;
-- long-task completion and intervention handoff remain separate future acceptance boundaries;
-- `serve.sh` remains manually managed until that shortcut exists and the start-service control is wired to it;
+- actual post-start request detection, independent session creation, successful OpenCode model execution and automatic result return are proven end to end;
+- the accepted minimal result is `DCF_READ_ONLY_SMOKE_OK` from session `ses_089953d95ffe3kyJBThTifGIoj`, with status `completed`, OpenCode status `idle` and every observation endpoint error field `null`;
+- the prior HTTP 500 was caused by an external runtime-version mismatch: an old standalone OpenCode CLI `1.17.8` was serving a database schema already used by a newer Desktop App; upgrading and restarting the CLI at `1.18.3` restored native and DCF execution without a DCF code change;
+- source inspection is not sufficient evidence for browser/runtime failures. Future diagnosis must use selectable runtime evidence surfaces such as the exact ChatGPT target, DCF Host state, plugin storage, CDP console/network, OpenCode API/database and service logs;
+- diagnostics `.1` remains implemented as a privacy-bounded recovery path, but its original auto-report acceptance was not exercised because the persisted recent-session pointer was absent;
+- a later dialogue revision should still preserve bounded HTTP status, response-body and session-side failure evidence directly in `dcf.local-agent.result.v1`;
+- the reserved next local integration is to create and verify the `DCF OpenCode Service` macOS shortcut. It must start an independent loopback service idempotently, detect a stale or outdated standalone CLI, restart gracefully and verify health before DCF uses it;
+- long-task completion and permission/question intervention handoff remain separate future acceptance boundaries;
 - the candidate index points to the candidate branch, while formal store builds point to `main`;
-- PR #23 remains unmerged until explicit browser acceptance of successful OpenCode execution and automatic result return.
+- PR #23 remains open pending the service-shortcut boundary and explicit final merge approval.
