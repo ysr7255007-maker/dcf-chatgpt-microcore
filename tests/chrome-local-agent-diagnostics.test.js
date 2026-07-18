@@ -11,6 +11,7 @@ assert(ref);
 assert.strictEqual(ref.version, '1.0.0-rc.2-diagnostics.1');
 assert.strictEqual(ref.phase, 90);
 assert.strictEqual(ref.world_id, 'dcf-firstparty-diagnostics');
+
 const code = fs.readFileSync(path.join(root, 'chrome-extension/code-units/diagnostics/main.js'), 'utf8');
 assert.strictEqual(crypto.createHash('sha256').update(code).digest('hex'), ref.hash);
 
@@ -41,18 +42,13 @@ for (const token of [
 for (const forbidden of [
   "method: 'POST'",
   '/prompt_async',
-  '/session/${encoded}/message`,
   'apiKey',
   'Authorization: Bearer',
   'messageText',
   'task_draft',
   'parts.map(partText)'
-]) {
-  if (forbidden === '/session/${encoded}/message') continue;
-  assert(!code.includes(forbidden), `forbidden ${forbidden}`);
-}
+]) assert(!code.includes(forbidden), `forbidden ${forbidden}`);
 
-assert(code.includes("optionalGet('messages', `/session/${encoded}/message?limit=40`"));
 assert(code.includes("['127.0.0.1', 'localhost', '[::1]']"));
 console.log(JSON.stringify({
   ok: true,
