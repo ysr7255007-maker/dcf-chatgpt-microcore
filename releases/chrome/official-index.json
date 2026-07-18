@@ -178,8 +178,8 @@
     {
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/diagnostics/main.js",
       "default_enabled": true,
-      "description": "正常时压缩状态，异常时复制隐私受限证据。",
-      "hash": "3cc2a10c0efa5d9e20ce2cebedc7a4c66fcae5a3497c95b31afc0ee185c85784",
+      "description": "正常时压缩状态，异常时自动回传本机 Agent 的隐私受限证据。",
+      "hash": "d033ddd3f1983b3f656b52a705980f505b7e9f864c3b8909675d5690d7c55642",
       "host_api": "2",
       "id": "dcf.firstparty.diagnostics",
       "matches": [
@@ -190,7 +190,7 @@
       "required": true,
       "run_at": "document_idle",
       "title": "诊断",
-      "version": "1.0.0-rc.2",
+      "version": "1.0.0-rc.2-diagnostics.1",
       "world_id": "dcf-firstparty-diagnostics"
     }
   ],
