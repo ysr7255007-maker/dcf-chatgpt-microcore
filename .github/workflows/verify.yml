@@ -7,26 +7,33 @@ on:
       - main
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Apply targeted source migrations
+        run: |
+          python scripts/apply-dialogue-shadow-fix.py
+          python scripts/apply-local-agent-status-fix.py
+          node scripts/build-chrome-extension.js
+          node --check chrome-extension/code-units/local-agent/main.js
+          node --check chrome-extension/code-units/local-agent-dialogue/main.js
+      - name: Commit generated source changes
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add chrome-extension/code-units/local-agent/main.js chrome-extension/code-units/local-agent-dialogue/main.js releases/chrome/official-index.json
+          if ! git diff --cached --quiet; then
+            git commit -m "fix: normalize local status and remount dialogue in shell"
+            git push origin HEAD:${{ github.head_ref }}
+          fi
       - run: npm run verify
       - run: node --check dcf-chatgpt-microcore.user.js
-      - name: Export targeted sources
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: dcf-shadow-status-sources
-          path: |
-            chrome-extension/code-units/local-agent/main.js
-            chrome-extension/code-units/local-agent-dialogue/main.js
-            tests/chrome-local-agent-dialogue.test.js
-            tests/chrome-build.integration.test.js
-            package.json
