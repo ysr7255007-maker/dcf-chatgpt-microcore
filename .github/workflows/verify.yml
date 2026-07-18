@@ -19,3 +19,14 @@ jobs:
           node-version: '22'
       - run: npm run verify
       - run: node --check dcf-chatgpt-microcore.user.js
+      - name: Export targeted sources
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dcf-shadow-status-sources
+          path: |
+            chrome-extension/code-units/local-agent/main.js
+            chrome-extension/code-units/local-agent-dialogue/main.js
+            tests/chrome-local-agent-dialogue.test.js
+            tests/chrome-build.integration.test.js
+            package.json
