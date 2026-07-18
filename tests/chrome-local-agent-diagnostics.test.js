@@ -8,7 +8,7 @@ const root = path.resolve(__dirname, '..');
 const index = JSON.parse(fs.readFileSync(path.join(root, 'releases/chrome/official-index.json'), 'utf8'));
 const ref = index.units.find((unit) => unit.id === 'dcf.firstparty.diagnostics');
 assert(ref);
-assert.strictEqual(ref.version, '1.0.0-rc.2-diagnostics.1');
+assert.strictEqual(ref.version, '1.0.0-rc.2-diagnostics.2');
 assert.strictEqual(ref.phase, 90);
 assert.strictEqual(ref.world_id, 'dcf-firstparty-diagnostics');
 
@@ -28,6 +28,10 @@ for (const token of [
   "optionalGet('config_providers', '/config/providers'",
   "optionalGet('providers', '/provider'",
   "optionalGet('agents', '/agent'",
+  'function statusInterpretation(statusResult, messages)',
+  "'inactive-with-assistant-output'",
+  'interpretation: statusInterpretation',
+  '正在只读诊断最近本机 session',
   'last_auto_session_id',
   'automatic-recent-session-diagnostic',
   'message_text_included: false',
@@ -46,7 +50,9 @@ for (const forbidden of [
   'Authorization: Bearer',
   'messageText',
   'task_draft',
-  'parts.map(partText)'
+  'parts.map(partText)',
+  '失败 session 不在 /session/status 中，执行未进入可观察运行状态。',
+  '失败 session 没有落盘任何消息'
 ]) assert(!code.includes(forbidden), `forbidden ${forbidden}`);
 
 assert(code.includes("['127.0.0.1', 'localhost', '[::1]']"));
@@ -55,6 +61,8 @@ console.log(JSON.stringify({
   plugin_version: ref.version,
   read_only_loopback_diagnostics: true,
   recent_session_auto_probe: true,
+  absent_status_is_not_failure: true,
+  assistant_messages_are_execution_evidence: true,
   one_report_per_session: true,
   automatic_chat_return: true,
   message_text_excluded: true,
