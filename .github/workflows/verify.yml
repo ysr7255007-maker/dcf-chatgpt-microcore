@@ -7,33 +7,15 @@ on:
       - main
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Apply targeted source migrations
-        run: |
-          python scripts/apply-dialogue-shadow-fix.py
-          python scripts/apply-local-agent-status-fix.py
-          node scripts/build-chrome-extension.js
-          node --check chrome-extension/code-units/local-agent/main.js
-          node --check chrome-extension/code-units/local-agent-dialogue/main.js
-      - name: Commit generated changes
-        run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add chrome-extension/code-units/local-agent/main.js chrome-extension/code-units/local-agent-dialogue/main.js releases/chrome/official-index.json tests/chrome-local-agent-dialogue.test.js tests/chrome-build.integration.test.js tests/chrome-local-agent-status.test.js package.json
-          if ! git diff --cached --quiet; then
-            git commit -m "test: gate dialogue remount and status semantics"
-            git push origin HEAD:${{ github.head_ref }}
-          fi
       - run: npm run verify
       - run: node --check dcf-chatgpt-microcore.user.js
