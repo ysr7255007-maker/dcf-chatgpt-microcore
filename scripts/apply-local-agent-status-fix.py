@@ -1,5 +1,46 @@
 from pathlib import Path
 
+# Update the retained static gates before the source migration guard exits.
+p = Path('tests/chrome-local-agent-dialogue.test.js')
+t = p.read_text()
+if 'local-agent-dialogue.7' not in t:
+    t = t.replace('local-agent-dialogue.6', 'local-agent-dialogue.7')
+    marker = "  'function attachHotRefreshWatchers()',\n"
+    tokens = [
+        "const SHELL_HOST_ID = 'dcf-chrome-shell-host'",
+        'function shellShadow()',
+        'function attachShellObserver()',
+        "document.addEventListener('dcf:shell-ready'",
+        "document.addEventListener('dcf:panel-ready'",
+        'function statusCollection(value)',
+        'function sessionStatusFrom(value, id)',
+        "'status-unavailable'",
+        '最近交接',
+        '当前请求：',
+        '查看最近执行会话'
+    ]
+    if t.count(marker) != 1:
+        raise RuntimeError('dialogue test marker missing')
+    t = t.replace(marker, marker + ''.join(f'  {token!r},\n' for token in tokens), 1)
+    t = t.replace("  'await waitForPanelMount(5000)',", "  \"if (!await waitForPanelMount(5000)) throw new Error('对话闭环未能挂载到本机 Agent 面板')\",")
+    t = t.replace('  hot_update_remount_watchers: true,', '  hot_update_remount_watchers: true,\n  shell_shadow_mount_discovery: true,\n  normalized_status_semantics: true,\n  active_and_recent_handoff_separated: true,')
+    p.write_text(t)
+
+p = Path('tests/chrome-build.integration.test.js')
+t = p.read_text().replace('local-agent.1', 'local-agent.2').replace('local-agent-dialogue.6', 'local-agent-dialogue.7')
+if 'shell_shadow_dialogue_mount' not in t:
+    t = t.replace('  dialogue_hot_remount: true,', '  dialogue_hot_remount: true,\n  shell_shadow_dialogue_mount: true,\n  normalized_opencode_status: true,')
+p.write_text(t)
+
+p = Path('package.json')
+t = p.read_text()
+old = 'node tests/chrome-local-agent-dialogue.test.js && node tests/chrome-lifecycle.integration.test.js'
+new = 'node tests/chrome-local-agent-dialogue.test.js && node tests/chrome-local-agent-status.test.js && node tests/chrome-lifecycle.integration.test.js'
+if new not in t:
+    if t.count(old) != 1:
+        raise RuntimeError('package test marker missing')
+    p.write_text(t.replace(old, new, 1))
+
 p = Path('chrome-extension/code-units/local-agent/main.js')
 s = p.read_text()
 if "local-agent.2" in s:
