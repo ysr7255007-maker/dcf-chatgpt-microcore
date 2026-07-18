@@ -2,9 +2,10 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.local-agent-dialogue';
-  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.6';
+  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.7';
   const LOCAL_AGENT_ID = 'dcf.firstparty.local-agent';
   const LOCAL_AGENT_PANEL_ID = 'dcf-panel-local-agent';
+  const SHELL_HOST_ID = 'dcf-chrome-shell-host';
   const MOUNT_ID = 'dcf-local-agent-dialogue-mount';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_LOCAL_AGENT_DIALOGUE__';
   const REQUEST_START = '<<<DCF_LOCAL_AGENT_REQUEST>>>';
@@ -31,14 +32,18 @@
   let conversationObserver = null;
   let documentObserver = null;
   let panelObserver = null;
+  let shellObserver = null;
   let currentConversationRoot = null;
   let currentCandidate = null;
   let currentPanelShadow = null;
+  let currentShellShadow = null;
   let mountHost = null;
   let mountRoot = null;
   let mountTimer = null;
   let rootTimer = null;
   let elapsedTimer = null;
+  let shellReadyListener = null;
+  let panelReadyListener = null;
   let queueBusy = false;
   let activeJob = null;
   let pendingArtifact = '';
@@ -116,7 +121,12 @@
     });
   }
 
-  function localPanelHost() { return document.getElementById(LOCAL_AGENT_PANEL_ID); }
+  function shellShadow() { return document.getElementById(SHELL_HOST_ID)?.shadowRoot || null; }
+  function localPanelHost() {
+    return document.getElementById(LOCAL_AGENT_PANEL_ID)
+      || shellShadow()?.querySelector(`#${LOCAL_AGENT_PANEL_ID}`)
+      || null;
+  }
   function localPanelShadow() { return localPanelHost()?.shadowRoot || null; }
 
   async function connectionConfig() {
@@ -217,7 +227,20 @@
   }
 
   const sessionId = (session) => String(session?.id || session?.sessionID || session?.session_id || '');
-  const statusType = (value) => String(typeof value === 'string' ? value : value?.type || value?.status || value?.state || 'unknown').toLowerCase();
+  const statusType = (value, fallback = 'unknown') => String(typeof value === 'string' ? value : value?.type || value?.status || value?.state || fallback).toLowerCase();
+  function statusCollection(value) {
+    if (!value || typeof value !== 'object') return {};
+    if (value.sessions && typeof value.sessions === 'object' && !Array.isArray(value.sessions)) return value.sessions;
+    if (value.data?.sessions && typeof value.data.sessions === 'object' && !Array.isArray(value.data.sessions)) return value.data.sessions;
+    if (value.data && typeof value.data === 'object' && !Array.isArray(value.data)) return value.data;
+    return value;
+  }
+  function sessionStatusFrom(value, id) {
+    const collection = statusCollection(value);
+    return collection?.[id]
+      || list(collection).find((item) => String(item?.sessionID || item?.session_id || item?.sessionId || item?.id || '') === id)
+      || null;
+  }
   const messageRole = (record) => String(record?.info?.role || record?.info?.type || '').toLowerCase();
 
   function partText(part) {
@@ -446,8 +469,12 @@
       optionalFallback(['/permission/', '/permission'], job.config),
       optionalFallback(['/question/', '/question'], job.config)
     ]);
-    const statusesData = statuses.ok ? statuses.data : null;
-    const sessionStatus = statusesData?.[job.session_id] || list(statusesData).find((item) => String(item?.sessionID || item?.session_id || item?.id || '') === job.session_id) || null;
+    const sessionStatus = statuses.ok ? sessionStatusFrom(statuses.data, job.session_id) : null;
+    const normalizedStatus = sessionStatus
+      ? statusType(sessionStatus)
+      : statuses.ok
+        ? (job.response_state === 'fulfilled' ? 'idle' : 'message-pending')
+        : 'status-unavailable';
     const belongs = (item) => {
       const id = String(item?.sessionID || item?.session_id || item?.sessionId || '');
       return !id || id === job.session_id;
@@ -455,7 +482,7 @@
     const messageList = messages.ok ? list(messages.data) : [];
     if (job.response_state === 'fulfilled' && job.response && !messageList.some((item) => item?.info?.id && item.info.id === job.response?.info?.id)) messageList.push(job.response);
     return {
-      status: sessionStatus, status_type: statusType(sessionStatus), messages: messageList,
+      status: sessionStatus, status_type: normalizedStatus, messages: messageList,
       todo: todo.ok ? list(todo.data) : [], diff: diff.ok ? list(diff.data) : [],
       permissions: permissions.ok ? list(permissions.data).filter(belongs) : [],
       questions: questions.ok ? list(questions.data).filter(belongs) : [],
@@ -468,11 +495,10 @@
     };
   }
 
-  function updateProgress(snap, job) {
+  function updateProgress(snap) {
     const preview = latestAssistant(snap.messages);
-    const effectiveStatus = job?.response_state === 'pending' && snap.status_type === 'unknown' ? 'message-pending' : snap.status_type;
     state.progress = {
-      status_type: effectiveStatus, messages: snap.messages.length, todo: snap.todo.length, diff: snap.diff.length,
+      status_type: snap.status_type, messages: snap.messages.length, todo: snap.todo.length, diff: snap.diff.length,
       permissions: snap.permissions.length, questions: snap.questions.length, preview: preview.slice(-900),
       last_poll_at: new Date().toLocaleTimeString()
     };
@@ -486,7 +512,7 @@
       messages: job.request.return_mode === 'full' ? snap.messages : undefined,
       execution: {
         elapsed_ms: elapsed,
-        status_type: job.response_state === 'pending' && snap.status_type === 'unknown' ? 'message-pending' : snap.status_type,
+        status_type: snap.status_type,
         base_url: baseUrl(job.config.base_url), endpoint_errors: snap.endpoint_errors
       }
     };
@@ -573,7 +599,7 @@
     let terminalSeenAt = 0;
     while (!destroyed && activeJob === job) {
       const snap = await snapshot(job);
-      updateProgress(snap, job);
+      updateProgress(snap);
       if (job.response_state === 'rejected') throw job.response_error;
       const currentIntervention = snap.permissions.length || snap.questions.length ? hash(json({ permissions: snap.permissions, questions: snap.questions })) : '';
       if (currentIntervention && currentIntervention !== interventionKey) {
@@ -589,7 +615,7 @@
       if (!currentIntervention && job.response_state === 'fulfilled') {
         if (!terminalSeenAt) terminalSeenAt = Date.now();
         if (Date.now() - terminalSeenAt >= 500) {
-          const finalSnap = await snapshot(job); updateProgress(finalSnap, job);
+          const finalSnap = await snapshot(job); updateProgress(finalSnap);
           return payload(job, 'completed', finalSnap, Date.now() - started);
         }
       }
@@ -675,9 +701,14 @@
   }
 
   function cardHtml() {
-    const active = Boolean(activeJob) || ['checking', 'creating', 'submitting'].includes(state.stage);
+    const active = Boolean(activeJob) || queueBusy || ['received', 'checking', 'creating', 'submitting', 'running', 'needs_user'].includes(state.stage);
     const progress = state.progress;
-    return `<section class="card"><div class="title-row"><b>对话闭环</b><span class="status ${active ? 'busy' : state.settings.enabled ? 'ready' : ''}">${active ? '执行中' : state.settings.enabled ? '已开启' : '已关闭'}</span></div><div class="muted">只消费插件启动后新增的助手回复。页面中已有历史消息只建立基线，不会被重新执行。</div><div class="row"><label class="row"><input type="checkbox" data-field="enabled" ${state.settings.enabled ? 'checked' : ''}>允许对话自动委派</label><label class="row"><input type="checkbox" data-field="auto-send" ${state.settings.auto_send_results ? 'checked' : ''}>结果自动发送回对话</label></div><div class="stage"><b>${html(state.status)}</b>${elapsedText() ? ` · ${html(elapsedText())}` : ''}<br>阶段：${html(state.stage)}${state.last_request_id ? `<br>请求：${html(state.last_request_id)}` : ''}${state.last_session_id ? `<br>会话：${html(state.last_session_id)}` : ''}</div><div class="progress"><div class="metric"><span class="muted">状态</span><b>${html(progress.status_type || '—')}</b></div><div class="metric"><span class="muted">消息</span><b>${progress.messages}</b></div><div class="metric"><span class="muted">Todo</span><b>${progress.todo}</b></div><div class="metric"><span class="muted">Diff</span><b>${progress.diff}</b></div><div class="metric"><span class="muted">权限</span><b>${progress.permissions}</b></div><div class="metric"><span class="muted">提问</span><b>${progress.questions}</b></div></div>${progress.preview ? `<div><div class="muted">最近本机输出 · ${html(progress.last_poll_at)}</div><div class="preview">${html(progress.preview)}</div></div>` : ''}<div class="buttons"><button data-action="latest">检查最新助手回复</button><button data-action="focus">查看执行会话</button><button data-action="return">回传待发送结果</button><button data-action="clear">清除已处理记录</button></div><div class="last-action muted">上次操作：${html(state.last_action)}${state.last_action_at ? ` · ${html(state.last_action_at)}` : ''}</div>${state.error ? `<div class="notice error">${html(state.error)}</div>` : ''}</section>`;
+    const activeRequestId = activeJob?.request?.id || (active ? state.last_request_id : '');
+    const activeSessionId = activeJob?.session_id || (active ? state.last_session_id : '');
+    const recent = !active && (state.last_request_id || state.last_session_id)
+      ? `<div class="muted">最近交接${state.last_request_id ? ` · 请求 ${html(state.last_request_id)}` : ''}${state.last_session_id ? ` · 会话 ${html(state.last_session_id)}` : ''}</div>`
+      : '';
+    return `<section class="card"><div class="title-row"><b>对话闭环</b><span class="status ${active ? 'busy' : state.settings.enabled ? 'ready' : ''}">${active ? '执行中' : state.settings.enabled ? '已开启' : '已关闭'}</span></div><div class="muted">只消费插件启动后新增的助手回复。页面中已有历史消息只建立基线，不会被重新执行。</div><div class="row"><label class="row"><input type="checkbox" data-field="enabled" ${state.settings.enabled ? 'checked' : ''}>允许对话自动委派</label><label class="row"><input type="checkbox" data-field="auto-send" ${state.settings.auto_send_results ? 'checked' : ''}>结果自动发送回对话</label></div><div class="stage"><b>${html(state.status)}</b>${elapsedText() ? ` · ${html(elapsedText())}` : ''}<br>阶段：${html(state.stage)}${activeRequestId ? `<br>当前请求：${html(activeRequestId)}` : ''}${activeSessionId ? `<br>当前会话：${html(activeSessionId)}` : ''}</div>${recent}<div class="progress"><div class="metric"><span class="muted">状态</span><b>${html(progress.status_type || '—')}</b></div><div class="metric"><span class="muted">消息</span><b>${progress.messages}</b></div><div class="metric"><span class="muted">Todo</span><b>${progress.todo}</b></div><div class="metric"><span class="muted">Diff</span><b>${progress.diff}</b></div><div class="metric"><span class="muted">权限</span><b>${progress.permissions}</b></div><div class="metric"><span class="muted">提问</span><b>${progress.questions}</b></div></div>${progress.preview ? `<div><div class="muted">最近本机输出 · ${html(progress.last_poll_at)}</div><div class="preview">${html(progress.preview)}</div></div>` : ''}<div class="buttons"><button data-action="latest">检查最新助手回复</button><button data-action="focus">查看最近执行会话</button><button data-action="return">回传待发送结果</button><button data-action="clear">清除已处理记录</button></div><div class="last-action muted">上次操作：${html(state.last_action)}${state.last_action_at ? ` · ${html(state.last_action_at)}` : ''}</div>${state.error ? `<div class="notice error">${html(state.error)}</div>` : ''}</section>`;
   }
 
   function render() {
@@ -701,9 +732,10 @@
       render(); return;
     }
     if (action === 'clear') {
-      state.processed_ids = []; state.last_request_id = ''; state.stage = 'idle';
-      state.status = '已清除工件去重记录；历史消息仍不会自动执行'; state.error = '';
-      markAction('已清除工件去重记录'); await persist(); render();
+      state.processed_ids = []; state.last_request_id = ''; state.last_session_id = ''; state.stage = 'idle';
+      state.progress = { status_type: '', messages: 0, todo: 0, diff: 0, permissions: 0, questions: 0, preview: '', last_poll_at: '' };
+      state.status = '已清除工件去重记录与最近交接；历史消息仍不会自动执行'; state.error = '';
+      markAction('已清除工件去重记录与最近交接'); await persist(); render();
     }
   }
 
@@ -757,6 +789,18 @@
     queueMicrotask(() => { if (!ensurePanelMount()) setTimeout(ensurePanelMount, 80); });
   }
 
+  function attachShellObserver() {
+    const shadow = shellShadow();
+    if (shadow === currentShellShadow) return Boolean(shadow);
+    shellObserver?.disconnect();
+    currentShellShadow = shadow;
+    if (!shadow) return false;
+    shellObserver = new MutationObserver(schedulePanelMount);
+    shellObserver.observe(shadow, { childList: true, subtree: true });
+    schedulePanelMount();
+    return true;
+  }
+
   function attachHotRefreshWatchers() {
     documentObserver = new MutationObserver((records) => {
       let panelChanged = false;
@@ -766,12 +810,21 @@
         for (const node of [...record.addedNodes, ...record.removedNodes]) {
           if (!(node instanceof Element)) continue;
           if (node.id === LOCAL_AGENT_PANEL_ID || node.querySelector?.(`#${LOCAL_AGENT_PANEL_ID}`)) panelChanged = true;
+          if (node.id === SHELL_HOST_ID || node.querySelector?.(`#${SHELL_HOST_ID}`)) panelChanged = true;
         }
       }
+      if (panelChanged || rootChanged) attachShellObserver();
       if (panelChanged) schedulePanelMount();
       if (rootChanged) attachConversationRoot();
     });
     documentObserver.observe(document.documentElement, { childList: true, subtree: true });
+    shellReadyListener = () => { attachShellObserver(); schedulePanelMount(); };
+    panelReadyListener = (event) => {
+      if (!event?.detail || String(event.detail) === 'local-agent') schedulePanelMount();
+    };
+    document.addEventListener('dcf:shell-ready', shellReadyListener, true);
+    document.addEventListener('dcf:panel-ready', panelReadyListener, true);
+    attachShellObserver();
     schedulePanelMount();
   }
 
@@ -786,7 +839,9 @@
 
   function destroy() {
     destroyed = true;
-    conversationObserver?.disconnect(); documentObserver?.disconnect(); panelObserver?.disconnect();
+    conversationObserver?.disconnect(); documentObserver?.disconnect(); panelObserver?.disconnect(); shellObserver?.disconnect();
+    if (shellReadyListener) document.removeEventListener('dcf:shell-ready', shellReadyListener, true);
+    if (panelReadyListener) document.removeEventListener('dcf:panel-ready', panelReadyListener, true);
     clearInterval(mountTimer); clearInterval(rootTimer); clearInterval(elapsedTimer);
     mountHost?.remove();
     for (const node of assistantMessages(currentConversationRoot)) {
@@ -810,7 +865,7 @@
     }, 1000);
     loadState().then(async () => {
       attachConversationRoot();
-      await waitForPanelMount(5000);
+      if (!await waitForPanelMount(5000)) throw new Error('对话闭环未能挂载到本机 Agent 面板');
       render();
       await sendHost({ type: 'unit.started', unit_id: UNIT_ID, version: UNIT_VERSION });
     }).catch((error) => sendHost({
