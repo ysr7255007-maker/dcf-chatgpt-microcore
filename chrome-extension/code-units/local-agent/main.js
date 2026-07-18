@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.local-agent';
-  const UNIT_VERSION = '1.0.0-rc.2-local-agent.1';
+  const UNIT_VERSION = '1.0.0-rc.2-local-agent.2';
   const PANEL_ID = 'local-agent';
   const HOST_ID = 'dcf-panel-local-agent';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_LOCAL_AGENT__';
@@ -97,10 +97,35 @@
     };
   }
 
-  function statusType(value) {
-    if (!value) return 'unknown';
-    if (typeof value === 'string') return value;
-    return String(value.type || value.status || value.state || 'unknown');
+  function statusType(value, fallback = 'idle') {
+    if (!value) return fallback;
+    if (typeof value === 'string') return value.toLowerCase();
+    return String(value.type || value.status || value.state || fallback).toLowerCase();
+  }
+
+  function statusCollection(value) {
+    if (!value || typeof value !== 'object') return {};
+    if (value.sessions && typeof value.sessions === 'object' && !Array.isArray(value.sessions)) return value.sessions;
+    if (value.data?.sessions && typeof value.data.sessions === 'object' && !Array.isArray(value.data.sessions)) return value.data.sessions;
+    if (value.data && typeof value.data === 'object' && !Array.isArray(value.data)) return value.data;
+    return value;
+  }
+
+  function sessionStatusFrom(value, id) {
+    const collection = statusCollection(value);
+    return collection?.[id]
+      || normalizeList(collection).find((item) => String(item?.sessionID || item?.session_id || item?.sessionId || item?.id || '') === id)
+      || null;
+  }
+
+  function currentStatusType() {
+    if (!state.selected_session_id) return 'none';
+    if (state.endpoint_errors.status) return 'unavailable';
+    return statusType(state.session_status, 'idle');
+  }
+
+  function statusLabel(type) {
+    return ({ none: '未选择会话', idle: '空闲', busy: '运行中', retry: '重试中', completed: '已完成', failed: '失败', error: '错误', unavailable: '状态不可用' })[type] || type;
   }
 
   function sessionId(session) {
@@ -433,6 +458,7 @@
       state.diff = [];
       state.permissions = [];
       state.questions = [];
+      delete state.endpoint_errors.status;
       return;
     }
     const id = safeId(state.selected_session_id, 'session ID');
@@ -445,7 +471,13 @@
       questionList()
     ];
     const [statuses, messages, todo, diff, permissions, questions] = await Promise.allSettled(requests);
-    if (statuses.status === 'fulfilled') state.session_status = statuses.value && statuses.value[id] || null;
+    if (statuses.status === 'fulfilled') {
+      state.session_status = sessionStatusFrom(statuses.value, id);
+      delete state.endpoint_errors.status;
+    } else {
+      state.session_status = null;
+      state.endpoint_errors.status = String(statuses.reason?.message || statuses.reason || '状态接口不可用');
+    }
     if (messages.status === 'fulfilled') state.messages = normalizeList(messages.value);
     if (todo.status === 'fulfilled') state.todo = normalizeList(todo.value);
     if (diff.status === 'fulfilled') state.diff = normalizeList(diff.value);
@@ -474,8 +506,8 @@
   }
 
   function shouldPoll() {
-    const type = statusType(state.session_status);
-    return state.auto_poll && state.selected_session_id && (state.permissions.length || state.questions.length || !['idle', 'completed', 'failed', 'error', 'unknown'].includes(type));
+    const type = currentStatusType();
+    return state.auto_poll && state.selected_session_id && (state.permissions.length || state.questions.length || !['none', 'idle', 'completed', 'failed', 'error', 'unavailable'].includes(type));
   }
 
   function schedulePoll() {
@@ -630,7 +662,8 @@
     const currentModel = state.config.model ? `${state.config.model.providerID}\u0000${state.config.model.modelID}` : '';
     const selected = currentSession();
     const result = latestAssistantText();
-    const status = statusType(state.session_status);
+    const status = currentStatusType();
+    const statusText = statusLabel(status);
     const connectionClass = state.busy ? 'busy' : state.connected ? 'ready' : '';
     root.querySelector('.content').innerHTML = `
       <section class="card">
@@ -663,7 +696,7 @@
       </section>
 
       <section class="card">
-        <div class="title-row"><b>运行状态</b><span class="status ${status === 'idle' ? 'ready' : status === 'unknown' ? '' : 'busy'}">${escapeHtml(status)}</span></div>
+        <div class="title-row"><b>运行状态</b><span class="status ${['none', 'idle', 'completed'].includes(status) ? 'ready' : status === 'unavailable' ? '' : 'busy'}">${escapeHtml(statusText)}</span></div>
         <div class="button-grid"><button data-action="refresh-session" ${state.selected_session_id ? '' : 'disabled'}>立即刷新</button><button class="danger" data-action="abort" ${state.selected_session_id ? '' : 'disabled'}>终止任务</button><button data-action="copy-session" ${state.selected_session_id ? '' : 'disabled'}>复制会话信息</button></div>
         <div class="muted">${state.last_poll_at ? `上次刷新：${escapeHtml(new Date(state.last_poll_at).toLocaleTimeString())}` : '尚未刷新'}</div>
         <details ${state.todo.length ? 'open' : ''}><summary><b>任务清单</b> · ${state.todo.length}</summary>${todoHtml()}</details>

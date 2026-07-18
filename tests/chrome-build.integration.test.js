@@ -25,12 +25,12 @@ for (const unit of index.units) {
 }
 const localAgent = index.units.find((unit) => unit.id === 'dcf.firstparty.local-agent');
 assert(localAgent);
-assert.strictEqual(localAgent.version, '1.0.0-rc.2-local-agent.1');
+assert.strictEqual(localAgent.version, '1.0.0-rc.2-local-agent.2');
 assert.strictEqual(localAgent.default_enabled, true);
 assert.strictEqual(localAgent.phase, 55);
 const dialogue = index.units.find((unit) => unit.id === 'dcf.firstparty.local-agent-dialogue');
 assert(dialogue);
-assert.strictEqual(dialogue.version, '1.0.0-rc.2-local-agent-dialogue.6');
+assert.strictEqual(dialogue.version, '1.0.0-rc.2-local-agent-dialogue.7');
 assert.strictEqual(dialogue.default_enabled, true);
 assert.strictEqual(dialogue.phase, 57);
 const manager = index.units.find((unit) => unit.id === 'dcf.firstparty.plugin-manager');
@@ -61,6 +61,8 @@ console.log(JSON.stringify({
   dialogue_loop_is_pure_plugin: true,
   history_is_baseline_not_queue: true,
   dialogue_hot_remount: true,
+  shell_shadow_dialogue_mount: true,
+  normalized_opencode_status: true,
   synchronous_message_completion: true,
   robust_artifact_parsing: true,
   stable_dialogue_controls: true,
