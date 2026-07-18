@@ -2,131 +2,108 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.local-agent-dialogue';
-  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.8';
+  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.9';
   const LOCAL_AGENT_ID = 'dcf.firstparty.local-agent';
-  const LOCAL_AGENT_PANEL_ID = 'dcf-panel-local-agent';
-  const SHELL_HOST_ID = 'dcf-chrome-shell-host';
+  const PANEL_ID = 'dcf-panel-local-agent';
+  const SHELL_ID = 'dcf-chrome-shell-host';
   const MOUNT_ID = 'dcf-local-agent-dialogue-mount';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_LOCAL_AGENT_DIALOGUE__';
-  const REQUEST_START = '<<<DCF_LOCAL_AGENT_REQUEST>>>';
-  const REQUEST_END = '<<<END_DCF_LOCAL_AGENT_REQUEST>>>';
-  const RESULT_START = '<<<DCF_LOCAL_AGENT_RESULT>>>';
-  const RESULT_END = '<<<END_DCF_LOCAL_AGENT_RESULT>>>';
-  const ACCEPTANCE_START = '<<<DCF_LOCAL_AGENT_DIALOGUE_ACCEPTANCE>>>';
-  const ACCEPTANCE_END = '<<<END_DCF_LOCAL_AGENT_DIALOGUE_ACCEPTANCE>>>';
+  const MARKERS = Object.freeze({
+    request: ['<<<DCF_LOCAL_AGENT_REQUEST>>>', '<<<END_DCF_LOCAL_AGENT_REQUEST>>>'],
+    result: ['<<<DCF_LOCAL_AGENT_RESULT>>>', '<<<END_DCF_LOCAL_AGENT_RESULT>>>'],
+    permissionRequest: ['<<<DCF_LOCAL_AGENT_PERMISSION_REQUEST>>>', '<<<END_DCF_LOCAL_AGENT_PERMISSION_REQUEST>>>'],
+    permissionDecision: ['<<<DCF_LOCAL_AGENT_PERMISSION_DECISION>>>', '<<<END_DCF_LOCAL_AGENT_PERMISSION_DECISION>>>'],
+    acceptance: ['<<<DCF_LOCAL_AGENT_DIALOGUE_ACCEPTANCE>>>', '<<<END_DCF_LOCAL_AGENT_DIALOGUE_ACCEPTANCE>>>']
+  });
   const DEFAULTS = Object.freeze({
     enabled: true,
     auto_send_results: true,
     poll_interval_ms: 1200,
-    timeout_ms: 20 * 60 * 1000,
+    idle_timeout_ms: 20 * 60 * 1000,
     message_limit: 120
   });
 
-  const previous = globalThis[GLOBAL_KEY];
-  if (previous?.destroy) previous.destroy();
+  globalThis[GLOBAL_KEY]?.destroy?.();
 
-  const bootPerformanceMs = performance.now();
-  const sendHost = (message) => chrome.runtime.sendMessage(message).then((result) => {
+  const list = (value) => Array.isArray(value) ? value : value && typeof value === 'object' ? Object.values(value) : [];
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const json = (value) => { try { return JSON.stringify(value, null, 2); } catch (_) { return String(value); } };
+  const hash = (value) => {
+    let output = 2166136261;
+    for (const char of String(value || '')) {
+      output ^= char.charCodeAt(0);
+      output = Math.imul(output, 16777619);
+    }
+    return (output >>> 0).toString(16);
+  };
+  const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[char]));
+  const host = (message) => chrome.runtime.sendMessage(message).then((result) => {
     if (!result || result.ok === false) throw new Error(result?.error || 'DCF host rejected request');
     return result;
   });
 
   let destroyed = false;
+  let activeJob = null;
+  let queueBusy = false;
+  let pendingArtifact = '';
+  let pendingForceSend = false;
+  let conversationRoot = null;
+  let currentCandidate = null;
   let conversationObserver = null;
   let documentObserver = null;
-  let panelObserver = null;
   let shellObserver = null;
-  let currentConversationRoot = null;
-  let currentCandidate = null;
-  let currentPanelShadow = null;
+  let panelObserver = null;
   let currentShellShadow = null;
+  let currentPanelShadow = null;
   let mountHost = null;
   let mountRoot = null;
   let boundMountRoot = null;
+  let shellReadyListener = null;
+  let panelReadyListener = null;
   let mountTimer = null;
   let rootTimer = null;
   let elapsedTimer = null;
-  let shellReadyListener = null;
-  let panelReadyListener = null;
-  let queueBusy = false;
-  let activeJob = null;
-  let pendingArtifact = '';
-  let pendingForceSend = false;
-  let startupMountConfirmed = false;
+
   const queue = [];
   const baselineNodes = new WeakSet();
   const nodeState = new WeakMap();
-  const counters = {
-    baseline_messages: 0,
-    new_assistant_events: 0,
-    manual_latest_checks: 0,
-    auto_requests_enqueued: 0,
-    manual_requests_enqueued: 0,
-    tasks_started: 0,
-    clear_actions: 0,
-    acceptance_reports: 0,
-    mount_bindings: 0
-  };
-
+  const counters = { baseline: 0, new_events: 0, tasks: 0, permission_requests: 0, permission_decisions: 0 };
   const state = {
     settings: { ...DEFAULTS },
     processed_ids: [],
     stage: 'idle',
     status: '等待新的助手回复',
     error: '',
-    last_action: '尚未操作',
-    last_action_at: '',
     last_request_id: '',
     last_session_id: '',
     started_at: 0,
-    progress: {
-      status_type: '', messages: 0, todo: 0, diff: 0,
-      permissions: 0, questions: 0, preview: '', last_poll_at: ''
-    }
+    progress: { status_type: '', messages: 0, todo: 0, diff: 0, permissions: 0, questions: 0, preview: '', last_activity_at: '' }
   };
 
-  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-  const list = (value) => Array.isArray(value) ? value : value && typeof value === 'object' ? Object.values(value) : [];
-  const json = (value) => { try { return JSON.stringify(value, null, 2); } catch (_) { return String(value); } };
-  const html = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-  }[char]));
-  const hash = (value) => {
-    let result = 2166136261;
-    for (const char of String(value || '')) {
-      result ^= char.charCodeAt(0);
-      result = Math.imul(result, 16777619);
-    }
-    return (result >>> 0).toString(16);
-  };
-
-  function markAction(text) {
-    state.last_action = String(text || '');
-    state.last_action_at = new Date().toLocaleTimeString();
-  }
-
-  function normalizeSettings(raw) {
-    const value = raw && typeof raw === 'object' ? raw : {};
+  function normalizeSettings(raw = {}) {
+    const legacyTimeout = raw.idle_timeout_ms ?? raw.timeout_ms;
     return {
-      enabled: value.enabled !== false,
-      auto_send_results: value.auto_send_results !== false,
-      poll_interval_ms: Math.max(500, Math.min(5000, Number(value.poll_interval_ms) || DEFAULTS.poll_interval_ms)),
-      timeout_ms: Math.max(30000, Math.min(60 * 60 * 1000, Number(value.timeout_ms) || DEFAULTS.timeout_ms)),
-      message_limit: Math.max(20, Math.min(200, Number(value.message_limit) || DEFAULTS.message_limit))
+      enabled: raw.enabled !== false,
+      auto_send_results: raw.auto_send_results !== false,
+      poll_interval_ms: Math.max(500, Math.min(5000, Number(raw.poll_interval_ms) || DEFAULTS.poll_interval_ms)),
+      idle_timeout_ms: Math.max(30000, Math.min(6 * 60 * 60 * 1000, Number(legacyTimeout) || DEFAULTS.idle_timeout_ms)),
+      message_limit: Math.max(20, Math.min(200, Number(raw.message_limit) || DEFAULTS.message_limit))
     };
   }
 
   async function loadState() {
-    const result = await sendHost({ type: 'plugin.data.get', plugin_id: UNIT_ID });
+    const result = await host({ type: 'plugin.data.get', plugin_id: UNIT_ID });
     const data = result.data && typeof result.data === 'object' ? result.data : {};
     state.settings = normalizeSettings(data.settings);
-    state.processed_ids = Array.isArray(data.processed_ids) ? data.processed_ids.map(String).slice(-80) : [];
+    state.processed_ids = list(data.processed_ids).map(String).slice(-80);
     state.last_request_id = String(data.last_request_id || '');
     state.last_session_id = String(data.last_session_id || '');
   }
 
-  async function persist() {
-    await sendHost({
+  function persist() {
+    return host({
       type: 'plugin.data.set',
       plugin_id: UNIT_ID,
       data: {
@@ -138,32 +115,29 @@
     });
   }
 
-  function shellShadow() { return document.getElementById(SHELL_HOST_ID)?.shadowRoot || null; }
-  function localPanelHost() {
-    return document.getElementById(LOCAL_AGENT_PANEL_ID)
-      || shellShadow()?.querySelector(`#${LOCAL_AGENT_PANEL_ID}`)
-      || null;
+  function shellShadow() { return document.getElementById(SHELL_ID)?.shadowRoot || null; }
+  function localAgentPanel() {
+    return document.getElementById(PANEL_ID) || shellShadow()?.querySelector(`#${PANEL_ID}`) || null;
   }
-  function localPanelShadow() { return localPanelHost()?.shadowRoot || null; }
+  function localAgentShadow() { return localAgentPanel()?.shadowRoot || null; }
 
   async function connectionConfig() {
-    const saved = await sendHost({ type: 'plugin.data.get', plugin_id: LOCAL_AGENT_ID });
-    const data = saved.data && typeof saved.data === 'object' ? saved.data : {};
-    const config = data.config && typeof data.config === 'object' ? data.config : {};
-    const shadow = localPanelShadow();
+    const result = await host({ type: 'plugin.data.get', plugin_id: LOCAL_AGENT_ID });
+    const data = result.data && typeof result.data === 'object' ? result.data : {};
+    const stored = data.config && typeof data.config === 'object' ? data.config : {};
+    const shadow = localAgentShadow();
     const modelValue = String(shadow?.querySelector('[data-field="model"]')?.value || '');
     const modelParts = modelValue ? modelValue.split('\u0000') : [];
-    const visibleModel = modelParts.length === 2 ? { providerID: modelParts[0], modelID: modelParts[1] } : null;
     return {
-      base_url: String(shadow?.querySelector('[data-field="base-url"]')?.value || config.base_url || 'http://127.0.0.1:4096').trim(),
-      username: String(shadow?.querySelector('[data-field="username"]')?.value || config.username || 'opencode').trim() || 'opencode',
+      base_url: String(shadow?.querySelector('[data-field="base-url"]')?.value || stored.base_url || 'http://127.0.0.1:4096').trim(),
+      username: String(shadow?.querySelector('[data-field="username"]')?.value || stored.username || 'opencode').trim() || 'opencode',
       password: String(shadow?.querySelector('[data-field="password"]')?.value || ''),
-      agent: String(shadow?.querySelector('[data-field="agent"]')?.value || config.agent || ''),
-      model: visibleModel || (config.model && typeof config.model === 'object' ? config.model : null)
+      agent: String(shadow?.querySelector('[data-field="agent"]')?.value || stored.agent || ''),
+      model: modelParts.length === 2 ? { providerID: modelParts[0], modelID: modelParts[1] } : stored.model || null
     };
   }
 
-  function baseUrl(raw) {
+  function normalizeBaseUrl(raw) {
     let url;
     try { url = new URL(String(raw || 'http://127.0.0.1:4096').trim().replace(/\/$/, '')); }
     catch (_) { throw new Error('OpenCode 地址无效'); }
@@ -173,40 +147,29 @@
     if ((url.pathname && url.pathname !== '/') || url.search || url.hash || url.username || url.password) {
       throw new Error('OpenCode 地址只能包含协议、主机与端口');
     }
-    const host = url.hostname === '[::1]' ? '[::1]' : url.hostname;
-    return `${url.protocol}//${host}:${url.port || '4096'}`;
+    return `${url.protocol}//${url.hostname === '[::1]' ? '[::1]' : url.hostname}:${url.port || '4096'}`;
   }
 
-  function auth(username, password) {
+  function basicAuth(username, password) {
     const bytes = new TextEncoder().encode(`${username}:${password}`);
     let binary = '';
     for (const byte of bytes) binary += String.fromCharCode(byte);
     return `Basic ${btoa(binary)}`;
   }
 
-  function classify(error, path) {
-    const raw = String(error?.message || error);
-    if (error?.name === 'AbortError') return { code: 'timeout', message: `OpenCode 请求超时：${path}`, raw };
-    if (/401|403|Unauthorized|Forbidden/i.test(raw)) {
-      return { code: 'auth', message: 'OpenCode 服务已响应，但认证未通过。请检查用户名和本页密码，或确认当前服务为无认证模式。', raw };
-    }
-    if (/Failed to fetch|NetworkError|Load failed|CORS/i.test(raw)) {
-      return { code: 'network_or_cors', message: `浏览器无法读取 OpenCode 响应。服务可能未启动，也可能缺少 ${location.origin} 的 CORS 允许。`, raw };
-    }
-    return { code: 'request_failed', message: raw, raw };
-  }
-
   async function request(path, options = {}) {
     const config = options.config || await connectionConfig();
     const controller = new AbortController();
-    const timeout = Math.max(1000, Math.min(60 * 60 * 1000, Number(options.timeout) || 15000));
-    const timer = setTimeout(() => controller.abort(), timeout);
+    const noTimeout = options.timeout === 0 || options.timeout === null;
+    const timeout = noTimeout ? 0 : Math.max(1000, Math.min(60 * 60 * 1000, Number(options.timeout) || 15000));
+    const timer = timeout ? setTimeout(() => controller.abort(), timeout) : null;
     try {
       const headers = { Accept: 'application/json' };
-      if (config.password) headers.Authorization = auth(config.username, config.password);
+      if (config.password) headers.Authorization = basicAuth(config.username, config.password);
       if (options.body !== undefined) headers['Content-Type'] = 'application/json';
-      const response = await fetch(`${baseUrl(config.base_url)}${path}`, {
-        method: options.method || 'GET', headers,
+      const response = await fetch(`${normalizeBaseUrl(config.base_url)}${path}`, {
+        method: options.method || 'GET',
+        headers,
         body: options.body === undefined ? undefined : JSON.stringify(options.body),
         cache: 'no-store', credentials: 'omit', mode: 'cors', redirect: 'error', signal: controller.signal
       });
@@ -215,26 +178,28 @@
       if (text) { try { payload = JSON.parse(text); } catch (_) { payload = text; } }
       if (!response.ok) {
         const detail = typeof payload === 'string' ? payload : payload?.error || payload?.message || '';
-        const failed = new Error(`OpenCode HTTP ${response.status}${detail ? `：${detail}` : ''}`);
-        failed.status = response.status;
-        throw failed;
+        const error = new Error(`OpenCode HTTP ${response.status}${detail ? `：${detail}` : ''}`);
+        error.status = response.status;
+        throw error;
       }
       return payload;
     } catch (error) {
-      const detail = classify(error, path);
-      const wrapped = new Error(detail.message);
-      wrapped.code = detail.code; wrapped.raw = detail.raw; wrapped.path = path;
+      const wrapped = new Error(error?.name === 'AbortError' ? `OpenCode 单次请求超时：${path}` : String(error?.message || error));
+      wrapped.code = error?.name === 'AbortError' ? 'request_timeout' : /Failed to fetch|NetworkError|Load failed|CORS/i.test(wrapped.message) ? 'network_or_cors' : 'request_failed';
+      wrapped.status = error?.status || 0;
       throw wrapped;
-    } finally { clearTimeout(timer); }
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   async function optional(path, config) {
     try { return { ok: true, data: await request(path, { config }) }; }
-    catch (error) { return { ok: false, error: String(error?.message || error) }; }
+    catch (error) { return { ok: false, error: String(error?.message || error), detail: error }; }
   }
 
   async function optionalFallback(paths, config) {
-    let last;
+    let last = null;
     for (const path of paths) {
       const result = await optional(path, config);
       if (result.ok || !/404|405/.test(result.error || '')) return result;
@@ -243,22 +208,18 @@
     return last || { ok: false, error: 'endpoint unavailable' };
   }
 
-  const sessionId = (session) => String(session?.id || session?.sessionID || session?.session_id || '');
+  const sessionId = (value) => String(value?.id || value?.sessionID || value?.session_id || '');
+  const permissionId = (value) => String(value?.id || value?.requestID || value?.request_id || '');
+  const messageId = (value) => String(value?.info?.id || value?.id || value?.messageID || value?.message_id || '');
+  const messageRole = (value) => String(value?.info?.role || value?.info?.type || '').toLowerCase();
   const statusType = (value, fallback = 'unknown') => String(typeof value === 'string' ? value : value?.type || value?.status || value?.state || fallback).toLowerCase();
-  function statusCollection(value) {
-    if (!value || typeof value !== 'object') return {};
-    if (value.sessions && typeof value.sessions === 'object' && !Array.isArray(value.sessions)) return value.sessions;
-    if (value.data?.sessions && typeof value.data.sessions === 'object' && !Array.isArray(value.data.sessions)) return value.data.sessions;
-    if (value.data && typeof value.data === 'object' && !Array.isArray(value.data)) return value.data;
-    return value;
-  }
+
   function sessionStatusFrom(value, id) {
-    const collection = statusCollection(value);
-    return collection?.[id]
-      || list(collection).find((item) => String(item?.sessionID || item?.session_id || item?.sessionId || item?.id || '') === id)
-      || null;
+    const collection = value?.sessions && typeof value.sessions === 'object' ? value.sessions
+      : value?.data?.sessions && typeof value.data.sessions === 'object' ? value.data.sessions
+        : value?.data && typeof value.data === 'object' ? value.data : value || {};
+    return collection[id] || list(collection).find((item) => String(item?.sessionID || item?.session_id || item?.sessionId || item?.id || '') === id) || null;
   }
-  const messageRole = (record) => String(record?.info?.role || record?.info?.type || '').toLowerCase();
 
   function partText(part) {
     if (!part || typeof part !== 'object') return '';
@@ -268,7 +229,6 @@
       return `[${part.tool || part.name || 'tool'} · ${statusType(part.state)}${title ? ` · ${title}` : ''}]`;
     }
     if (part.type === 'step-finish' && part.reason) return `[步骤结束 · ${part.reason}]`;
-    if (part.type === 'patch' && part.hash) return `[补丁 · ${part.hash}]`;
     return '';
   }
 
@@ -287,77 +247,85 @@
     return String(text || '').replace(/\u00a0/g, ' ').replace(/[\u200b-\u200d\u2060\ufeff]/g, '').trim();
   }
 
-  function extractRequestBody(text) {
+  function extractEnvelope(text, markers) {
     const value = normalizeArtifactText(text);
-    const start = value.indexOf(REQUEST_START);
+    const start = value.indexOf(markers[0]);
     if (start < 0) return null;
-    const end = value.indexOf(REQUEST_END, start + REQUEST_START.length);
-    if (end < 0) return { pending: true, body: '' };
-    let body = value.slice(start + REQUEST_START.length, end).trim();
-    body = body.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
-    const firstBrace = body.indexOf('{');
-    const lastBrace = body.lastIndexOf('}');
-    if (firstBrace >= 0 && lastBrace > firstBrace) body = body.slice(firstBrace, lastBrace + 1);
+    const end = value.indexOf(markers[1], start + markers[0].length);
+    if (end < 0) return { pending: true };
+    let body = value.slice(start + markers[0].length, end).trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+    const first = body.indexOf('{');
+    const last = body.lastIndexOf('}');
+    if (first >= 0 && last > first) body = body.slice(first, last + 1);
     return { pending: false, body };
   }
 
-  function escapeJsonStringControls(source) {
-    let output = '';
-    let inString = false;
-    let escaped = false;
+  function escapeJsonControls(source) {
+    let output = '', inString = false, escaped = false;
     for (const char of String(source || '')) {
       if (!inString) { output += char; if (char === '"') inString = true; continue; }
       if (escaped) { output += char; escaped = false; continue; }
       if (char === '\\') { output += char; escaped = true; continue; }
       if (char === '"') { output += char; inString = false; continue; }
-      if (char === '\n') { output += '\\n'; continue; }
-      if (char === '\r') { output += '\\r'; continue; }
-      if (char === '\t') { output += '\\t'; continue; }
-      if (char.charCodeAt(0) < 0x20) {
-        output += `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`;
-        continue;
-      }
-      output += char;
+      output += char === '\n' ? '\\n' : char === '\r' ? '\\r' : char === '\t' ? '\\t'
+        : char.charCodeAt(0) < 0x20 ? `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}` : char;
     }
     return output;
   }
 
-  function parseRequest(text) {
-    const extracted = extractRequestBody(text);
-    if (!extracted) return null;
-    if (extracted.pending) return { pending: true };
-    let payload;
-    try { payload = JSON.parse(extracted.body); }
+  function parseJsonEnvelope(envelope, label) {
+    if (!envelope || envelope.pending) return envelope;
+    try { return JSON.parse(envelope.body); }
     catch (firstError) {
-      try { payload = JSON.parse(escapeJsonStringControls(extracted.body)); }
-      catch (secondError) {
-        const compact = extracted.body.slice(0, 180).replace(/\s+/g, ' ');
-        throw new Error(`DCF_LOCAL_AGENT_REQUEST JSON 解析失败：${secondError?.message || firstError?.message || secondError}；开头：${compact}`);
-      }
+      try { return JSON.parse(escapeJsonControls(envelope.body)); }
+      catch (secondError) { throw new Error(`${label} JSON 解析失败：${secondError?.message || firstError?.message}`); }
     }
-    if (payload?.schema !== 'dcf.local-agent.request.v1') throw new Error('DCF_LOCAL_AGENT_REQUEST schema 无效');
+  }
+
+  function parseArtifact(text) {
+    const decisionEnvelope = extractEnvelope(text, MARKERS.permissionDecision);
+    if (decisionEnvelope) {
+      const payload = parseJsonEnvelope(decisionEnvelope, 'DCF_LOCAL_AGENT_PERMISSION_DECISION');
+      if (payload?.pending) return payload;
+      if (payload?.schema !== 'dcf.local-agent.permission-decision.v1') throw new Error('权限决定 schema 无效');
+      const decision = {
+        kind: 'permission_decision',
+        request_id: String(payload.request_id || ''),
+        session_id: String(payload.session_id || ''),
+        permission_id: String(payload.permission_id || ''),
+        decision: String(payload.decision || '').toLowerCase(),
+        reason: String(payload.reason || payload.message || '').slice(0, 8000)
+      };
+      if (!/^[A-Za-z0-9._:-]{1,128}$/.test(decision.request_id)
+        || !/^ses_[A-Za-z0-9_-]+$/.test(decision.session_id)
+        || !/^per_[A-Za-z0-9_-]+$/.test(decision.permission_id)
+        || !['once', 'always', 'reject'].includes(decision.decision)) throw new Error('权限决定字段无效');
+      return decision;
+    }
+
+    const requestEnvelope = extractEnvelope(text, MARKERS.request);
+    if (!requestEnvelope) return null;
+    const payload = parseJsonEnvelope(requestEnvelope, 'DCF_LOCAL_AGENT_REQUEST');
+    if (payload?.pending) return payload;
+    if (payload?.schema !== 'dcf.local-agent.request.v1' || String(payload.mode || 'new') !== 'new') {
+      throw new Error('DCF_LOCAL_AGENT_REQUEST schema 或 mode 无效');
+    }
     const id = String(payload.id || '').trim();
     const task = String(payload.task || '').trim();
-    if (!/^[A-Za-z0-9._:-]{1,128}$/.test(id)) throw new Error('DCF_LOCAL_AGENT_REQUEST id 无效');
-    if (!task || task.length > 30000) throw new Error('DCF_LOCAL_AGENT_REQUEST task 无效');
-    if (String(payload.mode || 'new') !== 'new') throw new Error('闭环 v1 只允许新建独立 OpenCode 会话');
+    if (!/^[A-Za-z0-9._:-]{1,128}$/.test(id) || !task || task.length > 30000) throw new Error('DCF_LOCAL_AGENT_REQUEST 字段无效');
+    const requestedIdle = Number(payload.idle_timeout_ms ?? payload.timeout_ms) || state.settings.idle_timeout_ms;
     return {
-      id, task,
+      kind: 'task', id, task,
       title: String(payload.title || `DCF · ${task.slice(0, 56)}`).slice(0, 240),
       return_mode: payload.return_mode === 'full' ? 'full' : 'summary',
-      timeout_ms: Math.max(30000, Math.min(60 * 60 * 1000, Number(payload.timeout_ms) || state.settings.timeout_ms))
+      idle_timeout_ms: Math.max(30000, Math.min(6 * 60 * 60 * 1000, requestedIdle))
     };
   }
 
-  function conversationRoot() { return document.querySelector('main') || document.querySelector('[role="main"]'); }
-  function assistantMessages(root = currentConversationRoot) {
-    return root ? Array.from(root.querySelectorAll('[data-message-author-role="assistant"]')) : [];
-  }
-  function latestAssistantNode(root = currentConversationRoot) {
-    const messages = assistantMessages(root);
-    return messages[messages.length - 1] || null;
-  }
-  function assistantNode(value) {
+  function pageConversationRoot() { return document.querySelector('main') || document.querySelector('[role="main"]'); }
+  function assistantNodes(root = conversationRoot) { return root ? Array.from(root.querySelectorAll('[data-message-author-role="assistant"]')) : []; }
+  function latestAssistantNode() { const nodes = assistantNodes(); return nodes[nodes.length - 1] || null; }
+  function containingAssistantNode(value) {
     if (!(value instanceof Node)) return null;
     const element = value.nodeType === Node.ELEMENT_NODE ? value : value.parentElement;
     return element?.closest?.('[data-message-author-role="assistant"]') || null;
@@ -365,80 +333,80 @@
 
   function scheduleInspect(node, force = false) {
     if (!(node instanceof Element)) return;
-    const prior = nodeState.get(node) || {};
-    clearTimeout(prior.timer);
+    const previous = nodeState.get(node) || {};
+    clearTimeout(previous.timer);
     const timer = setTimeout(() => inspectNode(node, force).catch(reportFatal), force ? 0 : 260);
-    nodeState.set(node, { ...prior, timer });
+    nodeState.set(node, { ...previous, timer });
   }
 
   async function inspectNode(node, force = false) {
     if (!state.settings.enabled || !(node instanceof Element) || !node.isConnected) return;
     if (!force && (node !== currentCandidate || baselineNodes.has(node))) return;
     const text = String(node.innerText || node.textContent || '').trim();
-    const prior = nodeState.get(node) || {};
-    if (!force && prior.text === text) return;
+    const previous = nodeState.get(node) || {};
+    if (!force && previous.text === text) return;
     nodeState.set(node, { text, timer: null });
-    if (!text.includes(REQUEST_START)) return;
-    try {
-      const parsed = parseRequest(text);
-      if (!parsed) return;
-      if (parsed.pending) {
-        state.stage = 'detecting'; state.status = '检测到新委派工件，等待回复生成完成'; state.error = '';
-        render(); return;
-      }
-      if (state.processed_ids.includes(parsed.id)) {
-        state.stage = 'idle'; state.status = `最新回复中的工件已经处理：${parsed.id}`; state.error = '';
-        markAction('最新助手回复中的工件已经处理'); render(); return;
-      }
-      enqueue(parsed, force ? 'manual-latest' : 'new-assistant-event');
-    } catch (error) {
-      state.stage = 'invalid'; state.status = '最新助手回复包含无效委派工件';
-      state.error = String(error?.message || error); markAction('最新助手回复工件解析失败'); render();
+    if (!text.includes(MARKERS.request[0]) && !text.includes(MARKERS.permissionDecision[0])) return;
+    const parsed = parseArtifact(text);
+    if (!parsed) return;
+    if (parsed.pending) {
+      state.stage = 'detecting';
+      state.status = '检测到不完整工件，等待助手回复生成完成';
+      render();
+      return;
     }
+    if (parsed.kind === 'permission_decision') {
+      await applyPermissionDecision(parsed);
+      return;
+    }
+    if (state.processed_ids.includes(parsed.id)) {
+      state.stage = activeJob ? state.stage : 'idle';
+      state.status = `最新回复中的工件已经处理：${parsed.id}`;
+      render();
+      return;
+    }
+    enqueue(parsed);
   }
 
-  function considerNewAssistant(node) {
-    if (!(node instanceof Element) || baselineNodes.has(node)) return;
-    counters.new_assistant_events += 1;
-    if (node !== latestAssistantNode()) { baselineNodes.add(node); return; }
-    currentCandidate = node;
-    scheduleInspect(node, false);
-  }
-
-  function baselineConversation(root) {
+  function baselineCurrentConversation(root) {
     currentCandidate = null;
-    const messages = assistantMessages(root);
-    counters.baseline_messages = messages.length;
-    for (const node of messages) baselineNodes.add(node);
-    const latest = messages[messages.length - 1] || null;
-    if (latest && streaming()) {
+    const nodes = assistantNodes(root);
+    counters.baseline = nodes.length;
+    for (const node of nodes) baselineNodes.add(node);
+    const latest = nodes[nodes.length - 1] || null;
+    if (latest && isStreaming()) {
       const text = String(latest.innerText || latest.textContent || '');
-      if (text.includes(REQUEST_START) && !text.includes(REQUEST_END)) {
-        baselineNodes.delete(latest); currentCandidate = latest; scheduleInspect(latest, false);
-      }
+      const incomplete = [MARKERS.request, MARKERS.permissionDecision].some(([start, end]) => text.includes(start) && !text.includes(end));
+      if (incomplete) { baselineNodes.delete(latest); currentCandidate = latest; scheduleInspect(latest); }
     }
-    markAction(`已建立历史基线：${messages.length} 条助手消息不会自动执行`);
-    state.status = '等待新的助手回复'; state.error = ''; render();
+    state.status = activeJob ? state.status : '等待新的助手回复';
+    render();
   }
 
   function attachConversationRoot() {
-    const root = conversationRoot();
-    if (!root || root === currentConversationRoot) return false;
+    const root = pageConversationRoot();
+    if (!root || root === conversationRoot) return false;
     conversationObserver?.disconnect();
-    currentConversationRoot = root;
-    baselineConversation(root);
+    conversationRoot = root;
+    baselineCurrentConversation(root);
     conversationObserver = new MutationObserver((records) => {
       for (const record of records) {
-        const direct = assistantNode(record.target);
-        if (direct && direct === currentCandidate) scheduleInspect(direct, false);
+        const direct = containingAssistantNode(record.target);
+        if (direct && direct === currentCandidate) scheduleInspect(direct);
         for (const node of record.addedNodes) {
           if (!(node instanceof Element)) continue;
           const candidates = [];
           if (node.matches?.('[data-message-author-role="assistant"]')) candidates.push(node);
           candidates.push(...(node.querySelectorAll?.('[data-message-author-role="assistant"]') || []));
-          for (const candidate of candidates) considerNewAssistant(candidate);
-          const parent = assistantNode(node);
-          if (parent && parent === currentCandidate) scheduleInspect(parent, false);
+          for (const item of candidates) {
+            if (baselineNodes.has(item)) continue;
+            counters.new_events += 1;
+            if (item !== latestAssistantNode()) { baselineNodes.add(item); continue; }
+            currentCandidate = item;
+            scheduleInspect(item);
+          }
+          const parent = containingAssistantNode(node);
+          if (parent && parent === currentCandidate) scheduleInspect(parent);
         }
       }
     });
@@ -446,39 +414,14 @@
     return true;
   }
 
-  function inspectLatestAssistant() {
-    counters.manual_latest_checks += 1;
-    attachConversationRoot();
-    const latest = latestAssistantNode();
-    if (!latest) {
-      state.stage = 'idle'; state.status = '当前页面没有助手回复'; state.error = '';
-      markAction('检查最新助手回复：没有可检查内容'); render(); return;
-    }
-    currentCandidate = latest;
-    state.stage = 'scanning'; state.status = '正在检查最新一条助手回复'; state.error = '';
-    markAction('已触发检查最新助手回复'); render(); scheduleInspect(latest, true);
-    setTimeout(() => {
-      if (state.stage === 'scanning') {
-        state.stage = 'idle'; state.status = '最新助手回复中没有新的完整工件'; render();
-      }
-    }, 900);
-  }
-
-  function enqueue(requestData, source = 'new-assistant-event') {
-    if (!requestData || state.processed_ids.includes(requestData.id) || queue.some((item) => item.id === requestData.id) || activeJob?.request.id === requestData.id) return;
-    if (source === 'manual-latest') counters.manual_requests_enqueued += 1;
-    else counters.auto_requests_enqueued += 1;
+  function enqueue(requestData) {
+    if (activeJob?.request.id === requestData.id || queue.some((item) => item.id === requestData.id)) return;
     queue.push(requestData);
-    state.stage = 'received'; state.status = '已识别新的完整工件，等待委派'; state.error = '';
-    state.last_request_id = requestData.id; markAction(`已接收请求 ${requestData.id}`); render();
+    state.last_request_id = requestData.id;
+    state.stage = 'received';
+    state.status = '已识别新的完整工件，等待委派';
+    render();
     processQueue().catch(reportFatal);
-  }
-
-  async function createSession(config, title) {
-    const session = await request('/session', { config, method: 'POST', body: { title } });
-    const id = sessionId(session);
-    if (!id) throw new Error('OpenCode 未返回 session ID');
-    return id;
   }
 
   async function snapshot(job) {
@@ -491,65 +434,144 @@
       optionalFallback(['/permission/', '/permission'], job.config),
       optionalFallback(['/question/', '/question'], job.config)
     ]);
-    const sessionStatus = statuses.ok ? sessionStatusFrom(statuses.data, job.session_id) : null;
-    const normalizedStatus = sessionStatus
-      ? statusType(sessionStatus)
-      : statuses.ok
-        ? (job.response_state === 'fulfilled' ? 'idle' : 'message-pending')
-        : 'status-unavailable';
+    const status = statuses.ok ? sessionStatusFrom(statuses.data, job.session_id) : null;
     const belongs = (item) => {
       const id = String(item?.sessionID || item?.session_id || item?.sessionId || '');
       return !id || id === job.session_id;
     };
     const messageList = messages.ok ? list(messages.data) : [];
-    if (job.response_state === 'fulfilled' && job.response && !messageList.some((item) => item?.info?.id && item.info.id === job.response?.info?.id)) messageList.push(job.response);
+    if (job.response_state === 'fulfilled' && job.response && !messageList.some((item) => messageId(item) === messageId(job.response))) messageList.push(job.response);
     return {
-      status: sessionStatus, status_type: normalizedStatus, messages: messageList,
-      todo: todo.ok ? list(todo.data) : [], diff: diff.ok ? list(diff.data) : [],
+      status,
+      status_type: status ? statusType(status) : statuses.ok ? (job.response_state === 'fulfilled' ? 'idle' : 'message-pending') : 'status-unavailable',
+      messages: messageList,
+      todo: todo.ok ? list(todo.data) : [],
+      diff: diff.ok ? list(diff.data) : [],
       permissions: permissions.ok ? list(permissions.data).filter(belongs) : [],
       questions: questions.ok ? list(questions.data).filter(belongs) : [],
       endpoint_errors: {
-        status: statuses.ok ? null : statuses.error, messages: messages.ok ? null : messages.error,
-        todo: todo.ok ? null : todo.error, diff: diff.ok ? null : diff.error,
-        permissions: permissions.ok ? null : permissions.error, questions: questions.ok ? null : questions.error,
+        status: statuses.ok ? null : statuses.error,
+        messages: messages.ok ? null : messages.error,
+        todo: todo.ok ? null : todo.error,
+        diff: diff.ok ? null : diff.error,
+        permissions: permissions.ok ? null : permissions.error,
+        questions: questions.ok ? null : questions.error,
         message_request: job.response_state === 'rejected' ? String(job.response_error?.message || job.response_error) : null
       }
     };
   }
 
-  function updateProgress(snap) {
-    const preview = latestAssistant(snap.messages);
+  function activityFingerprint(snap, job) {
+    const messages = snap.messages.map((message) => ({
+      id: messageId(message),
+      role: messageRole(message),
+      parts: list(message?.parts).map((part) => ({
+        id: String(part?.id || part?.partID || ''),
+        type: String(part?.type || ''),
+        text: (part?.type === 'text' || part?.type === 'reasoning') ? String(part.text || '').slice(-2500) : '',
+        tool: String(part?.tool || part?.name || ''),
+        callID: String(part?.callID || part?.callId || ''),
+        state: statusType(part?.state, ''),
+        title: String(part?.state?.title || part?.state?.error || ''),
+        input_hash: hash(json(part?.state?.input || null)),
+        output_hash: hash(json(part?.state?.output || null))
+      }))
+    }));
+    return hash(json({
+      response_state: job.response_state,
+      status_type: snap.status_type,
+      messages,
+      todo: snap.todo,
+      diff: snap.diff,
+      permissions: snap.permissions,
+      questions: snap.questions
+    }));
+  }
+
+  function noteActivity(job, fingerprint) {
+    if (job.activity_fingerprint !== fingerprint) {
+      job.activity_fingerprint = fingerprint;
+      job.last_activity_at = Date.now();
+    }
+    state.progress.last_activity_at = new Date(job.last_activity_at).toLocaleTimeString();
+  }
+
+  async function confirmInactive(job, fingerprint) {
+    await sleep(Math.max(500, state.settings.poll_interval_ms));
+    const first = await snapshot(job);
+    const firstFingerprint = activityFingerprint(first, job);
+    if (firstFingerprint !== fingerprint || first.permissions.length || first.questions.length) return null;
+    await sleep(Math.max(500, state.settings.poll_interval_ms));
+    const second = await snapshot(job);
+    return activityFingerprint(second, job) === fingerprint && !second.permissions.length && !second.questions.length ? second : null;
+  }
+
+  function updateProgress(job, snap) {
     state.progress = {
-      status_type: snap.status_type, messages: snap.messages.length, todo: snap.todo.length, diff: snap.diff.length,
-      permissions: snap.permissions.length, questions: snap.questions.length, preview: preview.slice(-900),
-      last_poll_at: new Date().toLocaleTimeString()
+      status_type: snap.status_type,
+      messages: snap.messages.length,
+      todo: snap.todo.length,
+      diff: snap.diff.length,
+      permissions: snap.permissions.length,
+      questions: snap.questions.length,
+      preview: latestAssistant(snap.messages).slice(-900),
+      last_activity_at: new Date(job.last_activity_at).toLocaleTimeString()
     };
   }
 
-  function payload(job, status, snap, elapsed) {
-    return {
-      schema: 'dcf.local-agent.result.v1', request_id: job.request.id, status,
-      session_id: job.session_id, assistant_result: latestAssistant(snap.messages),
-      todo: snap.todo, diff: snap.diff, permissions: snap.permissions, questions: snap.questions,
-      messages: job.request.return_mode === 'full' ? snap.messages : undefined,
-      execution: {
-        elapsed_ms: elapsed,
-        status_type: snap.status_type,
-        base_url: baseUrl(job.config.base_url), endpoint_errors: snap.endpoint_errors
+  function findToolEvidence(messages, permission) {
+    const wantedMessage = String(permission?.tool?.messageID || permission?.tool?.messageId || '');
+    const wantedCall = String(permission?.tool?.callID || permission?.tool?.callId || '');
+    for (const message of messages) {
+      if (wantedMessage && messageId(message) !== wantedMessage) continue;
+      for (const part of list(message?.parts)) {
+        if (part?.type !== 'tool') continue;
+        const callID = String(part.callID || part.callId || '');
+        if (wantedCall && callID !== wantedCall) continue;
+        return {
+          found: true,
+          message_id: messageId(message),
+          call_id: callID,
+          name: String(part.tool || part.name || permission.permission || permission.action || ''),
+          status: statusType(part.state),
+          input: part.state?.input ?? null,
+          title: String(part.state?.title || ''),
+          error: String(part.state?.error || '')
+        };
       }
+    }
+    return { found: false, message_id: wantedMessage, call_id: wantedCall, name: String(permission?.permission || permission?.action || ''), input: null };
+  }
+
+  function permissionRequestPayload(job, permission, snap) {
+    const tool = findToolEvidence(snap.messages, permission);
+    return {
+      schema: 'dcf.local-agent.permission-request.v1',
+      request_id: job.request.id,
+      session_id: job.session_id,
+      permission_id: permissionId(permission),
+      raw_permission: permission,
+      tool,
+      task_context: {
+        original_task: job.request.task,
+        recent_assistant_output: latestAssistant(snap.messages).slice(-6000),
+        todo: snap.todo,
+        diff: snap.diff
+      },
+      evidence_completeness: {
+        tool_input_found: tool.found,
+        diff_available: snap.diff.length > 0,
+        permission_metadata_available: Boolean(permission?.metadata && Object.keys(permission.metadata).length)
+      },
+      allowed_decisions: ['once', 'always', 'reject'],
+      note: '这是 OpenCode 原生权限事件的证据投影。请返回 dcf.local-agent.permission-decision.v1；当前阶段只处理本次权限，不管理长期授权撤销。'
     };
   }
 
-  const artifact = (value) => `${RESULT_START}\n${json(value)}\n${RESULT_END}`;
-  const acceptanceArtifact = (value) => `${ACCEPTANCE_START}\n${json(value)}\n${ACCEPTANCE_END}`;
+  const artifact = (markers, value) => `${markers[0]}\n${json(value)}\n${markers[1]}`;
   const composer = () => document.querySelector('#prompt-textarea') || document.querySelector('[data-testid="composer-text-input"]') || document.querySelector('form textarea') || document.querySelector('main [contenteditable="true"]');
   const composerValue = (target) => target ? String('value' in target ? target.value || '' : target.innerText || target.textContent || '') : '';
-  const streaming = () => Boolean(document.querySelector('[data-testid="stop-button"],button[aria-label*="Stop"],button[aria-label*="停止"]'));
-
-  function dispatchInput(target, text) {
-    try { target.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text })); }
-    catch (_) { target.dispatchEvent(new Event('input', { bubbles: true })); }
-  }
+  const isStreaming = () => Boolean(document.querySelector('[data-testid="stop-button"],button[aria-label*="Stop"],button[aria-label*="停止"]'));
 
   function fillComposer(text) {
     const target = composer();
@@ -563,369 +585,341 @@
     } else {
       const selection = getSelection();
       if (selection) {
-        const range = document.createRange(); range.selectNodeContents(target);
-        selection.removeAllRanges(); selection.addRange(range);
+        const range = document.createRange();
+        range.selectNodeContents(target);
+        selection.removeAllRanges();
+        selection.addRange(range);
       }
       if (!document.execCommand?.('insertText', false, text)) target.textContent = text;
     }
-    dispatchInput(target, text);
+    try { target.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text })); }
+    catch (_) { target.dispatchEvent(new Event('input', { bubbles: true })); }
   }
 
-  const sendButton = () => document.querySelector('[data-testid="send-button"]') || document.querySelector('button[aria-label*="Send"]') || document.querySelector('button[aria-label*="发送"]');
   async function clickSend() {
     for (let attempt = 0; attempt < 200; attempt += 1) {
-      const button = sendButton();
-      if (!streaming() && button && !button.disabled && button.getAttribute('aria-disabled') !== 'true') { button.click(); return; }
+      const button = document.querySelector('[data-testid="send-button"]') || document.querySelector('button[aria-label*="Send"],button[aria-label*="发送"]');
+      if (!isStreaming() && button && !button.disabled && button.getAttribute('aria-disabled') !== 'true') { button.click(); return; }
       await sleep(50);
     }
-    throw new Error('闭环结果已写入输入框，但发送按钮暂不可用');
+    throw new Error('工件已写入输入框，但发送按钮暂不可用');
   }
 
-  async function returnArtifactText(text, {
-    forceSend = false,
-    sentStatus = '结果已自动回传',
-    filledStatus = '结果已填入输入框',
-    finalStage = null
-  } = {}) {
+  async function sendArtifact(text, forceSend = false) {
     pendingArtifact = text;
     pendingForceSend = forceSend;
     const started = Date.now();
     while (!destroyed && pendingArtifact === text && Date.now() - started < 120000) {
       const target = composer();
-      if (target && !composerValue(target).trim() && !streaming()) {
+      if (target && !composerValue(target).trim() && !isStreaming()) {
         fillComposer(text);
-        const shouldSend = forceSend || state.settings.auto_send_results;
-        if (shouldSend) await clickSend();
+        if (forceSend || state.settings.auto_send_results) await clickSend();
         pendingArtifact = '';
         pendingForceSend = false;
-        state.status = shouldSend ? sentStatus : filledStatus;
-        if (finalStage) state.stage = finalStage;
-        state.error = ''; markAction(state.status); render(); return true;
+        return true;
       }
       await sleep(500);
     }
-    state.stage = 'return_wait'; state.status = '结果等待回传';
-    state.error = '当前对话尚未空闲，未覆盖输入框'; render(); return false;
-  }
-
-  async function returnPayload(value) {
-    return returnArtifactText(artifact(value));
-  }
-
-  async function focusSession(id) {
-    if (!id) { markAction('查看执行会话：尚无 session'); state.status = '尚无可查看的执行会话'; render(); return; }
-    try {
-      localPanelShadow()?.querySelector('[data-action="refresh-all"]')?.click();
-      await sleep(1200);
-      const select = localPanelShadow()?.querySelector('[data-field="session"]');
-      if (select && Array.from(select.options || []).some((option) => option.value === id)) {
-        select.value = id; select.dispatchEvent(new Event('change', { bubbles: true }));
-        markAction(`已切换到 session ${id}`); state.status = '已打开执行会话';
-      } else {
-        markAction(`未在列表找到 session ${id}`); state.status = '执行会话尚未出现在本机列表';
-      }
-    } catch (error) { state.error = String(error?.message || error); }
+    state.stage = 'return_wait';
+    state.status = '工件等待回传';
+    state.error = '当前对话尚未空闲，未覆盖输入框';
     render();
+    return false;
   }
 
-  async function clearProcessedState(label = 'manual') {
-    if (activeJob || queueBusy || queue.length) throw new Error('本机任务正在执行，暂不能清除交接记录');
-    const before = {
-      processed_count: state.processed_ids.length,
-      recent_request_present: Boolean(state.last_request_id),
-      recent_session_present: Boolean(state.last_session_id)
-    };
-    state.processed_ids = [];
-    state.last_request_id = '';
-    state.last_session_id = '';
-    state.stage = label === 'acceptance' ? 'acceptance' : 'idle';
-    state.progress = { status_type: '', messages: 0, todo: 0, diff: 0, permissions: 0, questions: 0, preview: '', last_poll_at: '' };
-    state.status = label === 'acceptance' ? '正在执行一键验收' : '已清除工件去重记录与最近交接；历史消息仍不会自动执行';
-    state.error = '';
-    counters.clear_actions += 1;
-    markAction(label === 'acceptance' ? '一键验收已清除去重记录与最近交接' : '已清除工件去重记录与最近交接');
-    await persist();
+  async function returnPermissionRequest(job, permission, snap) {
+    const id = permissionId(permission);
+    if (!id || job.notified_permissions.has(id)) return;
+    job.notified_permissions.add(id);
+    job.awaiting_permission_id = id;
+    counters.permission_requests += 1;
+    state.stage = 'needs_user';
+    state.status = '权限请求已送回当前对话，等待判断';
     render();
-    return before;
+    await sendArtifact(artifact(MARKERS.permissionRequest, permissionRequestPayload(job, permission, snap)), true);
   }
 
-  function workspaceEvidence() {
-    const shadow = shellShadow();
-    const tabs = Array.from(shadow?.querySelectorAll('.tabs button[data-panel-id]') || []);
-    const active = tabs.find((button) => button.classList.contains('active')) || null;
-    return {
-      pinned_panel_ids: tabs.map((button) => String(button.dataset.panelId || '')).filter(Boolean),
-      active_panel_id: String(active?.dataset.panelId || ''),
-      local_agent_pinned: tabs.some((button) => button.dataset.panelId === 'local-agent'),
-      local_agent_active: active?.dataset.panelId === 'local-agent'
-    };
-  }
-
-  async function hostVersionEvidence() {
+  async function replyPermissionNative(job, decision) {
+    const body = { reply: decision.decision };
+    if (decision.reason) body.message = decision.reason;
+    const oldPath = `/permission/${encodeURIComponent(decision.permission_id)}/reply`;
     try {
-      const host = await sendHost({ type: 'host.status' });
-      const snapshot = host.snapshots?.current || host.snapshots?.last_known_good || null;
-      const entries = Array.isArray(snapshot?.entries) ? snapshot.entries : [];
-      const wanted = new Set([UNIT_ID, LOCAL_AGENT_ID, 'dcf.firstparty.shell', 'dcf.firstparty.plugin-manager']);
-      return Object.fromEntries(entries.filter((entry) => wanted.has(entry.id)).map((entry) => [
-        entry.id,
-        { version: String(entry.version || ''), hash_prefix: String(entry.hash || '').slice(0, 12), enabled: entry.enabled !== false }
-      ]));
+      await request(oldPath, { config: job.config, method: 'POST', body, timeout: 15000 });
+      return oldPath;
     } catch (error) {
-      return { error: String(error?.message || error) };
+      if (!/404|405/.test(String(error?.message || error))) throw error;
     }
+    const newPath = `/api/session/${encodeURIComponent(job.session_id)}/permission/${encodeURIComponent(decision.permission_id)}/reply`;
+    await request(newPath, { config: job.config, method: 'POST', body, timeout: 15000 });
+    return newPath;
   }
 
-  async function buildAcceptanceReport(clearBefore) {
-    await sleep(900);
-    const persisted = await sendHost({ type: 'plugin.data.get', plugin_id: UNIT_ID });
-    const saved = persisted.data && typeof persisted.data === 'object' ? persisted.data : {};
-    const workspace = workspaceEvidence();
-    const shell = shellShadow();
-    const panelHost = localPanelHost();
-    const panelShadow = localPanelShadow();
-    const buttonText = String(mountRoot?.querySelector('[data-action="latest"]')?.textContent || '').trim();
-    const cardText = String(mountRoot?.textContent || '');
-    const versions = await hostVersionEvidence();
-    const checks = {
-      dialogue_card_mounted: Boolean(mountHost?.isConnected && mountRoot),
-      click_events_bound: boundMountRoot === mountRoot,
-      startup_mount_confirmed: startupMountConfirmed,
-      latest_only_control: buttonText === '检查最新助手回复',
-      clear_persisted: Array.isArray(saved.processed_ids) && saved.processed_ids.length === 0
-        && !String(saved.last_request_id || '') && !String(saved.last_session_id || ''),
-      no_queue_after_clear: !activeJob && !queueBusy && queue.length === 0,
-      history_not_replayed_after_clear: counters.tasks_started === 0 || counters.auto_requests_enqueued <= counters.new_assistant_events,
-      local_agent_tab_preserved: workspace.local_agent_pinned,
-      idle_status_not_unknown: state.progress.status_type !== 'unknown',
-      recent_handoff_not_labeled_current: !cardText.includes('当前请求：') && !cardText.includes('当前会话：')
-    };
+  async function applyPermissionDecision(decision) {
+    const job = activeJob;
+    if (!job) throw new Error('当前没有可接收权限决定的本机任务');
+    if (decision.request_id !== job.request.id || decision.session_id !== job.session_id || decision.permission_id !== job.awaiting_permission_id) {
+      throw new Error('权限决定与当前 request/session/permission 不匹配');
+    }
+    state.stage = 'permission_reply';
+    state.status = `正在把权限决定 ${decision.decision} 送回原 session`;
+    render();
+    await replyPermissionNative(job, decision);
+    counters.permission_decisions += 1;
+    job.awaiting_permission_id = '';
+    job.last_activity_at = Date.now();
+    state.stage = job.response_state === 'rejected' ? 'detached' : 'running';
+    state.status = '权限决定已送回原 session，继续执行';
+    render();
+  }
+
+  function resultPayload(job, status, snap) {
     return {
-      schema: 'dcf.local-agent-dialogue.acceptance.v1',
-      generated_at: new Date().toISOString(),
-      plugin: {
-        id: UNIT_ID,
-        version: UNIT_VERSION,
-        intake_model: 'new-assistant-event-stream'
-      },
-      page_runtime: {
-        route_kind: /^\/c\//.test(location.pathname) ? '/c/:conversation' : location.pathname === '/' ? '/' : 'other',
-        page_uptime_ms: Math.round(performance.now()),
-        plugin_uptime_ms: Math.round(performance.now() - bootPerformanceMs),
-        page_predates_plugin_ms: Math.round(bootPerformanceMs)
-      },
-      mount: {
-        shell_host_connected: Boolean(document.getElementById(SHELL_HOST_ID)?.isConnected),
-        shell_shadow_open: Boolean(shell),
-        local_agent_panel_connected: Boolean(panelHost?.isConnected),
-        panel_inside_shell_shadow: Boolean(shell && panelHost && shell.contains(panelHost)),
-        local_agent_shadow_open: Boolean(panelShadow),
-        dialogue_mount_connected: Boolean(mountHost?.isConnected),
-        event_root_bound: boundMountRoot === mountRoot,
-        mount_bindings: counters.mount_bindings
-      },
-      workspace,
-      intake: {
-        assistant_message_count: assistantMessages().length,
-        baseline_message_count: counters.baseline_messages,
-        new_assistant_events: counters.new_assistant_events,
-        manual_latest_checks: counters.manual_latest_checks,
-        auto_requests_enqueued: counters.auto_requests_enqueued,
-        manual_requests_enqueued: counters.manual_requests_enqueued,
-        tasks_started: counters.tasks_started
-      },
-      clear_test: {
-        performed: true,
-        before: clearBefore,
-        after: {
-          processed_count: state.processed_ids.length,
-          recent_request_present: Boolean(state.last_request_id),
-          recent_session_present: Boolean(state.last_session_id),
-          persisted_processed_count: Array.isArray(saved.processed_ids) ? saved.processed_ids.length : null,
-          queue_length: queue.length
-        }
-      },
-      versions,
-      checks,
-      passed: Object.values(checks).every(Boolean)
+      schema: 'dcf.local-agent.result.v1',
+      request_id: job.request.id,
+      status,
+      session_id: job.session_id,
+      assistant_result: latestAssistant(snap.messages),
+      todo: snap.todo,
+      diff: snap.diff,
+      permissions: snap.permissions,
+      questions: snap.questions,
+      messages: job.request.return_mode === 'full' ? snap.messages : undefined,
+      execution: {
+        elapsed_ms: Date.now() - job.started_at,
+        status_type: snap.status_type,
+        timeout_basis: 'observable-idle-time',
+        idle_timeout_ms: job.request.idle_timeout_ms,
+        last_activity_at: new Date(job.last_activity_at).toISOString(),
+        base_url: normalizeBaseUrl(job.config.base_url),
+        endpoint_errors: snap.endpoint_errors
+      }
     };
-  }
-
-  async function runAcceptance() {
-    if (activeJob || queueBusy || queue.length) throw new Error('本机任务正在执行，完成后再生成验收报告');
-    state.stage = 'acceptance';
-    state.status = '正在执行一键验收并生成报告';
-    state.error = '';
-    counters.acceptance_reports += 1;
-    markAction('开始一键验收');
-    render();
-    const clearBefore = await clearProcessedState('acceptance');
-    const report = await buildAcceptanceReport(clearBefore);
-    state.status = report.passed ? '验收检查完成，正在自动回传' : '验收发现偏差，正在自动回传';
-    render();
-    await returnArtifactText(acceptanceArtifact(report), {
-      forceSend: true,
-      sentStatus: report.passed ? '验收报告已自动回传' : '偏差报告已自动回传',
-      filledStatus: '验收报告已写入输入框',
-      finalStage: 'idle'
-    });
   }
 
   async function poll(job) {
-    const started = Date.now();
-    let interventionKey = '';
-    let terminalSeenAt = 0;
     while (!destroyed && activeJob === job) {
       const snap = await snapshot(job);
-      updateProgress(snap);
-      if (job.response_state === 'rejected') throw job.response_error;
-      const currentIntervention = snap.permissions.length || snap.questions.length ? hash(json({ permissions: snap.permissions, questions: snap.questions })) : '';
-      if (currentIntervention && currentIntervention !== interventionKey) {
-        interventionKey = currentIntervention; state.stage = 'needs_user'; state.status = '等待本机权限或回答';
-        render(); await focusSession(job.session_id); await returnPayload(payload(job, 'needs_user', snap, Date.now() - started));
-      } else if (!currentIntervention && interventionKey) {
-        interventionKey = ''; state.stage = 'running'; state.status = '用户处理完成，继续执行'; render();
+      job.last_snapshot = snap;
+      const fingerprint = activityFingerprint(snap, job);
+      noteActivity(job, fingerprint);
+      updateProgress(job, snap);
+
+      const pendingPermissions = snap.permissions.filter((item) => permissionId(item));
+      const hasIntervention = pendingPermissions.length > 0 || snap.questions.length > 0;
+      if (pendingPermissions.length) {
+        state.stage = 'needs_user';
+        state.status = '检测到 OpenCode 权限请求；无活动超时已暂停';
+        render();
+        await returnPermissionRequest(job, pendingPermissions[0], snap);
+      } else if (snap.questions.length) {
+        state.stage = 'needs_user';
+        state.status = 'OpenCode 正在等待回答；当前阶段仅自动转交权限请求';
+        render();
       } else {
-        state.stage = 'running';
-        state.status = job.response_state === 'fulfilled' ? 'OpenCode 已返回结果，正在收集证据' : `本机执行中 · ${state.progress.status_type}`;
+        if (job.awaiting_permission_id) job.awaiting_permission_id = '';
+        const assistantResult = latestAssistant(snap.messages);
+        const terminalStatus = ['idle', 'completed'].includes(snap.status_type);
+        if ((job.response_state === 'fulfilled' || terminalStatus) && assistantResult) {
+          const finalSnap = await snapshot(job);
+          return resultPayload(job, 'completed', finalSnap);
+        }
+        if (['failed', 'error'].includes(snap.status_type)) return resultPayload(job, 'failed', snap);
+        state.stage = job.response_state === 'rejected' ? 'detached' : 'running';
+        state.status = job.response_state === 'rejected'
+          ? '同步消息连接已断开，但 session 仍在观察'
+          : `本机执行中 · ${snap.status_type}`;
         render();
       }
-      if (!currentIntervention && job.response_state === 'fulfilled') {
-        if (!terminalSeenAt) terminalSeenAt = Date.now();
-        if (Date.now() - terminalSeenAt >= 500) {
-          const finalSnap = await snapshot(job); updateProgress(finalSnap);
-          return payload(job, 'completed', finalSnap, Date.now() - started);
-        }
+
+      if (!hasIntervention && Date.now() - job.last_activity_at >= job.request.idle_timeout_ms) {
+        const inactiveSnapshot = await confirmInactive(job, fingerprint);
+        if (inactiveSnapshot) return resultPayload(job, 'inactive_timeout', inactiveSnapshot);
       }
-      if (Date.now() - started >= job.request.timeout_ms) return payload(job, 'timeout', snap, Date.now() - started);
       await sleep(state.settings.poll_interval_ms);
     }
     throw new Error('对话闭环已停止');
   }
 
   async function run(requestData) {
-    counters.tasks_started += 1;
-    state.started_at = Date.now(); state.stage = 'checking'; state.status = '正在检查 OpenCode 服务'; render();
+    counters.tasks += 1;
+    state.started_at = Date.now();
+    state.stage = 'checking';
+    state.status = '正在检查 OpenCode 服务';
+    state.error = '';
+    render();
     const config = await connectionConfig();
     await request('/global/health', { config, timeout: 8000 });
-    state.stage = 'creating'; state.status = '服务已连接，正在创建会话'; render();
-    const session_id = await createSession(config, requestData.title);
+    state.stage = 'creating';
+    state.status = '服务已连接，正在创建会话';
+    render();
+    const session = await request('/session', { config, method: 'POST', body: { title: requestData.title } });
+    const session_id = sessionId(session);
+    if (!session_id) throw new Error('OpenCode 未返回 session ID');
     const body = { parts: [{ type: 'text', text: requestData.task }] };
     if (config.agent) body.agent = config.agent;
     if (config.model) body.model = config.model;
-    const job = { request: requestData, config, session_id, response_state: 'pending', response: null, response_error: null };
+    const job = {
+      request: requestData,
+      config,
+      session_id,
+      started_at: Date.now(),
+      response_state: 'pending',
+      response: null,
+      response_error: null,
+      activity_fingerprint: '',
+      last_activity_at: Date.now(),
+      last_snapshot: null,
+      notified_permissions: new Set(),
+      awaiting_permission_id: ''
+    };
     activeJob = job;
-    state.last_request_id = requestData.id; state.last_session_id = session_id;
+    state.last_request_id = requestData.id;
+    state.last_session_id = session_id;
     state.processed_ids = [...state.processed_ids.filter((id) => id !== requestData.id), requestData.id].slice(-80);
-    state.stage = 'submitting'; state.status = '会话已创建，正在提交同步消息请求'; state.error = '';
-    await persist(); render(); await focusSession(session_id);
-    job.response_promise = request(`/session/${encodeURIComponent(session_id)}/message`, {
-      config, method: 'POST', body, timeout: requestData.timeout_ms
+    state.stage = 'submitting';
+    state.status = '会话已创建，正在提交同步消息请求';
+    await persist();
+    render();
+    request(`/session/${encodeURIComponent(session_id)}/message`, {
+      config, method: 'POST', body, timeout: 0
     }).then((response) => {
-      job.response_state = 'fulfilled'; job.response = response; return response;
+      job.response_state = 'fulfilled';
+      job.response = response;
+      job.last_activity_at = Date.now();
     }).catch((error) => {
-      job.response_state = 'rejected'; job.response_error = error; return null;
+      job.response_state = 'rejected';
+      job.response_error = error;
+      job.last_activity_at = Date.now();
     });
-    state.stage = 'running'; state.status = '消息请求已提交，正在等待 OpenCode 返回';
-    markAction(`已委派 ${requestData.id}`); render();
+    state.stage = 'running';
+    state.status = '消息请求已提交，正在根据 session 活动持续观察';
+    render();
     const finalPayload = await poll(job);
-    state.stage = finalPayload.status === 'completed' ? 'completed' : finalPayload.status;
+    state.stage = finalPayload.status;
     state.status = finalPayload.status === 'completed' ? '本机任务完成，正在回传' : `本机任务结束 · ${finalPayload.status}`;
-    render(); await returnPayload(finalPayload);
+    render();
+    await sendArtifact(artifact(MARKERS.result, finalPayload));
   }
 
   async function returnFailure(error, requestData) {
     const job = activeJob;
+    const snap = job?.last_snapshot || { messages: [], todo: [], diff: [], permissions: [], questions: [] };
     const failure = {
-      schema: 'dcf.local-agent.result.v1', request_id: requestData?.id || job?.request.id || 'unknown',
-      status: 'bridge_error', session_id: job?.session_id || '', assistant_result: '',
-      todo: [], diff: [], permissions: [], questions: [],
+      schema: 'dcf.local-agent.result.v1',
+      request_id: requestData?.id || job?.request.id || 'unknown',
+      status: 'bridge_error',
+      session_id: job?.session_id || '',
+      assistant_result: latestAssistant(snap.messages || []),
+      todo: snap.todo || [], diff: snap.diff || [], permissions: snap.permissions || [], questions: snap.questions || [],
       execution: {
         elapsed_ms: state.started_at ? Date.now() - state.started_at : 0,
-        status_type: 'bridge_error', base_url: job ? baseUrl(job.config.base_url) : '',
-        endpoint_errors: { bridge: String(error?.message || error), code: error?.code || '', raw: error?.raw || '' }
+        status_type: 'bridge_error',
+        base_url: job ? normalizeBaseUrl(job.config.base_url) : '',
+        endpoint_errors: { bridge: String(error?.message || error), code: error?.code || '' }
       }
     };
-    state.stage = 'failed'; state.status = '委派失败，正在回传'; state.error = String(error?.message || error);
-    render(); await returnPayload(failure).catch(() => {});
+    state.stage = 'failed';
+    state.status = '委派失败，正在回传';
+    state.error = String(error?.message || error);
+    render();
+    await sendArtifact(artifact(MARKERS.result, failure)).catch(() => {});
   }
 
   async function processQueue() {
     if (queueBusy || activeJob || !state.settings.enabled || !queue.length) return;
     queueBusy = true;
     const requestData = queue.shift();
-    state.last_request_id = requestData.id;
-    await persist();
     try { await run(requestData); }
     catch (error) { await returnFailure(error, requestData); }
     finally {
-      activeJob = null; queueBusy = false; persist().catch(() => {}); render();
+      activeJob = null;
+      queueBusy = false;
+      persist().catch(() => {});
+      render();
       if (queue.length) processQueue().catch(reportFatal);
     }
   }
 
-  function reportFatal(error) {
-    state.stage = 'failed'; state.status = '闭环异常'; state.error = String(error?.message || error); render();
+  function inspectLatestAssistant() {
+    attachConversationRoot();
+    const node = latestAssistantNode();
+    if (!node) { state.status = '当前页面没有助手回复'; render(); return; }
+    currentCandidate = node;
+    scheduleInspect(node, true);
+  }
+
+  async function runAcceptance() {
+    if (activeJob || queueBusy || queue.length) throw new Error('本机任务正在执行');
+    const report = {
+      schema: 'dcf.local-agent-dialogue.acceptance.v1',
+      generated_at: new Date().toISOString(),
+      plugin: { id: UNIT_ID, version: UNIT_VERSION, intake_model: 'new-assistant-event-stream' },
+      lifecycle: { timeout_basis: 'observable-idle-time', permission_wait_pauses_idle_timeout: true },
+      checks: {
+        mounted: Boolean(mountHost?.isConnected && mountRoot),
+        events_bound: boundMountRoot === mountRoot,
+        history_is_baseline: true,
+        permission_request_protocol: Boolean(MARKERS.permissionRequest[0]),
+        permission_decision_protocol: Boolean(MARKERS.permissionDecision[0]),
+        no_active_job: !activeJob
+      },
+      counters
+    };
+    report.passed = Object.values(report.checks).every(Boolean);
+    await sendArtifact(artifact(MARKERS.acceptance, report), true);
+  }
+
+  function clearProcessed() {
+    if (activeJob || queueBusy || queue.length) throw new Error('本机任务正在执行');
+    state.processed_ids = [];
+    state.last_request_id = '';
+    state.last_session_id = '';
+    state.stage = 'idle';
+    state.status = '已清除工件去重记录；历史消息仍不会自动执行';
+    persist().then(render).catch(reportFatal);
   }
 
   function elapsedText() {
-    if (!state.started_at || !['checking', 'creating', 'submitting', 'running', 'needs_user'].includes(state.stage)) return '';
-    const seconds = Math.max(0, Math.floor((Date.now() - state.started_at) / 1000));
-    const minutes = Math.floor(seconds / 60);
-    return minutes ? `${minutes}分${seconds % 60}秒` : `${seconds}秒`;
+    if (!state.started_at || !activeJob) return '';
+    const seconds = Math.floor((Date.now() - state.started_at) / 1000);
+    return seconds >= 60 ? `${Math.floor(seconds / 60)}分${seconds % 60}秒` : `${seconds}秒`;
   }
 
   function style() {
-    return `:host{display:block;font:13px/1.5 system-ui;color:inherit;min-width:0}.card{border:1px solid #ddd;border-radius:10px;padding:10px;background:#fff;display:grid;gap:9px;min-width:0}.title-row,.row{display:flex;align-items:center;gap:7px;min-width:0;flex-wrap:wrap}.title-row b,.grow{flex:1;min-width:0}.muted,.notice{color:#666;font-size:12px;overflow-wrap:anywhere}.notice.error{color:#b42318}.status{display:inline-flex;align-items:center;gap:5px;border:1px solid #ccc;border-radius:999px;padding:2px 7px;font-size:11px}.status::before{content:'';width:7px;height:7px;border-radius:50%;background:#999}.status.ready::before{background:#188038}.status.busy::before{background:#d97706}.progress{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.metric{border:1px solid #ddd;border-radius:8px;padding:6px;display:grid;gap:2px;min-width:0}.metric b{font-size:14px}.stage{font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;overflow-wrap:anywhere}.preview{max-height:150px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:#f6f6f6;border-radius:7px;padding:8px;font:11px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace}.buttons{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.buttons .primary{grid-column:1/-1;background:#202124;color:#fff;border-color:#202124}button,input{box-sizing:border-box;max-width:100%;min-width:0;font:inherit;color:inherit;border:1px solid #bbb;background:#fff;border-radius:8px;padding:6px 8px}button{cursor:pointer}button:hover{border-color:#777}button:active{transform:translateY(1px)}button:focus-visible{outline:2px solid #4c8bf5;outline-offset:1px}.last-action{border-top:1px solid #ddd;padding-top:7px}@media(max-width:340px){.progress{grid-template-columns:repeat(2,minmax(0,1fr))}.buttons{grid-template-columns:1fr}.buttons .primary{grid-column:1}}@media(prefers-color-scheme:dark){.card{background:#222;border-color:#444}.muted,.notice{color:#aaa}button,input{background:#292929;color:#f3f3f3;border-color:#555}.buttons .primary{background:#f3f3f3;color:#181818}.metric{border-color:#444}.preview{background:#181818}.status{border-color:#555}.last-action{border-color:#444}}`;
-  }
-
-  function cardHtml() {
-    const active = Boolean(activeJob) || queueBusy || ['received', 'checking', 'creating', 'submitting', 'running', 'needs_user', 'acceptance'].includes(state.stage);
-    const progress = state.progress;
-    const activeRequestId = activeJob?.request?.id || (active && state.stage !== 'acceptance' ? state.last_request_id : '');
-    const activeSessionId = activeJob?.session_id || (active && state.stage !== 'acceptance' ? state.last_session_id : '');
-    const recent = !active && (state.last_request_id || state.last_session_id)
-      ? `<div class="muted">最近交接${state.last_request_id ? ` · 请求 ${html(state.last_request_id)}` : ''}${state.last_session_id ? ` · 会话 ${html(state.last_session_id)}` : ''}</div>`
-      : '';
-    return `<section class="card"><div class="title-row"><b>对话闭环</b><span class="status ${active ? 'busy' : state.settings.enabled ? 'ready' : ''}">${active ? '执行中' : state.settings.enabled ? '已开启' : '已关闭'}</span></div><div class="muted">只消费插件启动后新增的助手回复。页面中已有历史消息只建立基线，不会被重新执行。</div><div class="row"><label class="row"><input type="checkbox" data-field="enabled" ${state.settings.enabled ? 'checked' : ''}>允许对话自动委派</label><label class="row"><input type="checkbox" data-field="auto-send" ${state.settings.auto_send_results ? 'checked' : ''}>结果自动发送回对话</label></div><div class="stage"><b>${html(state.status)}</b>${elapsedText() ? ` · ${html(elapsedText())}` : ''}<br>阶段：${html(state.stage)}${activeRequestId ? `<br>当前请求：${html(activeRequestId)}` : ''}${activeSessionId ? `<br>当前会话：${html(activeSessionId)}` : ''}</div>${recent}<div class="progress"><div class="metric"><span class="muted">状态</span><b>${html(progress.status_type || '—')}</b></div><div class="metric"><span class="muted">消息</span><b>${progress.messages}</b></div><div class="metric"><span class="muted">Todo</span><b>${progress.todo}</b></div><div class="metric"><span class="muted">Diff</span><b>${progress.diff}</b></div><div class="metric"><span class="muted">权限</span><b>${progress.permissions}</b></div><div class="metric"><span class="muted">提问</span><b>${progress.questions}</b></div></div>${progress.preview ? `<div><div class="muted">最近本机输出 · ${html(progress.last_poll_at)}</div><div class="preview">${html(progress.preview)}</div></div>` : ''}<div class="buttons"><button class="primary" data-action="acceptance">一键验收并回传</button><button data-action="latest">检查最新助手回复</button><button data-action="focus">查看最近执行会话</button><button data-action="return">回传待发送结果</button><button data-action="clear">清除已处理记录</button></div><div class="last-action muted">上次操作：${html(state.last_action)}${state.last_action_at ? ` · ${html(state.last_action_at)}` : ''}</div>${state.error ? `<div class="notice error">${html(state.error)}</div>` : ''}</section>`;
+    return `:host{display:block;font:13px/1.5 system-ui;color:inherit}.card{border:1px solid #ddd;border-radius:10px;padding:10px;background:#fff;display:grid;gap:8px}.row,.head{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.head b{flex:1}.muted{color:#666;font-size:12px;overflow-wrap:anywhere}.status{border:1px solid #ccc;border-radius:999px;padding:2px 7px;font-size:11px}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.metric{border:1px solid #ddd;border-radius:7px;padding:5px}.metric b{display:block}.preview{max-height:140px;overflow:auto;white-space:pre-wrap;background:#f6f6f6;padding:7px;border-radius:7px;font:11px/1.4 monospace}.buttons{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}.buttons .primary{grid-column:1/-1;background:#202124;color:#fff}button,input{font:inherit;border:1px solid #bbb;border-radius:7px;padding:6px;background:#fff;color:inherit}.error{color:#b42318}@media(prefers-color-scheme:dark){.card{background:#222;border-color:#444}.muted{color:#aaa}.metric{border-color:#444}.preview{background:#181818}button,input{background:#292929;border-color:#555}.buttons .primary{background:#eee;color:#111}}`;
   }
 
   function render() {
     if (!mountRoot) return;
-    mountRoot.innerHTML = `<style>${style()}</style>${cardHtml()}`;
+    const active = Boolean(activeJob) || queueBusy;
+    const progress = state.progress;
+    mountRoot.innerHTML = `<style>${style()}</style><section class="card"><div class="head"><b>对话闭环</b><span class="status">${active ? '执行中' : state.settings.enabled ? '已开启' : '已关闭'}</span></div><div class="muted">历史消息只建立基线；长任务按最近活动判断；权限请求交由当前对话裁决。</div><div class="row"><label><input type="checkbox" data-field="enabled" ${state.settings.enabled ? 'checked' : ''}>自动委派</label><label><input type="checkbox" data-field="auto-send" ${state.settings.auto_send_results ? 'checked' : ''}>结果自动发送</label></div><div><b>${escapeHtml(state.status)}</b>${elapsedText() ? ` · ${elapsedText()}` : ''}<br><span class="muted">阶段：${escapeHtml(state.stage)}${activeJob ? ` · ${escapeHtml(activeJob.request.id)} · ${escapeHtml(activeJob.session_id)}` : ''}</span></div><div class="grid"><div class="metric">状态<b>${escapeHtml(progress.status_type || '—')}</b></div><div class="metric">消息<b>${progress.messages}</b></div><div class="metric">Todo<b>${progress.todo}</b></div><div class="metric">Diff<b>${progress.diff}</b></div><div class="metric">权限<b>${progress.permissions}</b></div><div class="metric">提问<b>${progress.questions}</b></div></div>${progress.preview ? `<div class="preview">${escapeHtml(progress.preview)}</div>` : ''}<div class="buttons"><button class="primary" data-action="acceptance">一键验收并回传</button><button data-action="latest">检查最新助手回复</button><button data-action="return">回传待发送工件</button><button data-action="clear">清除已处理记录</button></div>${state.error ? `<div class="error">${escapeHtml(state.error)}</div>` : ''}</section>`;
   }
 
   async function handleAction(action) {
-    if (action === 'acceptance') { await runAcceptance(); return; }
-    if (action === 'latest') { inspectLatestAssistant(); return; }
-    if (action === 'focus') { await focusSession(state.last_session_id); return; }
-    if (action === 'return') {
-      if (!pendingArtifact) { state.status = '当前没有待回传结果'; markAction('回传队列为空'); render(); return; }
-      try {
-        if (composerValue(composer()).trim() || streaming()) throw new Error('当前对话或输入框尚未空闲');
-        const text = pendingArtifact; fillComposer(text);
-        const shouldSend = pendingForceSend || state.settings.auto_send_results;
-        if (shouldSend) await clickSend();
-        pendingArtifact = '';
-        pendingForceSend = false;
-        state.status = shouldSend ? '结果已自动回传' : '结果已填入输入框';
-        state.error = ''; markAction(state.status);
-      } catch (error) { state.error = String(error?.message || error); markAction('手动回传失败'); }
-      render(); return;
-    }
-    if (action === 'clear') {
-      await clearProcessedState('manual');
-    }
+    if (action === 'acceptance') return runAcceptance();
+    if (action === 'latest') return inspectLatestAssistant();
+    if (action === 'clear') return clearProcessed();
+    if (action !== 'return') return;
+    if (!pendingArtifact) { state.status = '当前没有待回传工件'; render(); return; }
+    if (composerValue(composer()).trim() || isStreaming()) throw new Error('当前对话尚未空闲');
+    const text = pendingArtifact;
+    fillComposer(text);
+    if (pendingForceSend || state.settings.auto_send_results) await clickSend();
+    pendingArtifact = '';
+    pendingForceSend = false;
+    render();
   }
 
   function bindMountEvents() {
     if (!mountRoot || boundMountRoot === mountRoot) return;
     boundMountRoot = mountRoot;
-    counters.mount_bindings += 1;
     mountRoot.addEventListener('click', (event) => {
       const button = event.target.closest?.('button[data-action]');
       if (!button) return;
-      event.preventDefault(); event.stopPropagation(); handleAction(button.dataset.action).catch(reportFatal);
+      event.preventDefault();
+      event.stopPropagation();
+      handleAction(button.dataset.action).catch(reportFatal);
     });
     mountRoot.addEventListener('change', (event) => {
       const field = event.target?.dataset?.field;
@@ -933,40 +927,37 @@
         state.settings.enabled = event.target.checked;
         state.stage = state.settings.enabled ? 'idle' : 'disabled';
         state.status = state.settings.enabled ? '等待新的助手回复' : '闭环已关闭';
-        markAction(state.settings.enabled ? '已开启自动委派；从下一条助手回复开始' : '已关闭自动委派');
         persist().then(render).catch(reportFatal);
       } else if (field === 'auto-send') {
         state.settings.auto_send_results = event.target.checked;
-        markAction(state.settings.auto_send_results ? '已开启自动回传' : '已关闭自动回传');
         persist().then(render).catch(reportFatal);
       }
     });
   }
 
   function ensurePanelMount() {
-    const shadow = localPanelShadow();
+    const shadow = localAgentShadow();
     if (!shadow) return false;
     if (shadow !== currentPanelShadow) {
-      panelObserver?.disconnect(); currentPanelShadow = shadow;
+      panelObserver?.disconnect();
+      currentPanelShadow = shadow;
       panelObserver = new MutationObserver(() => {
         if (!shadow.querySelector(`#${MOUNT_ID}`)) queueMicrotask(ensurePanelMount);
       });
       panelObserver.observe(shadow, { childList: true, subtree: true });
-      mountHost = null; mountRoot = null; boundMountRoot = null;
+      mountHost = null;
+      mountRoot = null;
+      boundMountRoot = null;
     }
-    let host = shadow.querySelector(`#${MOUNT_ID}`);
-    if (!host) {
-      host = document.createElement('div'); host.id = MOUNT_ID; shadow.append(host);
-    }
-    if (host !== mountHost) {
-      mountHost = host; mountRoot = host.shadowRoot || host.attachShadow({ mode: 'open' });
-      bindMountEvents(); render();
+    let element = shadow.querySelector(`#${MOUNT_ID}`);
+    if (!element) { element = document.createElement('div'); element.id = MOUNT_ID; shadow.append(element); }
+    if (element !== mountHost) {
+      mountHost = element;
+      mountRoot = element.shadowRoot || element.attachShadow({ mode: 'open' });
+      bindMountEvents();
+      render();
     }
     return Boolean(mountHost?.isConnected && mountRoot && boundMountRoot === mountRoot);
-  }
-
-  function schedulePanelMount() {
-    queueMicrotask(() => { if (!ensurePanelMount()) setTimeout(ensurePanelMount, 80); });
   }
 
   function attachShellObserver() {
@@ -975,87 +966,75 @@
     shellObserver?.disconnect();
     currentShellShadow = shadow;
     if (!shadow) return false;
-    shellObserver = new MutationObserver(schedulePanelMount);
+    shellObserver = new MutationObserver(() => queueMicrotask(ensurePanelMount));
     shellObserver.observe(shadow, { childList: true, subtree: true });
-    schedulePanelMount();
+    ensurePanelMount();
     return true;
   }
 
-  function attachHotRefreshWatchers() {
-    documentObserver = new MutationObserver((records) => {
-      let panelChanged = false;
-      let rootChanged = false;
-      for (const record of records) {
-        if (record.addedNodes.length || record.removedNodes.length) rootChanged = true;
-        for (const node of [...record.addedNodes, ...record.removedNodes]) {
-          if (!(node instanceof Element)) continue;
-          if (node.id === LOCAL_AGENT_PANEL_ID || node.querySelector?.(`#${LOCAL_AGENT_PANEL_ID}`)) panelChanged = true;
-          if (node.id === SHELL_HOST_ID || node.querySelector?.(`#${SHELL_HOST_ID}`)) panelChanged = true;
-        }
-      }
-      if (panelChanged || rootChanged) attachShellObserver();
-      if (panelChanged) schedulePanelMount();
-      if (rootChanged) attachConversationRoot();
+  function attachWatchers() {
+    documentObserver = new MutationObserver(() => {
+      attachShellObserver();
+      ensurePanelMount();
+      attachConversationRoot();
     });
     documentObserver.observe(document.documentElement, { childList: true, subtree: true });
-    shellReadyListener = () => { attachShellObserver(); schedulePanelMount(); };
-    panelReadyListener = (event) => {
-      if (!event?.detail || String(event.detail) === 'local-agent') schedulePanelMount();
-    };
+    shellReadyListener = () => { attachShellObserver(); ensurePanelMount(); };
+    panelReadyListener = () => ensurePanelMount();
     document.addEventListener('dcf:shell-ready', shellReadyListener, true);
     document.addEventListener('dcf:panel-ready', panelReadyListener, true);
     attachShellObserver();
-    schedulePanelMount();
+    attachConversationRoot();
+    ensurePanelMount();
   }
 
-  async function waitForPanelMount(timeoutMs = 5000) {
-    const started = Date.now();
-    while (!destroyed && Date.now() - started < timeoutMs) {
-      if (ensurePanelMount()) return true;
-      await sleep(80);
-    }
-    return false;
+  function reportFatal(error) {
+    state.stage = 'failed';
+    state.status = '闭环异常';
+    state.error = String(error?.message || error);
+    render();
   }
 
   function destroy() {
     destroyed = true;
-    conversationObserver?.disconnect(); documentObserver?.disconnect(); panelObserver?.disconnect(); shellObserver?.disconnect();
+    conversationObserver?.disconnect();
+    documentObserver?.disconnect();
+    shellObserver?.disconnect();
+    panelObserver?.disconnect();
     if (shellReadyListener) document.removeEventListener('dcf:shell-ready', shellReadyListener, true);
     if (panelReadyListener) document.removeEventListener('dcf:panel-ready', panelReadyListener, true);
-    clearInterval(mountTimer); clearInterval(rootTimer); clearInterval(elapsedTimer);
+    clearInterval(mountTimer);
+    clearInterval(rootTimer);
+    clearInterval(elapsedTimer);
     mountHost?.remove();
-    boundMountRoot = null;
-    for (const node of assistantMessages(currentConversationRoot)) {
-      const info = nodeState.get(node); if (info?.timer) clearTimeout(info.timer);
-    }
-    queue.length = 0; activeJob = null;
+    queue.length = 0;
+    activeJob = null;
   }
 
   globalThis[GLOBAL_KEY] = {
-    version: UNIT_VERSION, destroy, intake_model: 'new-assistant-event-stream',
-    request_markers: { start: REQUEST_START, end: REQUEST_END },
-    result_markers: { start: RESULT_START, end: RESULT_END },
-    acceptance_markers: { start: ACCEPTANCE_START, end: ACCEPTANCE_END }
+    version: UNIT_VERSION,
+    destroy,
+    intake_model: 'new-assistant-event-stream',
+    request_markers: { start: MARKERS.request[0], end: MARKERS.request[1] },
+    result_markers: { start: MARKERS.result[0], end: MARKERS.result[1] },
+    permission_request_markers: { start: MARKERS.permissionRequest[0], end: MARKERS.permissionRequest[1] },
+    permission_decision_markers: { start: MARKERS.permissionDecision[0], end: MARKERS.permissionDecision[1] },
+    lifecycle: { timeout_basis: 'observable-idle-time', permission_wait_pauses_idle_timeout: true }
   };
 
   try {
-    attachHotRefreshWatchers();
+    attachWatchers();
     mountTimer = setInterval(ensurePanelMount, 1200);
     rootTimer = setInterval(attachConversationRoot, 1200);
-    elapsedTimer = setInterval(() => {
-      if (state.started_at && ['checking', 'creating', 'submitting', 'running', 'needs_user'].includes(state.stage)) render();
-    }, 1000);
+    elapsedTimer = setInterval(() => { if (activeJob) render(); }, 1000);
     loadState().then(async () => {
-      attachConversationRoot();
-      if (!await waitForPanelMount(5000)) throw new Error('对话闭环未能挂载到本机 Agent 面板');
-      startupMountConfirmed = true;
+      for (let attempt = 0; attempt < 65 && !ensurePanelMount(); attempt += 1) await sleep(80);
+      if (!ensurePanelMount()) throw new Error('对话闭环未能挂载到本机 Agent 面板');
       render();
-      await sendHost({ type: 'unit.started', unit_id: UNIT_ID, version: UNIT_VERSION });
-    }).catch((error) => sendHost({
-      type: 'unit.failed', unit_id: UNIT_ID, version: UNIT_VERSION, error: String(error?.message || error)
-    }).catch(() => {}));
+      await host({ type: 'unit.started', unit_id: UNIT_ID, version: UNIT_VERSION });
+    }).catch((error) => host({ type: 'unit.failed', unit_id: UNIT_ID, version: UNIT_VERSION, error: String(error?.message || error) }).catch(() => {}));
   } catch (error) {
     destroy();
-    sendHost({ type: 'unit.failed', unit_id: UNIT_ID, version: UNIT_VERSION, error: String(error?.message || error) }).catch(() => {});
+    host({ type: 'unit.failed', unit_id: UNIT_ID, version: UNIT_VERSION, error: String(error?.message || error) }).catch(() => {});
   }
 })();
