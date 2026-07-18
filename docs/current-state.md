@@ -13,7 +13,8 @@ Updated: 2026-07-18
   - Local Agent connected on the real Mac to an independent OpenCode server at `127.0.0.1:4096`, without authentication and with the required browser origins allowed;
   - dialogue `.7` proved the card can hot-remount inside the Shell-hosted Local Agent panel, history is shown as an inert baseline, the latest-only control is visible and idle status is no longer `unknown`;
   - the same live check found that dialogue controls were rendered but unbound because `ShadowRoot.dataset` was used as an event-binding marker;
-  - dialogue `.8` fixes the binding boundary and replaces the remaining manual checklist with one-click structured acceptance and automatic return; live acceptance is pending.
+  - dialogue `.8` fixed the binding boundary and its real-page `一键验收并回传` report passed all ten checks;
+  - the accepted report proved true in-page hot replacement, one event binding, inert three-message history baseline, persisted clearing without replay, retained active `local-agent` workspace and matching plugin versions/hashes.
 - Data continuity: DCF Next + Chrome `rc.1`; no separate `0.18.2` migration
 
 ## Implemented
@@ -62,12 +63,12 @@ Updated: 2026-07-18
 - Local Agent and its dialogue adapter do not add dedicated Manifest, background or Host API behavior;
 - exact request/result/acceptance markers, persistent deduplication, latest-only intake, ShadowRoot event binding, synchronous OpenCode session submission, structured one-click acceptance and automatic return code paths exist.
 
-## Known boundary before acceptance
+## Current live boundary
 
-- `.8` still needs one real-browser `一键验收并回传` result from the current ChatGPT page;
-- after that report passes, send a fresh request ID for a minimal read-only OpenCode task to prove the actual event stream and result return;
-- only after the minimal task succeeds should the reserved task create and verify the `DCF OpenCode Service` macOS shortcut;
-- automated checks do not claim long-task completion, intervention handoff or automatic composer sending already passed live acceptance;
+- runtime acceptance for dialogue `.8` is complete;
+- the next step is one fresh request ID for a minimal read-only OpenCode task, proving the actual post-start assistant event stream, new-session creation, synchronous message completion and automatic result return;
+- only after that minimal task succeeds should the reserved task create and verify the `DCF OpenCode Service` macOS shortcut;
+- long-task completion and intervention handoff remain separate future acceptance boundaries;
 - `serve.sh` remains manually managed until that shortcut exists and the start-service control is wired to it;
 - the candidate index points to the candidate branch, while formal store builds point to `main`;
-- PR #23 remains unmerged until explicit browser acceptance.
+- PR #23 remains unmerged until explicit browser acceptance of the actual OpenCode request/result loop.
