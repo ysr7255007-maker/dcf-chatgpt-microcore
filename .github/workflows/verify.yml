@@ -26,13 +26,13 @@ jobs:
           node scripts/build-chrome-extension.js
           node --check chrome-extension/code-units/local-agent/main.js
           node --check chrome-extension/code-units/local-agent-dialogue/main.js
-      - name: Commit generated source changes
+      - name: Commit generated changes
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add chrome-extension/code-units/local-agent/main.js chrome-extension/code-units/local-agent-dialogue/main.js releases/chrome/official-index.json
+          git add chrome-extension/code-units/local-agent/main.js chrome-extension/code-units/local-agent-dialogue/main.js releases/chrome/official-index.json tests/chrome-local-agent-dialogue.test.js tests/chrome-build.integration.test.js tests/chrome-local-agent-status.test.js package.json
           if ! git diff --cached --quiet; then
-            git commit -m "fix: normalize local status and remount dialogue in shell"
+            git commit -m "test: gate dialogue remount and status semantics"
             git push origin HEAD:${{ github.head_ref }}
           fi
       - run: npm run verify
