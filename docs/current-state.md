@@ -14,7 +14,9 @@ Updated: 2026-07-18
   - dialogue `.7` proved the card can hot-remount inside the Shell-hosted Local Agent panel, history is shown as an inert baseline, the latest-only control is visible and idle status is no longer `unknown`;
   - the same live check found that dialogue controls were rendered but unbound because `ShadowRoot.dataset` was used as an event-binding marker;
   - dialogue `.8` fixed the binding boundary and its real-page `一键验收并回传` report passed all ten checks;
-  - the accepted report proved true in-page hot replacement, one event binding, inert three-message history baseline, persisted clearing without replay, retained active `local-agent` workspace and matching plugin versions/hashes.
+  - the accepted report proved true in-page hot replacement, one event binding, inert three-message history baseline, persisted clearing without replay, retained active `local-agent` workspace and matching plugin versions/hashes;
+  - fresh request `dcf-dialogue-readonly-smoke-20260718-1549-01` was detected after startup, created session `ses_08a14519cffe3I29cL7721KlVm` and automatically returned a structured result;
+  - OpenCode synchronous execution then failed at `POST /session/:id/message` with HTTP 500 after 1.314 seconds. The exact model/provider cause is still hidden because `.8` collapses the failed session into an empty `bridge_error` result.
 - Data continuity: DCF Next + Chrome `rc.1`; no separate `0.18.2` migration
 
 ## Implemented
@@ -66,9 +68,12 @@ Updated: 2026-07-18
 ## Current live boundary
 
 - runtime acceptance for dialogue `.8` is complete;
-- the next step is one fresh request ID for a minimal read-only OpenCode task, proving the actual post-start assistant event stream, new-session creation, synchronous message completion and automatic result return;
+- actual post-start request detection, new-session creation and automatic result return are also proven;
+- successful OpenCode execution is not proven: the first read-only task reached `/session/:id/message` and received HTTP 500;
+- before another task attempt, inspect the already-created session's persisted messages/error and improve the adapter so future synchronous failures automatically return session-side model/provider evidence rather than an empty bridge error;
+- after the cause is repaired, send a new read-only request ID and require `DCF_READ_ONLY_SMOKE_OK`;
 - only after that minimal task succeeds should the reserved task create and verify the `DCF OpenCode Service` macOS shortcut;
 - long-task completion and intervention handoff remain separate future acceptance boundaries;
 - `serve.sh` remains manually managed until that shortcut exists and the start-service control is wired to it;
 - the candidate index points to the candidate branch, while formal store builds point to `main`;
-- PR #23 remains unmerged until explicit browser acceptance of the actual OpenCode request/result loop.
+- PR #23 remains unmerged until explicit browser acceptance of successful OpenCode execution and automatic result return.
