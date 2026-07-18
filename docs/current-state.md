@@ -21,8 +21,10 @@ Updated: 2026-07-19
   - the standalone CLI was upgraded to `1.18.3`, the old `serve` process was stopped gracefully and the service was restarted with the same port, CORS and no-password behavior;
   - native OpenCode smoke `OPENCODE_SCHEMA_OK` then passed and `POST /session/:id/message` returned HTTP 200;
   - fresh DCF request `dcf-dialogue-readonly-smoke-20260719-upgrade-01` created session `ses_089953d95ffe3kyJBThTifGIoj`, completed in 6.452 seconds and automatically returned `DCF_READ_ONLY_SMOKE_OK` with no endpoint, permission, question, todo or diff errors;
-  - the first real long-task attempt then proved dialogue `.8` used total wall-clock duration as timeout: an active task was aborted after about three minutes, and a second task was later marked `timeout` while OpenCode was still `busy` and explicitly waiting for permission;
-  - dialogue `.9` is implemented in the candidate work branch to replace total-duration timeout with observable idle time and to transfer OpenCode permission requests to the current conversation for `once / always / reject` judgment; real-browser acceptance is still pending.
+  - the first real long-task attempt proved dialogue `.8` used total wall-clock duration as timeout: an active task was aborted after about three minutes, and a second task was later marked `timeout` while OpenCode was still `busy` and explicitly waiting for permission;
+  - dialogue `.9` replaced total-duration timeout with observable idle time and transferred OpenCode permission requests to the current conversation for `once / always / reject` judgment;
+  - live request `dcf-dialogue-v9-keepalive-live-20260719-01` ran for 238.059 seconds and exceeded its 90-second test threshold without total-duration termination; it returned `inactive_timeout` only after about 90 seconds with no observable change, while OpenCode remained `busy` and every observation endpoint stayed healthy;
+  - live request `dcf-dialogue-v9-permission-live-20260719-01` returned a complete permission evidence package for `read /Library/LaunchAgents`, accepted a conversation-issued `once` decision, continued the same session `ses_089396f11ffeNTMkgi4LPSIDKn`, and completed once with `DCF_PERMISSION_FLOW_OK NO_MATCH`.
 - Data continuity: DCF Next + Chrome `rc.1`; no separate `0.18.2` migration
 
 ## Implemented
@@ -69,7 +71,7 @@ Updated: 2026-07-19
 
 ## Automated evidence
 
-`npm run verify:chrome` is expected to prove:
+`npm run verify:chrome` proves:
 
 - the base contains no bundled product unit archive;
 - ten plugin hashes, unique worlds and self-contained IIFEs;
@@ -86,13 +88,15 @@ Updated: 2026-07-19
 
 ## Current live boundary
 
-- runtime acceptance for dialogue `.8` and the minimal read-only end-to-end task are complete;
+- runtime acceptance for dialogue `.8`, minimal read-only execution and dialogue `.9` permission delegation are complete;
 - the accepted minimal result is `DCF_READ_ONLY_SMOKE_OK` from session `ses_089953d95ffe3kyJBThTifGIoj`, with status `completed`, OpenCode status `idle` and every observation endpoint error field `null`;
+- dialogue `.9` observable-idle behavior is proven by session `ses_0893de5a4ffeI9S0El9NFh5YVY`: total runtime 238.059 seconds, 90-second test idle threshold, final `inactive_timeout`, status `busy`, and all observation endpoint errors `null`;
+- dialogue `.9` permission delegation is proven by session `ses_089396f11ffeNTMkgi4LPSIDKn`: exact permission/tool evidence reached the current conversation, `once` returned to the same session, and the task completed once with `DCF_PERMISSION_FLOW_OK NO_MATCH`;
 - the prior HTTP 500 was caused by an external runtime-version mismatch: an old standalone OpenCode CLI `1.17.8` was serving a database schema already used by a newer Desktop App; upgrading and restarting the CLI at `1.18.3` restored native and DCF execution without a DCF code change;
 - source inspection is not sufficient evidence for browser/runtime failures. Future diagnosis must use selectable runtime evidence surfaces such as the exact ChatGPT target, DCF Host state, plugin storage, CDP console/network, OpenCode API/database and service logs;
-- dialogue `.9` still requires a real browser task that exceeds the former wall-clock threshold, produces observable progress, requests permission, receives a decision from the current conversation and completes in the same OpenCode session with one final result;
-- full Always authorization records, revocation, blocking, expiry and question-answer delegation remain later phases after `.9` acceptance;
-- diagnostics `.1` remains implemented as a privacy-bounded recovery path, but its original auto-report acceptance was not exercised because the persisted recent-session pointer was absent;
-- the reserved later local integration is to create and verify the `DCF OpenCode Service` macOS shortcut after the dialogue lifecycle and permission bridge are proven;
+- full Always authorization records, revocation, blocking, expiry and question-answer delegation remain later phases;
+- the next step is to use the proven Local Agent dialogue bridge to inspect the actual OpenCode keepalive/startup mechanism and the current OpenCode permission persistence/revocation interfaces before designing further changes;
+- diagnostics `.1` remains implemented as a privacy-bounded recovery path; its hypotheses must not override contradictory session/message evidence;
+- the `DCF OpenCode Service` macOS shortcut remains a later local integration after the existing keepalive mechanism is found and assessed;
 - the candidate index points to the candidate branch, while formal store builds point to `main`;
-- PR #23 remains open pending these live boundaries and explicit final merge approval.
+- PR #23 remains open pending the service-shortcut boundary and explicit final merge approval.
