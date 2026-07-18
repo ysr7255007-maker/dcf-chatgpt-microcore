@@ -16,7 +16,9 @@ Updated: 2026-07-18
   - dialogue `.8` fixed the binding boundary and its real-page `一键验收并回传` report passed all ten checks;
   - the accepted report proved true in-page hot replacement, one event binding, inert three-message history baseline, persisted clearing without replay, retained active `local-agent` workspace and matching plugin versions/hashes;
   - fresh request `dcf-dialogue-readonly-smoke-20260718-1549-01` was detected after startup, created session `ses_08a14519cffe3I29cL7721KlVm` and automatically returned a structured result;
-  - OpenCode synchronous execution then failed at `POST /session/:id/message` with HTTP 500 after 1.314 seconds. The exact model/provider cause is still hidden because `.8` collapses the failed session into an empty `bridge_error` result.
+  - OpenCode synchronous execution then failed at `POST /session/:id/message` with HTTP 500 after 1.314 seconds;
+  - the failed session contains no Assistant result, so manual message copying cannot expose the cause;
+  - diagnostics `.1` now performs one automatic read-only probe of the most recent undiagnosed session and returns privacy-bounded Provider/model/Agent and endpoint evidence to the same conversation; live diagnostic evidence is pending.
 - Data continuity: DCF Next + Chrome `rc.1`; no separate `0.18.2` migration
 
 ## Implemented
@@ -47,6 +49,9 @@ Updated: 2026-07-18
 - existing assistant replies form an inert startup baseline; automatic intake consumes only assistant replies added after startup and manual recovery checks only the latest assistant reply;
 - dialogue controls bind to the actual mounted ShadowRoot identity rather than storing metadata on ShadowRoot;
 - `一键验收并回传` clears deduplication/recent-handoff state, verifies persistence, mount, event binding, status semantics and workspace preservation, then returns one `dcf.local-agent-dialogue.acceptance.v1` artifact automatically;
+- diagnostics reads the latest dialogue request/session identifiers, performs loopback GET-only evidence recovery and returns one `dcf.local-agent.diagnostic.v1` artifact automatically;
+- automatic Local Agent diagnostics excludes message/task text, credentials, Provider private options and raw OpenCode configuration;
+- the same failed session is automatically diagnosed only once;
 - request IDs are persisted for deduplication;
 - permission and question waits are surfaced rather than answered automatically;
 - an occupied ChatGPT composer is never overwritten.
@@ -62,15 +67,18 @@ Updated: 2026-07-18
 - generic plugin data isolation and base update checks;
 - deterministic Chrome ZIP generation;
 - workspace tab and selectable ammo boundaries;
-- Local Agent and its dialogue adapter do not add dedicated Manifest, background or Host API behavior;
-- exact request/result/acceptance markers, persistent deduplication, latest-only intake, ShadowRoot event binding, synchronous OpenCode session submission, structured one-click acceptance and automatic return code paths exist.
+- Local Agent, dialogue and diagnostics changes do not add dedicated Manifest, background or Host API behavior;
+- exact request/result/acceptance/diagnostic markers, persistent deduplication, latest-only intake, ShadowRoot event binding, synchronous OpenCode session submission, structured one-click acceptance and automatic return code paths exist;
+- Local Agent failure diagnostics is loopback-only, GET-only, one-report-per-session and excludes message text, credentials, Provider private options and raw configuration.
 
 ## Current live boundary
 
 - runtime acceptance for dialogue `.8` is complete;
 - actual post-start request detection, new-session creation and automatic result return are also proven;
 - successful OpenCode execution is not proven: the first read-only task reached `/session/:id/message` and received HTTP 500;
-- before another task attempt, inspect the already-created session's persisted messages/error and improve the adapter so future synchronous failures automatically return session-side model/provider evidence rather than an empty bridge error;
+- the next step is to update diagnostics `.1`; it will automatically probe existing session `ses_08a14519cffe3I29cL7721KlVm` without another model request and return `dcf.local-agent.diagnostic.v1`;
+- use that report to repair the actual Provider/model/Agent or OpenCode configuration cause;
+- a later dialogue revision must also preserve synchronous HTTP and session-side failure evidence directly in `dcf.local-agent.result.v1`;
 - after the cause is repaired, send a new read-only request ID and require `DCF_READ_ONLY_SMOKE_OK`;
 - only after that minimal task succeeds should the reserved task create and verify the `DCF OpenCode Service` macOS shortcut;
 - long-task completion and intervention handoff remain separate future acceptance boundaries;
