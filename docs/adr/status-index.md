@@ -4,7 +4,7 @@ Updated: 2026-07-19
 
 ## Current
 
-- `2026-07-19-dcf-dialogue-activity-timeout-permission-delegation.md` — **implemented; real-browser acceptance pending**; long tasks now use observable idle time rather than total wall-clock duration, permission waits pause idle timeout, and OpenCode permission events can be judged in the current conversation and returned to the same session
+- `2026-07-19-dcf-dialogue-activity-timeout-permission-delegation.md` — **accepted; real-browser acceptance passed**; observable-idle timeout replaced total wall-clock timeout, permission waits pause inactivity, and a conversation-issued `once` decision returned to the same OpenCode session which completed with one final result
 - `2026-07-19-dcf-runtime-evidence-and-opencode-version-parity.md` — **accepted; live recovery and minimal dialogue acceptance passed**; runtime failures are diagnosed through selectable browser/extension/OpenCode evidence surfaces, and the future service launcher must verify the independently maintained standalone CLI before DCF uses it
 - `2026-07-18-dcf-local-agent-failure-evidence.md` — **accepted; implementation present, original automatic-report acceptance not exercised**; diagnostics `.1` started successfully but no report was generated because the persisted recent-session pointer was absent; the incident was closed through external runtime evidence and a fresh successful request
 - `2026-07-18-dcf-one-click-runtime-acceptance.md` — **accepted; live acceptance passed**; plugin-owned one-click runtime evidence, persisted clear verification and automatic report return replace manual maintenance checklists
