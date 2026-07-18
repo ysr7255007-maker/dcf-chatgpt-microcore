@@ -1,7 +1,7 @@
 # ADR: 对话闭环按可观察活动判断停滞，并把权限裁决交回当前对话
 
 - 日期：2026-07-19
-- 状态：已实现，待真实浏览器验收
+- 状态：已接受，真实浏览器验收通过
 - 范围：`dcf.firstparty.local-agent-dialogue`
 
 ## 背景
@@ -59,10 +59,49 @@ OpenCode 的原生权限对象保持不变。DCF 使用权限对象中的 `messa
 
 这些能力必须在本轮真实浏览器验收通过后，再由本机 AI 查询当前 OpenCode 版本的实际接口并单独决策。
 
-## 验收条件
+## 真实浏览器验收
 
-1. 持续产生可观察活动的任务超过旧墙钟阈值后仍继续运行；
-2. permission 存在期间不会返回 timeout；
-3. 权限请求包包含原生权限、关联工具输入和任务上下文；
+### 无活动超时
+
+请求 `dcf-dialogue-v9-keepalive-live-20260719-01` 在 session `ses_0893de5a4ffeI9S0El9NFh5YVY` 中运行了 238.059 秒。任务超过测试用 90 秒阈值后仍继续运行，并只在最后一次可观察活动停止约 90 秒后返回 `inactive_timeout`。
+
+结果明确包含：
+
+- `timeout_basis: observable-idle-time`；
+- `status_type: busy`；
+- `idle_timeout_ms: 90000`；
+- 所有 observation endpoint error 均为 `null`。
+
+这证明旧的总墙钟时长超时已经移除。该任务最终停滞在 Step 2，说明 90 秒只适合机制测试，不适合正常长任务；正式默认仍为 20 分钟。
+
+### 权限裁决
+
+请求 `dcf-dialogue-v9-permission-live-20260719-01` 创建 session `ses_089396f11ffeNTMkgi4LPSIDKn`，OpenCode 为读取 `/Library/LaunchAgents` 产生原生 `external_directory` 权限请求。
+
+DCF 回传的权限包完整包含：
+
+- permission `per_f76c69998001gEa7XQJGhmCzQ5`；
+- 精确 pattern `/Library/LaunchAgents/*`；
+- 关联的 `messageID`、`callID`；
+- `read` 工具及输入 `filePath: /Library/LaunchAgents`；
+- 原始任务、最近 Assistant 输出、Todo、Diff 和证据完整度。
+
+当前对话返回 `once` 决定。插件把决定送回同一个 session，OpenCode 完成读取，并只返回一份最终 `dcf.local-agent.result.v1`：
+
+- status: `completed`；
+- result: `DCF_PERMISSION_FLOW_OK NO_MATCH`；
+- status_type: `idle`；
+- permissions/questions/diff/todo 均为空；
+- 所有 endpoint error 均为 `null`。
+
+因此五项验收条件全部通过：
+
+1. 任务总运行时间超过旧阈值时不会因总时长终止；
+2. 权限等待不会被判为 timeout；
+3. 权限请求包含原生权限、关联工具输入和任务上下文；
 4. 当前对话的权限决定自动送回原 session；
-5. 权限处理后原任务继续，并且只回传一次最终结果。
+5. 原任务继续，并且只回传一次最终结果。
+
+## 后续
+
+下一阶段先使用已经打通的本机 AI 查询当前 OpenCode 版本的真实权限保存、枚举、撤销和拒绝接口，再单独设计完整权限管理。不得根据最新源码或假设直接实现 Always 撤销与封锁。
