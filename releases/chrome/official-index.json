@@ -124,7 +124,7 @@
     {
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/local-agent-dialogue/main.js",
       "default_enabled": true,
-      "description": "将严格的对话委派工件交给本机 OpenCode，并把结构化结果与权限请求自动送回当前对话。",
+      "description": "将严格的对话委派工件交给本机 OpenCode，并把结构化结果自动送回当前对话。",
       "hash": "0091c6f6c414e9f2c00a89d65539303ecd5bcd08c303ce8f9e1c829eee897c3e",
       "host_api": "2",
       "id": "dcf.firstparty.local-agent-dialogue",
@@ -179,7 +179,7 @@
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/diagnostics/main.js",
       "default_enabled": true,
       "description": "正常时压缩状态，异常时自动回传本机 Agent 的隐私受限证据。",
-      "hash": "d033ddd3f1983b3f656b52a705980f505b7e9f864c3b8909675d5690d7c55642",
+      "hash": "98fcc99ea1f3a17d0054dc09c1a08ae5bcc278fc02c5cb60aab0d939ca9e2223",
       "host_api": "2",
       "id": "dcf.firstparty.diagnostics",
       "matches": [
@@ -190,7 +190,7 @@
       "required": true,
       "run_at": "document_idle",
       "title": "诊断",
-      "version": "1.0.0-rc.2-diagnostics.1",
+      "version": "1.0.0-rc.2-diagnostics.2",
       "world_id": "dcf-firstparty-diagnostics"
     }
   ],

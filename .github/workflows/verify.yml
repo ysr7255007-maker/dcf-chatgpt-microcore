@@ -4,118 +4,33 @@ on:
   pull_request:
   push:
     branches:
-      - fix/diagnostics-status-semantics
+      - main
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref || github.ref_name }}
-          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Apply diagnostics status semantics
+      - name: Run repository verification
+        id: verify
+        shell: bash
         run: |
-          python - <<'PY'
-          from pathlib import Path
-          import json
-          path = Path('chrome-extension/code-units/diagnostics/main.js')
-          text = path.read_text()
-          text = text.replace("const UNIT_VERSION = '1.0.0-rc.2-diagnostics.1';", "const UNIT_VERSION = '1.0.0-rc.2-diagnostics.2';")
-          old = """  function hypotheses(config, providers, agents, messages, statusResult) {
-              const items = [];
-              if (config.model && !providers.selected_provider_present) items.push('显式选择的 Provider 不在当前目录中。');
-              if (config.model && providers.selected_provider_present && !providers.selected_model_present) items.push('显式选择的模型不在当前 Provider 模型目录中。');
-              if (config.model && providers.connected.length && !providers.connected.includes(config.model.providerID)) items.push('显式选择的 Provider 当前未列为 connected。');
-              if (!config.model && (!providers.defaults || Object.keys(providers.defaults).length === 0)) items.push('未显式选择模型，服务也没有返回默认模型映射。');
-              if (config.agent && agents.selected_present === false) items.push('显式选择的 Agent 不在当前 Agent 目录中。');
-              if (messages.count === 0) items.push('失败 session 没有落盘任何消息，错误发生在 Assistant 消息创建之前。');
-              if (statusResult?.ok && !statusResult.normalized) items.push('失败 session 不在 /session/status 中，执行未进入可观察运行状态。');
-              return items;
-            }
-          """
-          new = """  function statusInterpretation(statusResult, messages) {
-              if (!statusResult?.ok) return 'status-unavailable';
-              if (statusResult.normalized) return 'active-status-present';
-              if (messages.assistant_count > 0) return 'inactive-with-assistant-output';
-              if (messages.count > 0) return 'inactive-without-assistant-output';
-              return 'inactive-without-messages';
-            }
-
-            function hypotheses(config, providers, agents, messages, statusResult) {
-              const items = [];
-              if (config.model && !providers.selected_provider_present) items.push('显式选择的 Provider 不在当前目录中。');
-              if (config.model && providers.selected_provider_present && !providers.selected_model_present) items.push('显式选择的模型不在当前 Provider 模型目录中。');
-              if (config.model && providers.connected.length && !providers.connected.includes(config.model.providerID)) items.push('显式选择的 Provider 当前未列为 connected。');
-              if (!config.model && (!providers.defaults || Object.keys(providers.defaults).length === 0)) items.push('未显式选择模型，服务也没有返回默认模型映射。');
-              if (config.agent && agents.selected_present === false) items.push('显式选择的 Agent 不在当前 Agent 目录中。');
-              if (messages.count === 0 && statusResult?.ok && !statusResult.normalized) items.push('该 session 当前没有活动状态条目，也没有落盘消息；执行可能尚未开始或尚未产生可观察输出。');
-              else if (messages.count > 0 && messages.assistant_count === 0) items.push('该 session 已有消息，但尚未出现 Assistant 输出。');
-              return items;
-            }
-          """
-          if old not in text:
-              raise SystemExit('diagnostics hypotheses block not found')
-          text = text.replace(old, new)
-          text = text.replace("const statusEvidence = { ok: results.status.ok, normalized: normalizedStatus };", "const statusEvidence = { ok: results.status.ok, normalized: normalizedStatus, interpretation: statusInterpretation({ ok: results.status.ok, normalized: normalizedStatus }, messages) };")
-          text = text.replace("notice = '正在只读诊断最近失败 session…';", "notice = '正在只读诊断最近本机 session…';")
-          path.write_text(text)
-
-          for test in Path('tests').glob('*.js'):
-              value = test.read_text()
-              next_value = value.replace('1.0.0-rc.2-diagnostics.1', '1.0.0-rc.2-diagnostics.2')
-              if next_value != value:
-                  test.write_text(next_value)
-
-          Path('tests/chrome-diagnostics-status-semantics.test.js').write_text("""'use strict';
-          const assert = require('assert');
-          const fs = require('fs');
-          const path = require('path');
-          const root = path.resolve(__dirname, '..');
-          const code = fs.readFileSync(path.join(root, 'chrome-extension/code-units/diagnostics/main.js'), 'utf8');
-          for (const token of ["1.0.0-rc.2-diagnostics.2", 'function statusInterpretation(statusResult, messages)', "'inactive-with-assistant-output'", 'interpretation: statusInterpretation', '正在只读诊断最近本机 session']) assert(code.includes(token), `missing ${token}`);
-          assert(!code.includes('失败 session 不在 /session/status 中，执行未进入可观察运行状态。'));
-          assert(!code.includes('失败 session 没有落盘任何消息'));
-          console.log(JSON.stringify({ ok: true, absent_status_is_not_failure: true, assistant_messages_are_execution_evidence: true }, null, 2));
-          """)
-
-          package = Path('package.json')
-          data = json.loads(package.read_text())
-          command = data['scripts']['test:chrome']
-          addition = 'node tests/chrome-diagnostics-status-semantics.test.js && '
-          if addition not in command:
-              command = command.replace('node tests/chrome-lifecycle.integration.test.js', addition + 'node tests/chrome-lifecycle.integration.test.js')
-          data['scripts']['test:chrome'] = command
-          package.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n')
-
-          Path('docs/adr/2026-07-19-diagnostics-absent-session-status.md').write_text("""# ADR: `/session/status` 缺少会话条目不是失败证据
-
-## 决策
-
-OpenCode 的 `/session/status` 只表达当前活动状态。接口成功但没有目标 session 条目时，DCF 不得推断任务未执行。
-
-诊断应结合消息证据解释：已有 Assistant 输出表示执行证据存在，状态解释为 `inactive-with-assistant-output`；只有同时没有状态条目、没有消息或没有 Assistant 输出时，才形成待调查假设。
-
-## 原因
-
-现场诊断中目标 session 的状态条目为空，但已有 11 条消息和 10 条 Assistant 输出。旧规则把状态缺项直接描述为执行失败，与同一报告中的消息证据矛盾。
-""")
-          PY
-      - run: node --check chrome-extension/code-units/diagnostics/main.js
-      - run: node scripts/build-chrome-extension.js
-      - run: npm run verify
-      - name: Restore workflow and commit verified sources
-        run: |
-          git fetch origin rebuild/chrome-native-host-v2
-          git checkout origin/rebuild/chrome-native-host-v2 -- .github/workflows/verify.yml
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add chrome-extension/code-units/diagnostics/main.js releases/chrome/official-index.json tests package.json docs/adr .github/workflows/verify.yml
-          git commit -m "fix: interpret absent OpenCode status using message evidence"
-          git push origin HEAD:${{ github.head_ref || github.ref_name }}
+          set +e
+          npm run verify 2>&1 | tee verify.log
+          status=${PIPESTATUS[0]}
+          echo "exit_code=${status}" >> "$GITHUB_OUTPUT"
+          exit "$status"
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dcf-verify-log-${{ github.run_id }}
+          path: verify.log
+          if-no-files-found: error
+      - run: node --check dcf-chatgpt-microcore.user.js

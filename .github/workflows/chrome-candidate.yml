@@ -1,30 +1,26 @@
 name: DCF Chrome candidate
 on:
   pull_request:
+  workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
 jobs:
   verify-and-package:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref }}
-          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: python scripts/apply-diagnostics-status-semantics.py
-      - run: node --check chrome-extension/code-units/diagnostics/main.js
-      - run: node scripts/build-chrome-extension.js
-      - run: npm run verify
-      - name: Commit verified diagnostics fix
-        run: |
-          git fetch origin rebuild/chrome-native-host-v2
-          git checkout origin/rebuild/chrome-native-host-v2 -- .github/workflows/verify.yml .github/workflows/chrome-candidate.yml
-          rm scripts/apply-diagnostics-status-semantics.py
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add chrome-extension/code-units/diagnostics/main.js releases/chrome/official-index.json tests/chrome-local-agent-diagnostics.test.js docs/adr .github/workflows scripts
-          git commit -m "fix: interpret absent OpenCode status using message evidence"
-          git push origin HEAD:${{ github.head_ref }}
+      - name: Verify Chrome candidate and retained repository baseline
+        run: npm run verify
+      - name: Candidate summary
+        run: cat dist/verification-summary.json
+      - name: Upload unique candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: dcf-chrome-extension-1.0.0-rc.2
+          path: |
+            dist/dcf-chrome-extension-1.0.0-rc.2.zip
+            dist/verification-summary.json
+          if-no-files-found: error
