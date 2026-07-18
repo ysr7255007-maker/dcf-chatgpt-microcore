@@ -2,6 +2,9 @@ name: DCF Verify
 
 on:
   pull_request:
+  push:
+    branches:
+      - fix/diagnostics-status-semantics
 
 permissions:
   contents: write
@@ -12,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref }}
+          ref: ${{ github.head_ref || github.ref_name }}
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
@@ -115,4 +118,4 @@ OpenCode 的 `/session/status` 只表达当前活动状态。接口成功但没�
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add chrome-extension/code-units/diagnostics/main.js releases/chrome/official-index.json tests package.json docs/adr .github/workflows/verify.yml
           git commit -m "fix: interpret absent OpenCode status using message evidence"
-          git push origin HEAD:${{ github.head_ref }}
+          git push origin HEAD:${{ github.head_ref || github.ref_name }}
