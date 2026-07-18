@@ -56,7 +56,7 @@ const specs = [
   ['dcf.firstparty.local-agent-dialogue', '本机对话闭环', '将严格的对话委派工件交给本机 OpenCode，并把结构化结果自动送回当前对话。', 'local-agent-dialogue', 57],
   ['dcf.firstparty.backup', '备份恢复', '独立插件数据的一键备份与恢复。', 'backup', 60],
   ['dcf.firstparty.plugin-manager', '功能管理', '低频功能启停与统一 DCF 更新入口。', 'plugin-manager', 70],
-  ['dcf.firstparty.diagnostics', '诊断', '正常时压缩状态，异常时复制隐私受限证据。', 'diagnostics', 90]
+  ['dcf.firstparty.diagnostics', '诊断', '正常时压缩状态，异常时自动回传本机 Agent 的隐私受限证据。', 'diagnostics', 90]
 ].map(([id, title, description, folder, phase]) => ({ id, title, description, folder, phase }));
 
 const units = specs.map((spec) => {
