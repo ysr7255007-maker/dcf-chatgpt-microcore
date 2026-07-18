@@ -30,7 +30,7 @@ assert.strictEqual(localAgent.default_enabled, true);
 assert.strictEqual(localAgent.phase, 55);
 const dialogue = index.units.find((unit) => unit.id === 'dcf.firstparty.local-agent-dialogue');
 assert(dialogue);
-assert.strictEqual(dialogue.version, '1.0.0-rc.2-local-agent-dialogue.5');
+assert.strictEqual(dialogue.version, '1.0.0-rc.2-local-agent-dialogue.6');
 assert.strictEqual(dialogue.default_enabled, true);
 assert.strictEqual(dialogue.phase, 57);
 const manager = index.units.find((unit) => unit.id === 'dcf.firstparty.plugin-manager');
@@ -38,7 +38,7 @@ assert(manager);
 assert.strictEqual(manager.version, '1.0.0-rc.2-plugin-manager.2');
 assert.strictEqual(manager.default_enabled, true);
 assert.strictEqual(manager.phase, 70);
-assert(!fs.existsSync(path.join(extension, 'official/code-units.json')));
+assert(!fs.existsSync(path.join(extension, 'official/code-units.json'));
 const extensionJs = fs.readdirSync(path.join(extension, 'src')).map((name) => fs.readFileSync(path.join(extension, 'src', name), 'utf8')).join('\n');
 assert(!extensionJs.includes('〔DCF·语言弹药〕'));
 assert(!extensionJs.includes('长对话减负'));
@@ -53,4 +53,19 @@ assert(/--text:\s*#f3f4f6/.test(css));
 const migration = fs.readFileSync(path.join(extension, 'static/migration-bridge.js'), 'utf8');
 assert(migration.includes('dcf-next-shell-host'));
 assert(!migration.includes('dcf-chatgpt-microcore-host'));
-console.log(JSON.stringify({ ok: true, pure_base: true, independent_plugins: 10, local_agent_is_pure_plugin: true, dialogue_loop_is_pure_plugin: true, synchronous_message_completion: true, robust_artifact_parsing: true, stable_dialogue_controls: true, pinned_tab_memory_is_plugin_owned: true, base_unchanged: true, dark_mode: true, next_migration_only: true }, null, 2));
+console.log(JSON.stringify({
+  ok: true,
+  pure_base: true,
+  independent_plugins: 10,
+  local_agent_is_pure_plugin: true,
+  dialogue_loop_is_pure_plugin: true,
+  history_is_baseline_not_queue: true,
+  dialogue_hot_remount: true,
+  synchronous_message_completion: true,
+  robust_artifact_parsing: true,
+  stable_dialogue_controls: true,
+  pinned_tab_memory_is_plugin_owned: true,
+  base_unchanged: true,
+  dark_mode: true,
+  next_migration_only: true
+}, null, 2));
