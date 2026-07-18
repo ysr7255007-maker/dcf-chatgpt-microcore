@@ -6,11 +6,11 @@ Updated: 2026-07-18
 
 - `2026-07-18-dcf-one-click-runtime-acceptance.md` — **accepted; live acceptance passed**; plugin-owned one-click runtime evidence, persisted clear verification and automatic report return replace manual maintenance checklists
 - `2026-07-18-dcf-dialogue-shadow-status-semantics.md` — **accepted; live acceptance passed through `.8` aggregate report**; dialogue remount discovers the Local Agent panel inside Shell Shadow DOM and normalizes OpenCode status semantics
-- `2026-07-18-dcf-dialogue-event-stream-hot-refresh.md` — **accepted; baseline and no-replay acceptance passed, actual new-event task pending**; existing assistant replies are an inert baseline and only post-start assistant events are consumed
-- `2026-07-18-dcf-local-agent-dialogue-loop.md` — **accepted; runtime shell acceptance passed, actual OpenCode request/result loop pending**; independent dialogue adapter, synchronous message completion authority and automatic result return
+- `2026-07-18-dcf-dialogue-event-stream-hot-refresh.md` — **accepted; actual new-event intake and automatic return passed**; existing assistant replies are an inert baseline and only post-start assistant events are consumed
+- `2026-07-18-dcf-local-agent-dialogue-loop.md` — **accepted; partial live acceptance, OpenCode execution failure under diagnosis**; request detection, independent session creation and automatic result return passed, while synchronous `/session/:id/message` returned HTTP 500 and `.8` failed to preserve session-side error evidence
 - `2026-07-18-dcf-workspace-tab-memory.md` — **accepted; live acceptance passed**; pinned and active workspace tabs survive plugin updates
 - `2026-07-17-dcf-workspace-tabs-and-ammo-selection.md` — **accepted; live use established**
-- `2026-07-17-dcf-chrome-local-agent-bridge-plan.md` — **accepted as pure plugin implementation; read-only dialogue task pending**
+- `2026-07-17-dcf-chrome-local-agent-bridge-plan.md` — **accepted as pure plugin implementation; successful read-only execution pending**
 - `2026-07-17-dcf-chrome-pure-base-personal-plugins.md` — **accepted for `1.0.0-rc.2`; pending final product acceptance**; pure Chrome base, independent personal plugins, GitHub plugin updates, non-public Chrome Web Store base updates, DCF Next/rc.1 continuity and low-friction default complete product
 - `2026-07-14-dcf-stateful-command-feedback.md` — **retained product-semantic guidance**
 - `2026-07-14-dcf-conversation-turn-attribution.md` — **implemented as an independent Chrome plugin**
