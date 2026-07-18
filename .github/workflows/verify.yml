@@ -17,5 +17,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm run verify
+      - name: Run verify with captured log
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run verify 2>&1 | tee verify.log
+      - name: Upload verify log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dcf-verify-log
+          path: verify.log
       - run: node --check dcf-chatgpt-microcore.user.js
