@@ -17,5 +17,22 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm run verify
+      - name: Build Chrome candidate
+        run: npm run build:chrome
+      - name: Chrome host gate
+        run: node tests/chrome-host.unit.test.js
+      - name: Chrome build gate
+        run: node tests/chrome-build.integration.test.js
+      - name: Chrome workspace gate
+        run: node tests/chrome-workspace-ui.test.js
+      - name: Dialogue gate
+        run: node tests/chrome-local-agent-dialogue.test.js
+      - name: Local Agent status gate
+        run: node tests/chrome-local-agent-status.test.js
+      - name: Chrome lifecycle gate
+        run: node tests/chrome-lifecycle.integration.test.js
+      - name: Chrome determinism gate
+        run: node tests/chrome-build-determinism.test.js
+      - name: Legacy verification
+        run: npm run verify:legacy
       - run: node --check dcf-chatgpt-microcore.user.js
