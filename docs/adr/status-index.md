@@ -4,6 +4,7 @@ Updated: 2026-07-18
 
 ## Current
 
+- `2026-07-18-dcf-local-agent-failure-evidence.md` — **accepted; live diagnostic evidence pending**; the existing diagnostics plugin performs one automatic loopback GET-only probe of the latest failed Local Agent session and returns privacy-bounded Provider/model/Agent evidence
 - `2026-07-18-dcf-one-click-runtime-acceptance.md` — **accepted; live acceptance passed**; plugin-owned one-click runtime evidence, persisted clear verification and automatic report return replace manual maintenance checklists
 - `2026-07-18-dcf-dialogue-shadow-status-semantics.md` — **accepted; live acceptance passed through `.8` aggregate report**; dialogue remount discovers the Local Agent panel inside Shell Shadow DOM and normalizes OpenCode status semantics
 - `2026-07-18-dcf-dialogue-event-stream-hot-refresh.md` — **accepted; actual new-event intake and automatic return passed**; existing assistant replies are an inert baseline and only post-start assistant events are consumed
