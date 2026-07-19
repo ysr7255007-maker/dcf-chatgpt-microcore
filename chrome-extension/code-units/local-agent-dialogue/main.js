@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.local-agent-dialogue';
-  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.13';
+  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.14';
   const LOCAL_AGENT_ID = 'dcf.firstparty.local-agent';
   const PANEL_ID = 'dcf-panel-local-agent';
   const SHELL_ID = 'dcf-chrome-shell-host';
@@ -13,8 +13,12 @@
     result: ['<<<DCF_LOCAL_AGENT_RESULT>>>', '<<<END_DCF_LOCAL_AGENT_RESULT>>>'],
     permissionRequest: ['<<<DCF_LOCAL_AGENT_PERMISSION_REQUEST>>>', '<<<END_DCF_LOCAL_AGENT_PERMISSION_REQUEST>>>'],
     permissionDecision: ['<<<DCF_LOCAL_AGENT_PERMISSION_DECISION>>>', '<<<END_DCF_LOCAL_AGENT_PERMISSION_DECISION>>>'],
+    progress: ['<<<DCF_LOCAL_AGENT_PROGRESS>>>', '<<<END_DCF_LOCAL_AGENT_PROGRESS>>>'],
+    control: ['<<<DCF_LOCAL_AGENT_CONTROL>>>', '<<<END_DCF_LOCAL_AGENT_CONTROL>>>'],
     acceptance: ['<<<DCF_LOCAL_AGENT_DIALOGUE_ACCEPTANCE>>>', '<<<END_DCF_LOCAL_AGENT_DIALOGUE_ACCEPTANCE>>>']
   });
+  const HEARTBEAT_INTERVAL_MS = 45000;
+  const STUCK_THRESHOLD_MS = 120000;
   const DEFAULTS = Object.freeze({
     enabled: true,
     auto_send_results: true,
@@ -91,7 +95,8 @@
     last_request_id: '',
     last_session_id: '',
     started_at: 0,
-    progress: { status_type: '', messages: 0, todo: 0, diff: 0, permissions: 0, questions: 0, preview: '', last_activity_at: '' }
+    progress: { status_type: '', messages: 0, todo: 0, diff: 0, permissions: 0, questions: 0, preview: '', last_activity_at: '' },
+    control_plane: { seq: 0, last_progress_at: 0, last_stage_sent: '', workdir: '', branch: '', head: '', changed_files: 0, test_status: '', commit_status: '', push_status: '', blocked_reason: '', permission_id: '' }
   };
 
   function normalizeSettings(raw = {}) {
@@ -112,6 +117,46 @@
     state.processed_ids = list(data.processed_ids).map(String).slice(-80);
     state.last_request_id = String(data.last_request_id || '');
     state.last_session_id = String(data.last_session_id || '');
+    if (data.active_task && typeof data.active_task === 'object' && !activeJob) {
+      const task = data.active_task;
+      if (!['completed', 'failed', 'cancelled'].includes(task.state) && task.request_id && task.session_id) {
+        state.stage = 'recovered';
+        state.status = `检测到未完成任务 ${task.request_id}，正在恢复观察`;
+        state.started_at = task.started_at || Date.now();
+        state.control_plane.seq = task.seq || 0;
+        state.control_plane.workdir = task.workdir || '';
+        state.control_plane.branch = task.branch || '';
+        state.control_plane.head = task.head || '';
+        const config = await connectionConfig();
+        const job = {
+          request: { id: task.request_id, task: task.task || '', title: task.title || '', return_mode: task.return_mode || 'final', idle_timeout_ms: task.idle_timeout_ms || state.settings.idle_timeout_ms },
+          config, session_id: task.session_id, started_at: task.started_at || Date.now(),
+          response_state: 'detached', response: null, response_error: null,
+          activity_fingerprint: '', last_activity_at: task.last_activity_at || Date.now(),
+          last_snapshot: null, notified_permissions: new Set(), awaiting_permission_id: ''
+        };
+        activeJob = job;
+        render();
+        recoverPoll(job).catch(reportFatal);
+      }
+    }
+  }
+
+  async function recoverPoll(job) {
+    try {
+      await request('/global/health', { config: job.config, timeout: 8000 });
+      state.stage = 'running'; state.status = '已恢复观察，继续监控原 session'; render();
+      const finalPayload = await poll(job);
+      state.stage = finalPayload.status;
+      state.status = finalPayload.status === 'completed' ? '本机任务完成，正在回传' : `本机任务结束 · ${finalPayload.status}`;
+      render();
+      await sendArtifact(artifact(MARKERS.result, finalPayload));
+    } catch (error) {
+      state.stage = 'detached'; state.status = `恢复失败：${String(error?.message || error)}`;
+      state.error = String(error?.message || error); render();
+    } finally {
+      if (activeJob === job) { activeJob = null; persist().catch(() => {}); render(); }
+    }
   }
 
   function persist() {
@@ -122,9 +167,132 @@
         settings: state.settings,
         processed_ids: state.processed_ids.slice(-80),
         last_request_id: state.last_request_id,
-        last_session_id: state.last_session_id
+        last_session_id: state.last_session_id,
+        active_task: activeJob ? {
+          request_id: activeJob.request.id, session_id: activeJob.session_id,
+          state: state.stage, seq: state.control_plane.seq,
+          last_activity_at: activeJob.last_activity_at, stage: state.stage,
+          workdir: state.control_plane.workdir, branch: state.control_plane.branch, head: state.control_plane.head,
+          started_at: activeJob.started_at, idle_timeout_ms: activeJob.request.idle_timeout_ms,
+          task: activeJob.request.task, title: activeJob.request.title, return_mode: activeJob.request.return_mode
+        } : null
       }
     });
+  }
+
+  function progressState() {
+    if (!activeJob) return 'idle';
+    const cp = state.control_plane;
+    if (cp.blocked_reason) return 'blocked';
+    if (cp.permission_id) return 'waiting_permission';
+    if (state.stage === 'cancelling') return 'cancelling';
+    if (state.stage === 'cancelled') return 'cancelled';
+    if (state.stage === 'completed') return 'completed';
+    if (state.stage === 'failed') return 'failed';
+    if (['starting', 'checking', 'creating', 'submitting'].includes(state.stage)) return 'starting';
+    if (state.progress.status_type === 'busy') return 'running';
+    if (Date.now() - activeJob.last_activity_at > STUCK_THRESHOLD_MS) return 'idle';
+    return 'running';
+  }
+
+  function progressPayload(job, snap) {
+    const cp = state.control_plane;
+    cp.seq += 1;
+    const now = Date.now();
+    cp.last_progress_at = now;
+    cp.last_stage_sent = state.stage;
+    if (snap) {
+      cp.workdir = snap.workdir || cp.workdir;
+      cp.branch = snap.branch || cp.branch;
+      cp.head = snap.head || cp.head;
+      cp.changed_files = snap.diff ? snap.diff.length : cp.changed_files;
+      cp.permission_id = job.awaiting_permission_id || '';
+      cp.blocked_reason = snap.questions && snap.questions.length ? 'waiting_external: OpenCode question pending' : '';
+    }
+    return {
+      schema: 'dcf.local-agent.progress.v1', request_id: job.request.id, session_id: job.session_id,
+      seq: cp.seq, timestamp: new Date(now).toISOString(), state: progressState(), stage: state.stage,
+      summary: state.status.slice(0, 300), last_activity_at: new Date(job.last_activity_at).toISOString(),
+      runtime_ms: now - job.started_at, idle_ms: now - job.last_activity_at,
+      workdir: cp.workdir, branch: cp.branch, head: cp.head, changed_files: cp.changed_files,
+      diff_summary: snap && snap.diff ? snap.diff.slice(0, 5).map((f) => String(f.file || f.path || '')).filter(Boolean) : [],
+      test_status: cp.test_status, commit_status: cp.commit_status, push_status: cp.push_status,
+      blocked_reason: cp.blocked_reason, permission_id: cp.permission_id
+    };
+  }
+
+  async function emitProgress(job, snap, force = false) {
+    const now = Date.now();
+    const stageChanged = state.stage !== state.control_plane.last_stage_sent;
+    if (!force && !stageChanged && now - state.control_plane.last_progress_at < HEARTBEAT_INTERVAL_MS) return;
+    const payload = progressPayload(job, snap);
+    await sendArtifact(artifact(MARKERS.progress, payload), false).catch(() => {});
+  }
+
+  function controlAck(job, command, status, detail) {
+    return {
+      schema: 'dcf.local-agent.progress.v1', request_id: job.request.id, session_id: job.session_id,
+      seq: ++state.control_plane.seq, timestamp: new Date().toISOString(), state: progressState(), stage: state.stage,
+      summary: `ACK ${command}: ${status}${detail ? ' \u00b7 ' + detail : ''}`,
+      last_activity_at: new Date(job.last_activity_at).toISOString(),
+      runtime_ms: Date.now() - job.started_at, idle_ms: Date.now() - job.last_activity_at,
+      workdir: state.control_plane.workdir, branch: state.control_plane.branch, head: state.control_plane.head,
+      changed_files: state.control_plane.changed_files, diff_summary: [],
+      test_status: state.control_plane.test_status, commit_status: state.control_plane.commit_status,
+      push_status: state.control_plane.push_status, blocked_reason: state.control_plane.blocked_reason,
+      permission_id: state.control_plane.permission_id,
+      ack: { command, status, detail: String(detail || '').slice(0, 500) }
+    };
+  }
+
+  async function executeControl(parsed) {
+    const job = activeJob;
+    if (!job) {
+      if (parsed.command === 'cancel') {
+        const t = { schema: 'dcf.local-agent.progress.v1', request_id: parsed.request_id, session_id: parsed.session_id, seq: ++state.control_plane.seq, timestamp: new Date().toISOString(), state: 'completed', stage: state.stage, summary: 'ACK cancel: 任务已结束，幂等返回当前终态', last_activity_at: new Date().toISOString(), runtime_ms: 0, idle_ms: 0, workdir: '', branch: '', head: '', changed_files: 0, diff_summary: [], test_status: '', commit_status: '', push_status: '', blocked_reason: '', permission_id: '', ack: { command: 'cancel', status: 'already_terminal' } };
+        await sendArtifact(artifact(MARKERS.progress, t), true).catch(() => {});
+        return;
+      }
+      throw new Error(`控制命令 ${parsed.command} 拒绝：当前没有活动任务`);
+    }
+    if (parsed.request_id !== job.request.id || parsed.session_id !== job.session_id) throw new Error(`控制命令寻址不匹配：期望 ${job.request.id}/${job.session_id}`);
+    const terminal = ['completed', 'failed', 'cancelled'];
+    if (parsed.command === 'steer' && terminal.includes(state.stage)) {
+      await sendArtifact(artifact(MARKERS.progress, controlAck(job, 'steer', 'rejected', `任务已处于终态 ${state.stage}`)), true).catch(() => {});
+      return;
+    }
+    if (parsed.command === 'status') {
+      const snap = job.last_snapshot || await snapshot(job);
+      const ack = controlAck(job, 'status', 'ok', '立即回传检查点');
+      ack.checkpoint = { status_type: snap.status_type, messages: (snap.messages || []).length, todo: (snap.todo || []).length, diff: (snap.diff || []).length, permissions: (snap.permissions || []).length, preview: latestAssistantText(snap.messages || []).slice(-900) };
+      await sendArtifact(artifact(MARKERS.progress, ack), true).catch(() => {});
+      return;
+    }
+    if (parsed.command === 'steer') {
+      const instruction = String(parsed.instruction || '').trim();
+      if (!instruction) throw new Error('steer 缺少 instruction');
+      await request(`/session/${encodeURIComponent(job.session_id)}/message`, { config: job.config, method: 'POST', body: { parts: [{ type: 'text', text: `[DCF steer] ${instruction}` }] }, timeout: 30000 });
+      job.last_activity_at = Date.now();
+      await sendArtifact(artifact(MARKERS.progress, controlAck(job, 'steer', 'ok', '已注入原 session')), true).catch(() => {});
+      return;
+    }
+    if (parsed.command === 'cancel' || parsed.command === 'cancel_after_checkpoint') {
+      if (parsed.command === 'cancel_after_checkpoint') {
+        const snap = await snapshot(job);
+        job.last_snapshot = snap;
+        const cp = controlAck(job, 'cancel_after_checkpoint', 'checkpoint_saved', '检查点已保存，正在中止');
+        cp.checkpoint = { status_type: snap.status_type, messages: (snap.messages || []).length, todo: (snap.todo || []).length, diff: (snap.diff || []).length, preview: latestAssistantText(snap.messages || []).slice(-900) };
+        await sendArtifact(artifact(MARKERS.progress, cp), true).catch(() => {});
+      }
+      state.stage = 'cancelling'; state.status = '正在中止任务…'; render();
+      await request(`/session/${encodeURIComponent(job.session_id)}/abort`, { config: job.config, method: 'POST', body: {}, timeout: 15000 }).catch(() => {});
+      state.stage = 'cancelled'; state.status = '任务已中止';
+      await sendArtifact(artifact(MARKERS.progress, controlAck(job, parsed.command, 'ok', '执行器已中止')), true).catch(() => {});
+      await sendArtifact(artifact(MARKERS.result, resultPayload(job, 'cancelled', job.last_snapshot || await snapshot(job))), true).catch(() => {});
+      activeJob = null; persist().catch(() => {}); render();
+      return;
+    }
+    throw new Error(`未知控制命令：${parsed.command}`);
   }
 
   function shellShadow() { return document.getElementById(SHELL_ID)?.shadowRoot || null; }
@@ -369,6 +537,18 @@
   }
 
   function parseArtifact(text) {
+    const controlEnvelope = extractEnvelope(text, MARKERS.control);
+    if (controlEnvelope) {
+      const payload = parseJsonEnvelope(controlEnvelope, 'DCF_LOCAL_AGENT_CONTROL');
+      if (payload?.pending) return payload;
+      if (payload?.schema !== 'dcf.local-agent.control.v1') throw new Error('控制命令 schema 无效');
+      const command = String(payload.command || '').trim().toLowerCase();
+      if (!['status', 'steer', 'cancel', 'cancel_after_checkpoint'].includes(command)) throw new Error(`不支持的控制命令：${command}`);
+      const control = { kind: 'control', command, request_id: String(payload.request_id || ''), session_id: String(payload.session_id || ''), instruction: String(payload.instruction || '').slice(0, 30000) };
+      if (!/^[A-Za-z0-9._:-]{1,128}$/.test(control.request_id)) throw new Error('控制命令 request_id 无效');
+      if (!/^ses_[A-Za-z0-9_-]+$/.test(control.session_id)) throw new Error('控制命令 session_id 无效');
+      return control;
+    }
     const decisionEnvelope = extractEnvelope(text, MARKERS.permissionDecision);
     if (decisionEnvelope) {
       const payload = parseJsonEnvelope(decisionEnvelope, 'DCF_LOCAL_AGENT_PERMISSION_DECISION');
@@ -432,7 +612,7 @@
     const previous = nodeState.get(node) || {};
     if (!force && previous.text === text) return;
     nodeState.set(node, { text, timer: null });
-    if (!text.includes(MARKERS.request[0]) && !text.includes(MARKERS.permissionDecision[0])) return;
+    if (!text.includes(MARKERS.request[0]) && !text.includes(MARKERS.permissionDecision[0]) && !text.includes(MARKERS.control[0])) return;
     const parsed = parseArtifact(text);
     if (!parsed) return;
     if (parsed.pending) {
@@ -443,6 +623,10 @@
     }
     if (parsed.kind === 'permission_decision') {
       await applyPermissionDecision(parsed);
+      return;
+    }
+    if (parsed.kind === 'control') {
+      await executeControl(parsed);
       return;
     }
     if (state.processed_ids.includes(parsed.id)) {
@@ -462,7 +646,7 @@
     const latest = nodes[nodes.length - 1] || null;
     if (latest && isStreaming()) {
       const text = String(latest.innerText || latest.textContent || '');
-      const incomplete = [MARKERS.request, MARKERS.permissionDecision].some(([start, end]) => text.includes(start) && !text.includes(end));
+      const incomplete = [MARKERS.request, MARKERS.permissionDecision, MARKERS.control].some(([start, end]) => text.includes(start) && !text.includes(end));
       if (incomplete) { baselineNodes.delete(latest); currentCandidate = latest; scheduleInspect(latest); }
     }
     state.status = activeJob ? state.status : '等待新的助手回复';
@@ -806,6 +990,7 @@
 
   async function poll(job) {
     while (!destroyed && activeJob === job) {
+      if (state.stage === 'cancelled' || state.stage === 'cancelling') return resultPayload(job, 'cancelled', job.last_snapshot || { messages: [], todo: [], diff: [], permissions: [], questions: [] });
       const snap = await snapshot(job);
       job.last_snapshot = snap;
       const fingerprint = activityFingerprint(snap, job);
@@ -819,10 +1004,12 @@
         state.status = '检测到 OpenCode 权限请求；无活动超时已暂停';
         render();
         await returnPermissionRequest(job, pendingPermissions[0], snap);
+        await emitProgress(job, snap, true);
       } else if (snap.questions.length) {
         state.stage = 'needs_user';
         state.status = 'OpenCode 正在等待回答；当前阶段仅自动转交权限请求';
         render();
+        await emitProgress(job, snap);
       } else {
         const assistantResult = latestAssistantText(snap.messages);
         const terminalStatus = ['idle', 'completed'].includes(snap.status_type);
@@ -836,12 +1023,14 @@
           ? '同步消息连接已断开，但 session 仍在观察'
           : `本机执行中 · ${snap.status_type}`;
         render();
+        await emitProgress(job, snap);
       }
 
       if (!hasIntervention && Date.now() - job.last_activity_at >= job.request.idle_timeout_ms) {
         const inactiveSnapshot = await confirmInactive(job, fingerprint);
         if (inactiveSnapshot) return resultPayload(job, 'inactive_timeout', inactiveSnapshot);
       }
+      await persist().catch(() => {});
       await sleep(state.settings.poll_interval_ms);
     }
     throw new Error('对话闭环已停止');
@@ -850,9 +1039,10 @@
   async function run(requestData) {
     counters.tasks += 1;
     state.started_at = Date.now();
-    state.stage = 'checking';
+    state.stage = 'starting';
     state.status = '正在检查 OpenCode 服务';
     state.error = '';
+    state.control_plane = { seq: 0, last_progress_at: 0, last_stage_sent: '', workdir: '', branch: '', head: '', changed_files: 0, test_status: '', commit_status: '', push_status: '', blocked_reason: '', permission_id: '' };
     render();
     const config = await connectionConfig();
     await request('/global/health', { config, timeout: 8000 });
@@ -995,20 +1185,28 @@
   }
 
   function style() {
-    return `:host{display:block;font:13px/1.5 system-ui;color:inherit}.card{border:1px solid #ddd;border-radius:10px;padding:10px;background:#fff;display:grid;gap:8px}.row,.head{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.head b{flex:1}.muted{color:#666;font-size:12px;overflow-wrap:anywhere}.status{border:1px solid #ccc;border-radius:999px;padding:2px 7px;font-size:11px}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.metric{border:1px solid #ddd;border-radius:7px;padding:5px}.metric b{display:block}.preview{max-height:140px;overflow:auto;white-space:pre-wrap;background:#f6f6f6;padding:7px;border-radius:7px;font:11px/1.4 monospace}.buttons{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}.buttons .primary{grid-column:1/-1;background:#202124;color:#fff}button,input{font:inherit;border:1px solid #bbb;border-radius:7px;padding:6px;background:#fff;color:inherit}.error{color:#b42318}@media(prefers-color-scheme:dark){.card{background:#222;border-color:#444}.muted{color:#aaa}.metric{border-color:#444}.preview{background:#181818}button,input{background:#292929;border-color:#555}.buttons .primary{background:#eee;color:#111}}`;
+    return `:host{display:block;font:13px/1.5 system-ui;color:inherit}.card{border:1px solid #ddd;border-radius:10px;padding:10px;background:#fff;display:grid;gap:8px}.task-card{border:1px solid #b8d4ff;border-radius:8px;padding:8px;background:#f0f7ff;display:grid;gap:7px}.row,.head{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.head b{flex:1}.muted{color:#666;font-size:12px;overflow-wrap:anywhere}.status{border:1px solid #ccc;border-radius:999px;padding:2px 7px;font-size:11px}.status.stuck{border-color:#d97706;color:#92400e}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.metric{border:1px solid #ddd;border-radius:7px;padding:5px}.metric b{display:block}.preview{max-height:140px;overflow:auto;white-space:pre-wrap;background:#f6f6f6;padding:7px;border-radius:7px;font:11px/1.4 monospace}.buttons{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}.buttons .primary{grid-column:1/-1;background:#202124;color:#fff}button,input{font:inherit;border:1px solid #bbb;border-radius:7px;padding:6px;background:#fff;color:inherit}.danger{color:#b42318;border-color:#b42318}.error{color:#b42318}@media(prefers-color-scheme:dark){.card{background:#222;border-color:#444}.task-card{background:#1a2a3a;border-color:#2a4a6a}.muted{color:#aaa}.metric{border-color:#444}.preview{background:#181818}button,input{background:#292929;border-color:#555}.buttons .primary{background:#eee;color:#111}.status.stuck{border-color:#d97706;color:#fbbf24}}`;
   }
 
   function render() {
     if (!mountRoot) return;
     const active = Boolean(activeJob) || queueBusy;
     const progress = state.progress;
-    mountRoot.innerHTML = `<style>${style()}</style><section class="card"><div class="head"><b>对话闭环</b><span class="status">${active ? '执行中' : state.settings.enabled ? '已开启' : '已关闭'}</span></div><div class="muted">历史消息只建立基线；长任务按最近活动判断；权限请求交由当前对话裁决。</div><div class="row"><label><input type="checkbox" data-field="enabled" ${state.settings.enabled ? 'checked' : ''}>自动委派</label><label><input type="checkbox" data-field="auto-send" ${state.settings.auto_send_results ? 'checked' : ''}>结果自动发送</label></div><div><b>${escapeHtml(state.status)}</b>${elapsedText() ? ` · ${elapsedText()}` : ''}<br><span class="muted">阶段：${escapeHtml(state.stage)}${activeJob ? ` · ${escapeHtml(activeJob.request.id)} · ${escapeHtml(activeJob.session_id)}` : ''}</span></div><div class="grid"><div class="metric">状态<b>${escapeHtml(progress.status_type || '—')}</b></div><div class="metric">消息<b>${progress.messages}</b></div><div class="metric">Todo<b>${progress.todo}</b></div><div class="metric">Diff<b>${progress.diff}</b></div><div class="metric">权限<b>${progress.permissions}</b></div><div class="metric">提问<b>${progress.questions}</b></div></div>${progress.preview ? `<div class="preview">${escapeHtml(progress.preview)}</div>` : ''}<div class="buttons"><button class="primary" data-action="acceptance">一键验收并回传</button><button data-action="latest">检查最新助手回复</button><button data-action="return">回传待发送工件</button><button data-action="clear">清除已处理记录</button></div>${state.error ? `<div class="error">${escapeHtml(state.error)}</div>` : ''}</section>`;
+    const cp = state.control_plane;
+    const stuck = active && activeJob && Date.now() - activeJob.last_activity_at > STUCK_THRESHOLD_MS;
+    const elapsed = elapsedText();
+    const idleSec = activeJob ? Math.floor((Date.now() - activeJob.last_activity_at) / 1000) : 0;
+    mountRoot.innerHTML = `<style>${style()}</style><section class="card"><div class="head"><b>对话闭环</b><span class="status">${active ? '执行中' : state.settings.enabled ? '已开启' : '已关闭'}</span></div><div class="muted">历史消息只建立基线；长任务按最近活动判断；权限请求交由当前对话裁决。</div><div class="row"><label><input type="checkbox" data-field="enabled" ${state.settings.enabled ? 'checked' : ''}>自动委派</label><label><input type="checkbox" data-field="auto-send" ${state.settings.auto_send_results ? 'checked' : ''}>结果自动发送</label></div><div><b>${escapeHtml(state.status)}</b>${elapsed ? ` · ${elapsed}` : ''}<br><span class="muted">阶段：${escapeHtml(state.stage)}${activeJob ? ` · ${escapeHtml(activeJob.request.id)} · ${escapeHtml(activeJob.session_id)}` : ''}</span></div>${active && activeJob ? `<div class="task-card"><div class="head"><b>活动任务</b><span class="status ${stuck ? 'stuck' : ''}">${escapeHtml(progressState())}${stuck ? ' · 疑似卡住' : ''}</span></div><div class="grid"><div class="metric">状态<b>${escapeHtml(progress.status_type || '—')}</b></div><div class="metric">消息<b>${progress.messages}</b></div><div class="metric">Todo<b>${progress.todo}</b></div><div class="metric">Diff<b>${progress.diff}</b></div><div class="metric">权限<b>${progress.permissions}</b></div><div class="metric">无活动<b>${idleSec}秒</b></div></div>${cp.workdir || cp.branch || cp.head ? `<div class="muted">工作区：${escapeHtml(cp.workdir || '—')} · 分支：${escapeHtml(cp.branch || '—')} · HEAD：${escapeHtml(cp.head || '—')}</div>` : ''}${cp.changed_files ? `<div class="muted">变更文件：${cp.changed_files} 个</div>` : ''}${cp.permission_id ? `<div class="muted">等待权限：${escapeHtml(cp.permission_id)}</div>` : ''}${progress.preview ? `<div class="preview">${escapeHtml(progress.preview)}</div>` : ''}<div class="buttons"><button data-action="ctl-status">查看进展</button><button data-action="ctl-steer">补充指令</button><button class="danger" data-action="ctl-cancel">中止任务</button><button class="danger" data-action="ctl-cancel-cp">保存检查点后中止</button></div></div>` : `<div class="grid"><div class="metric">状态<b>${escapeHtml(progress.status_type || '—')}</b></div><div class="metric">消息<b>${progress.messages}</b></div><div class="metric">Todo<b>${progress.todo}</b></div><div class="metric">Diff<b>${progress.diff}</b></div><div class="metric">权限<b>${progress.permissions}</b></div><div class="metric">提问<b>${progress.questions}</b></div></div>${progress.preview ? `<div class="preview">${escapeHtml(progress.preview)}</div>` : ''}`}<div class="buttons"><button class="primary" data-action="acceptance">一键验收并回传</button><button data-action="latest">检查最新助手回复</button><button data-action="return">回传待发送工件</button><button data-action="clear">清除已处理记录</button></div>${state.error ? `<div class="error">${escapeHtml(state.error)}</div>` : ''}</section>`;
   }
 
   async function handleAction(action) {
     if (action === 'acceptance') return runAcceptance();
     if (action === 'latest') return inspectLatestAssistant();
     if (action === 'clear') return clearProcessed();
+    if (action === 'ctl-status' && activeJob) { await executeControl({ kind: 'control', command: 'status', request_id: activeJob.request.id, session_id: activeJob.session_id, instruction: '' }); return; }
+    if (action === 'ctl-steer' && activeJob) { const instruction = prompt('输入要注入原 session 的补充指令：'); if (instruction && instruction.trim()) await executeControl({ kind: 'control', command: 'steer', request_id: activeJob.request.id, session_id: activeJob.session_id, instruction: instruction.trim() }); return; }
+    if (action === 'ctl-cancel' && activeJob) { await executeControl({ kind: 'control', command: 'cancel', request_id: activeJob.request.id, session_id: activeJob.session_id, instruction: '' }); return; }
+    if (action === 'ctl-cancel-cp' && activeJob) { await executeControl({ kind: 'control', command: 'cancel_after_checkpoint', request_id: activeJob.request.id, session_id: activeJob.session_id, instruction: '' }); return; }
     if (action !== 'return') return;
     if (!pendingArtifact) { state.status = '当前没有待回传工件'; render(); return; }
     if (composerValue(composer()).trim() || isStreaming()) throw new Error('当前对话尚未空闲');
@@ -1187,7 +1385,10 @@
     result_markers: { start: MARKERS.result[0], end: MARKERS.result[1] },
     permission_request_markers: { start: MARKERS.permissionRequest[0], end: MARKERS.permissionRequest[1] },
     permission_decision_markers: { start: MARKERS.permissionDecision[0], end: MARKERS.permissionDecision[1] },
-    lifecycle: { timeout_basis: 'observable-idle-time', permission_wait_pauses_idle_timeout: true, watchdog_interval_ms: WATCHDOG_INTERVAL_MS, observer_stall_ms: OBSERVER_STALL_MS }
+    progress_markers: { start: MARKERS.progress[0], end: MARKERS.progress[1] },
+    control_markers: { start: MARKERS.control[0], end: MARKERS.control[1] },
+    lifecycle: { timeout_basis: 'observable-idle-time', permission_wait_pauses_idle_timeout: true, watchdog_interval_ms: WATCHDOG_INTERVAL_MS, observer_stall_ms: OBSERVER_STALL_MS, heartbeat_interval_ms: HEARTBEAT_INTERVAL_MS, stuck_threshold_ms: STUCK_THRESHOLD_MS },
+    control_plane: { supported_commands: ['status', 'steer', 'cancel', 'cancel_after_checkpoint'], progress_schema: 'dcf.local-agent.progress.v1', control_schema: 'dcf.local-agent.control.v1' }
   };
 
   try {
