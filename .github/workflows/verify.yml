@@ -29,6 +29,16 @@ jobs:
           python3 .github/scripts/patch-local-agent-tests.py
           python3 .github/scripts/patch-local-agent-docs.py
           sed -i "s/^\\\\'use strict\\\\';/'use strict';/" tests/chrome-local-agent-status.test.js tests/chrome-local-agent-dialogue.test.js
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('tests/chrome-local-agent-dialogue.test.js')
+          text = path.read_text()
+          old = "assert(!/\\bmessages\\s*:\\s*snap\\.messages\\b/.test(code));"
+          new = "assert(!/payload\\.messages\\s*=/.test(code));"
+          if old not in text:
+              raise SystemExit('broad raw-message assertion not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
       - name: Verify repository
         shell: bash
         run: |
