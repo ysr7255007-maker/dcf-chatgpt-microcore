@@ -114,6 +114,14 @@ if old_build_version not in build_test:
     raise SystemExit('Chrome build dialogue version baseline not found')
 build_test_path.write_text(build_test.replace(old_build_version, new_build_version, 1))
 
+workspace_test_path = Path('tests/chrome-workspace-ui.test.js')
+workspace_test = workspace_test_path.read_text()
+old_workspace_version = "assert.strictEqual(versions['dcf.firstparty.local-agent-dialogue'], '1.0.0-rc.2-local-agent-dialogue.9');"
+new_workspace_version = "assert.strictEqual(versions['dcf.firstparty.local-agent-dialogue'], '1.0.0-rc.2-local-agent-dialogue.10');"
+if old_workspace_version not in workspace_test:
+    raise SystemExit('workspace dialogue version baseline not found')
+workspace_test_path.write_text(workspace_test.replace(old_workspace_version, new_workspace_version, 1))
+
 Path('docs/adr/2026-07-19-dcf-dialogue-compact-result-boundary.md').write_text('''# DCF dialogue compact result boundary
 
 Date: 2026-07-19
