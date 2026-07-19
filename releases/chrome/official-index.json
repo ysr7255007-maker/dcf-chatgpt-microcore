@@ -126,7 +126,7 @@
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/local-agent-dialogue/main.js",
       "default_enabled": true,
       "description": "将严格的对话委派工件交给本机 OpenCode，并把结构化结果自动送回当前对话。",
-      "hash": "464d44f10595b7cc58872bc2db0787b265bd05c74f3aadee63b8eb268a9168f0",
+      "hash": "4b172d70d4eaec28914bc6abc2c690d70fc00d4865131c27b1e530c0afdc580f",
       "host_api": "2",
       "id": "dcf.firstparty.local-agent-dialogue",
       "matches": [
@@ -198,7 +198,7 @@
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/page-diagnostics/main.js",
       "default_enabled": true,
       "description": "默认关闭的页面生命周期与流式渲染诊断，固定环形缓冲区，不记录对话正文。",
-      "hash": "fc4d9d1988ef10cd4a81ca6fe77e5ea56a48137569bfde2b3702a75acb205307",
+      "hash": "2e3c206e257ad4f20239470014163476d3405e65bf107c92481e4fb0fb33ae1e",
       "host_api": "2",
       "id": "dcf.firstparty.page-diagnostics",
       "matches": [

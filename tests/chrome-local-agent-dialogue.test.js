@@ -115,7 +115,10 @@ for (const token of [
   'abort_failed',
   'abort_unconfirmed',
   'last_terminal',
-  'function outboxId(text)',
+  'function parseIdentity(text)',
+  'function entryKey(e)',
+  'function isCritical(entry)',
+  'function isHeartbeat(entry)',
   'async function confirmDelivery(entry)',
   'outbox.items',
   'click_unconfirmed',
@@ -125,9 +128,13 @@ for (const token of [
   'function scheduleOutboxPump()',
   'async function outboxPump()',
   'function countUserMessages()',
-  'function isCritical(entry)',
   'cancel_confirmed',
-  'baseline_users'
+  'baseline_users',
+  'function recordTerminal(job, status)',
+  'dcf:runtime-projection',
+  'dcf.runtime-projection.v1',
+  'entry.identity',
+  'awaiting_manual'
 ]) assert(code.includes(token), `missing ${token}`);
 
 for (const token of [

@@ -31,7 +31,15 @@
   let rafLastReport = 0;
   let domObserver = null;
   let domRoot = null;
-  let lastDomGrowth = 0;
+  let lastDcfProjection = null;
+  let projectionListener = null;
+
+  function onRuntimeProjection(event) {
+    try {
+      const data = JSON.parse(event.detail);
+      if (data.schema === 'dcf.runtime-projection.v1') lastDcfProjection = data;
+    } catch (_) {}
+  }
   let lastAssistantLength = 0;
   let startedAt = 0;
   let domCheckTimer = null;
@@ -63,10 +71,9 @@
       rafCount = 0;
       rafLastReport = now;
     }
-    const dialogue = globalThis.__DCF_FIRSTPARTY_LOCAL_AGENT_DIALOGUE__;
-    if (dialogue?.diagnostics) {
-      const d = dialogue.diagnostics;
-      push('dcf_activity', { observer_gen: d.observer_generation, last_mutation_age: d.last_mutation_at ? now - d.last_mutation_at : -1, last_consume_age: d.last_consume_at ? now - d.last_consume_at : -1, recoveries: d.recoveries, last_recovery: d.last_recovery_reason });
+    if (lastDcfProjection) {
+      const now = Date.now();
+      push('dcf_activity', { observer_gen: lastDcfProjection.observer_generation, last_mutation_age: lastDcfProjection.last_mutation_at ? now - lastDcfProjection.last_mutation_at : -1, last_consume_age: lastDcfProjection.last_consume_at ? now - lastDcfProjection.last_consume_at : -1, recoveries: lastDcfProjection.recoveries, last_recovery: lastDcfProjection.last_recovery_reason, stage: lastDcfProjection.stage });
     }
   }
 
@@ -164,6 +171,8 @@
     window.addEventListener('pagehide', onPageHide);
     document.addEventListener('freeze', onFreeze);
     document.addEventListener('resume', onResume);
+    projectionListener = onRuntimeProjection;
+    document.addEventListener('dcf:runtime-projection', projectionListener);
     timerHandle = setInterval(timerTick, TIMER_EXPECTED_MS);
     domCheckTimer = setInterval(observeDom, 3000);
     rafHandle = requestAnimationFrame(rafLoop);
@@ -183,6 +192,9 @@
     window.removeEventListener('pagehide', onPageHide);
     document.removeEventListener('freeze', onFreeze);
     document.removeEventListener('resume', onResume);
+    if (projectionListener) document.removeEventListener('dcf:runtime-projection', projectionListener);
+    projectionListener = null;
+    lastDcfProjection = null;
     clearInterval(timerHandle);
     timerHandle = null;
     clearInterval(domCheckTimer);
