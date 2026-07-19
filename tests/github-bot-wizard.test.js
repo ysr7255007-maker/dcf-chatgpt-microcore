@@ -210,13 +210,12 @@ function fakePem() {
     assert.ok(fs.existsSync(path.join(temp, Bot.PRIVATE_KEY_FILENAME)));
     ok('full_flow_credentials_saved');
 
-    // Step 6: Use setup state from the manifest returned by /api/start (Item 6: real state)
+    // Step 6: Verify setup state from manifest matches server (no direct manipulation)
     const manifestObj = JSON.parse(startBody.manifest);
     const setupUrl = new URL(manifestObj.setup_url);
     const setupStateFromManifest = setupUrl.searchParams.get('state');
-    Bot.serverState.setupState = setupStateFromManifest;
-    Bot.serverState.setupStateUsed = false;
-    Bot.serverState.expiresAt = Date.now() + 60_000;
+    assert.strictEqual(Bot.serverState.setupState, setupStateFromManifest, 'server setupState must match manifest');
+    assert.strictEqual(Bot.serverState.setupStateUsed, false, 'setupState must not be used yet');
 
     const testSetupState = Bot.serverState.setupState;
 
@@ -278,6 +277,14 @@ function fakePem() {
     const pendingPath = path.join(temp, Bot.PENDING_INSTALL_FILENAME);
     assert.ok(!fs.existsSync(pendingPath), 'pending-install should be cleared on success');
     ok('full_flow_pending_cleared');
+
+    // Step 14: Branch gate — skip and close server (true end-to-end including gate)
+    r = await request(fsPort, 'POST', '/api/done', fsGood);
+    assert.strictEqual(r.status, 200);
+    assert.deepStrictEqual(JSON.parse(r.body), { status: 'done' });
+    await new Promise(r2 => { if (Bot.serverState.server && Bot.serverState.server.listening) { Bot.serverState.server.once('close', r2); } else { r2(); } });
+    assert.ok(!Bot.serverState.server || !Bot.serverState.server.listening, 'server must close after done');
+    ok('full_flow_gate_skip_and_close');
 
     await closeServer();
   } finally { clean(); Bot.clearSensitiveMemory(); }
@@ -459,21 +466,43 @@ function fakePem() {
     ok('server_close_idempotent');
   } finally { clean(); Bot.clearSensitiveMemory(); }
 
-  // === ITEM 1: DOM XSS protection in mainPageHTML ===
+  // === ITEM 1/3: DOM XSS protection in mainPageHTML ===
   sandbox();
   try {
     // Test 1a: mainPageHTML page script uses textContent, not innerHTML with dynamic values
-    const html = Bot.mainPageHTML();
+    const htmlContent = Bot.mainPageHTML();
     // The page must not directly concatenate dynamic values into innerHTML assignments
-    // Check that innerHTML is only used with server-escaped (s.html) or static HTML
-    assert.ok(html.includes('txt('), 'page must use txt() helper for textContent');
-    assert.ok(html.includes('showError('), 'page must use showError() helper');
-    assert.ok(!html.includes("v.innerHTML='<h2>错误</h2><p>'+s.message+"), 'must not concat s.message into innerHTML');
-    assert.ok(!html.includes("v.innerHTML='<h2>等待安装验证</h2><p>App <strong>'+s.app_slug+"), 'must not concat s.app_slug');
-    assert.ok(!html.includes("innerHTML='<p>'+e.message+"), 'must not concat e.message');
-    assert.ok(!html.includes("innerHTML='<p>'+r.error+"), 'must not concat r.error');
+    assert.ok(htmlContent.includes('txt('), 'page must use txt() helper for textContent');
+    assert.ok(htmlContent.includes('showError('), 'page must use showError() helper');
+    assert.ok(!htmlContent.includes("v.innerHTML='<h2>错误</h2><p>'+s.message+"), 'must not concat s.message into innerHTML');
+    assert.ok(!htmlContent.includes("v.innerHTML='<h2>等待安装验证</h2><p>App <strong>'+s.app_slug+"), 'must not concat s.app_slug');
+    assert.ok(!htmlContent.includes("innerHTML='<p>'+e.message+"), 'must not concat e.message');
+    assert.ok(!htmlContent.includes("innerHTML='<p>'+r.error+"), 'must not concat r.error');
+    // showPending must use DOM APIs for installUrl, not concatenation into innerHTML
+    assert.ok(htmlContent.includes('document.createElement(\'a\')'), 'showPending must use createElement for link');
+    assert.ok(htmlContent.includes('u.protocol===\'https:\''), 'showPending must validate https protocol');
+    assert.ok(htmlContent.includes('u.hostname===\'github.com\''), 'showPending must validate github.com host');
+    assert.ok(htmlContent.includes("'安装链接无效'"), 'showPending must show error for invalid URL');
     ok('main_page_xss_patterns_removed');
   } finally { clean(); }
+
+  // === ITEM 3: Server-side install_url validation ===
+  sandbox();
+  try {
+    Bot.saveCredentials({ id: 8888, slug: 'url-test-slug', client_id: 'x', client_secret: 'y', webhook_secret: 'z' }, fakePem());
+    const urlPort = await Bot.startServer();
+    const urlGood = { Host: `127.0.0.1:${urlPort}`, Origin: `http://127.0.0.1:${urlPort}`, 'X-DCF-Wizard-CSRF': Bot.serverState.pageCsrf };
+    r = await request(urlPort, 'POST', '/api/start', urlGood);
+    assert.strictEqual(r.status, 200);
+    const startBody = JSON.parse(r.body);
+    assert.ok(startBody.install_url, 'must have install_url');
+    const parsedUrl = new URL(startBody.install_url);
+    assert.strictEqual(parsedUrl.protocol, 'https:', 'install_url must be HTTPS');
+    assert.strictEqual(parsedUrl.hostname, 'github.com', 'install_url must host github.com');
+    assert.strictEqual(parsedUrl.pathname, '/apps/url-test-slug/installations/new', 'install_url path must match app slug');
+    ok('server_install_url_correct_format');
+    await closeServer();
+  } finally { clean(); Bot.clearSensitiveMemory(); }
 
   // === ITEM 2: pending-install atomic transaction ===
   sandbox();
@@ -491,12 +520,13 @@ function fakePem() {
     ok('pending_install_atomic_different_rejected');
   } finally { clean(); }
 
-  // === ITEM 3: Restart recovery — discover installation via JWT ===
+  // === ITEM 3/Review1: Restart recovery — discover installation via JWT ===
   sandbox();
   try {
     Bot.saveCredentials({ id: 3001, slug: 'recovery-bot', client_id: 'x', client_secret: 'y', webhook_secret: 'z' }, fakePem());
     // No pending-install file — simulate process restart
     assert.strictEqual(Bot.loadPendingInstall(), null);
+    assert.strictEqual(fs.existsSync(path.join(temp, Bot.PENDING_INSTALL_FILENAME)), false);
 
     // Mock /api/start response should include install_url for recovery
     const rp = await Bot.startServer();
@@ -506,14 +536,18 @@ function fakePem() {
     const startBody2 = JSON.parse(r.body);
     assert.strictEqual(startBody2.pending_install, true);
     assert.ok(startBody2.install_url, 'recovery must provide install_url');
-    assert.ok(startBody2.install_url.includes('apps/recovery-bot/installations/new'), 'install_url must point to app install page');
+    assert.ok(startBody2.install_url.startsWith('https://github.com/apps/recovery-bot/installations/new'), 'install_url must be https github.com app path');
+    const startUrl = new URL(startBody2.install_url);
+    assert.strictEqual(startUrl.protocol, 'https:');
+    assert.strictEqual(startUrl.hostname, 'github.com');
+    assert.ok(startUrl.pathname.startsWith('/apps/recovery-bot/installations/new'));
     assert.strictEqual(startBody2.has_pending, false);
     ok('restart_recovery_install_url_provided');
 
-    // Test retry discovers installation via getInstallations
+    // Test retry discovers installation via getInstallations — no pending file pre-saved
     const discMock = mockGitHub([
       { path: '/app', body: JSON.stringify({ id: 3001 }) },
-      { path: '/app/installations', body: JSON.stringify({ installations: [{ id: 88, account: { login: Bot.OWNER }, repository_selection: 'selected', permissions: { contents: 'write', pull_requests: 'write', actions: 'read', checks: 'read', statuses: 'read' } }] }) },
+      { path: '/app/installations', body: JSON.stringify([{ id: 88, account: { login: Bot.OWNER }, repository_selection: 'selected', permissions: { contents: 'write', pull_requests: 'write', actions: 'read', checks: 'read', statuses: 'read' } }]) },
       { path: '/app/installations/88', body: JSON.stringify({ id: 88, account: { login: Bot.OWNER }, repository_selection: 'selected', permissions: { contents: 'write', pull_requests: 'write', actions: 'read', checks: 'read', statuses: 'read' } }) },
       { path: '/app/installations/88/access_tokens', body: JSON.stringify({ token: 'disc_token' }) },
       { path: `/repos/${Bot.OWNER}/${Bot.REPO}`, body: JSON.stringify({ full_name: `${Bot.OWNER}/${Bot.REPO}`, owner: { login: Bot.OWNER } }) },
@@ -521,14 +555,19 @@ function fakePem() {
       { path: `/repos/${Bot.OWNER}/${Bot.REPO}/git/ref/heads/rebuild/chrome-native-host-v2`, body: JSON.stringify({ ref: 'refs/heads/rebuild/chrome-native-host-v2', object: { sha: 'recovery_sha' } }) }
     ]);
 
-    // At this point there's no pending-install, but credentials exist.
-    // handleRetryVerification should discover installation via getInstallations
-    Bot.savePendingInstall(88);
+    // At this point there's no pending-install file; handleRetryVerification must
+    // discover installation by calling getInstallations with JWT.
+    // No Bot.savePendingInstall() pre-call — the endpoint must find it automatically.
     r = await request(rp, 'POST', '/api/retry-verification', rg);
     assert.strictEqual(r.status, 200);
     const retryBody2 = JSON.parse(r.body);
     assert.strictEqual(retryBody2.status, 'ok');
     assert.ok(retryBody2.html.includes('App 安装'), 'retry via discovery must render completion page');
+
+    // Assert /app/installations was called with JWT
+    const discInstallsCall = discMock.calls.find(c => c.path === '/app/installations');
+    assert.ok(discInstallsCall, '/app/installations must be called during discovery');
+    assert.ok(discInstallsCall.auth.startsWith('Bearer eyJ'), '/app/installations uses JWT');
     discMock.restore();
 
     // Verify config saved
@@ -540,7 +579,7 @@ function fakePem() {
     await closeServer();
   } finally { clean(); Bot.clearSensitiveMemory(); }
 
-  // === ITEM 4: Branch protection gate flow ===
+  // === ITEM 2/4: Branch protection gate flow with mockable gh token ===
   sandbox();
   try {
     Bot.saveCredentials({ id: 4001, slug: 'gate-bot', client_id: 'x', client_secret: 'y', webhook_secret: 'z' }, fakePem());
@@ -579,7 +618,7 @@ function fakePem() {
 
     gateMock.restore();
 
-    // Test skip path
+    // Test direct skip path
     r = await request(gp, 'POST', '/api/done', gg);
     assert.strictEqual(r.status, 200);
     assert.strictEqual(JSON.parse(r.body).status, 'done');
@@ -591,7 +630,7 @@ function fakePem() {
     await closeServer();
   } finally { clean(); Bot.clearSensitiveMemory(); }
 
-  // === ITEM 4b: Configure branch protection path ===
+  // === ITEM 4: Gate configure success with mock user token ===
   sandbox();
   try {
     Bot.saveCredentials({ id: 4002, slug: 'gate2-bot', client_id: 'x', client_secret: 'y', webhook_secret: 'z' }, fakePem());
@@ -601,6 +640,11 @@ function fakePem() {
     const gp2 = await Bot.startServer();
     const gg2 = { Host: `127.0.0.1:${gp2}`, Origin: `http://127.0.0.1:${gp2}`, 'X-DCF-Wizard-CSRF': Bot.serverState.pageCsrf };
 
+    // Mock getUserGitHubToken to return a controllable token
+    Bot.setGetUserGitHubToken(async () => 'gh_user_token_abc');
+
+    const branchProtectionUrl = `/repos/${Bot.OWNER}/${Bot.REPO}/branches/rebuild%2Fchrome-native-host-v2/protection`;
+
     const gateMock2 = mockGitHub([
       { path: '/app', body: JSON.stringify({ id: 4002 }) },
       { path: '/app/installations/78', body: JSON.stringify({ id: 78, account: { login: Bot.OWNER }, repository_selection: 'selected', permissions: { contents: 'write', pull_requests: 'write', actions: 'read', checks: 'read', statuses: 'read' } }) },
@@ -609,25 +653,105 @@ function fakePem() {
       { path: '/installation/repositories', body: JSON.stringify({ repositories: [{ full_name: `${Bot.OWNER}/${Bot.REPO}` }] }) },
       { path: `/repos/${Bot.OWNER}/${Bot.REPO}/git/ref/heads/rebuild/chrome-native-host-v2`, body: JSON.stringify({ ref: 'refs/heads/rebuild/chrome-native-host-v2', object: { sha: 'gate2sha' } }) },
       // Branch protection PUT
-      { pathPrefix: '/repos/' + Bot.OWNER + '/' + Bot.REPO + '/branches/', body: JSON.stringify({}) }
+      { path: branchProtectionUrl, body: JSON.stringify({}) }
     ]);
 
+    // Complete setup first
     r = await request(gp2, 'GET', '/setup?installation_id=78&state=gate2-state', gg2);
     assert.strictEqual(r.status, 200);
 
-    // Configure gate — uses local gh token, not Bot token
+    // Configure gate — uses mock user token, NOT Bot JWT
     r = await request(gp2, 'POST', '/api/branch-protection', gg2);
+    assert.strictEqual(r.status, 200);
     const bpBody = JSON.parse(r.body);
-    if (r.status === 400) {
-      assert.ok(bpBody.error.includes('gh') || bpBody.error.includes('管理身份不可用'), 'graceful gh failure: ' + bpBody.error);
-      assert.strictEqual(Bot.serverState.branchGate, 'unavailable');
-    } else {
-      assert.strictEqual(r.status, 200);
-      assert.ok(bpBody.status === 'applied' || bpBody.status === 'error');
-      ok('gate_configure_success_with_gh');
-    }
+    assert.strictEqual(bpBody.status, 'applied');
+    assert.strictEqual(Bot.serverState.branchGate, 'configured');
+
+    // Assert PUT request to exact branch protection URL
+    const putCall = gateMock2.calls.find(c => c.path === branchProtectionUrl);
+    assert.ok(putCall, 'must PUT to branch protection URL');
+    assert.strictEqual(putCall.method, 'PUT');
+    // Must use user token, not Bot JWT
+    assert.strictEqual(putCall.auth, 'Bearer gh_user_token_abc', 'branch protection must use user token, not Bot JWT');
+    // Payload must exactly match branchProtectionPayload()
+    const sentPayload = JSON.parse(putCall.body);
+    assert.deepStrictEqual(sentPayload, Bot.branchProtectionPayload());
+    ok('gate_configure_success_with_gh');
+
+    // After configured, done closes server
+    r = await request(gp2, 'POST', '/api/done', gg2);
+    assert.strictEqual(r.status, 200);
+    await new Promise(r2 => setTimeout(r2, 50));
+    assert.ok(!Bot.serverState.server || !Bot.serverState.server.listening);
+    ok('gate_configure_then_done_closes');
 
     gateMock2.restore();
+
+    // Restore real getUserGitHubToken for other tests
+    Bot.setGetUserGitHubToken(async () => { throw new Error('not mocked'); });
+    await closeServer();
+  } finally { clean(); Bot.clearSensitiveMemory(); }
+
+  // === ITEM 2: Gate failure — skip still available, branchGate=unavailable ===
+  sandbox();
+  try {
+    Bot.saveCredentials({ id: 4003, slug: 'gate3-bot', client_id: 'x', client_secret: 'y', webhook_secret: 'z' }, fakePem());
+    Bot.serverState.setupState = 'gate3-state';
+    Bot.serverState.setupStateUsed = false;
+    Bot.serverState.expiresAt = Date.now() + 60_000;
+    const gp3 = await Bot.startServer();
+    const gg3 = { Host: `127.0.0.1:${gp3}`, Origin: `http://127.0.0.1:${gp3}`, 'X-DCF-Wizard-CSRF': Bot.serverState.pageCsrf };
+
+    // Mock getUserGitHubToken to fail
+    Bot.setGetUserGitHubToken(async () => { throw new Error('gh auth failed'); });
+
+    const gateMock3 = mockGitHub([
+      { path: '/app', body: JSON.stringify({ id: 4003 }) },
+      { path: '/app/installations/79', body: JSON.stringify({ id: 79, account: { login: Bot.OWNER }, repository_selection: 'selected', permissions: { contents: 'write', pull_requests: 'write', actions: 'read', checks: 'read', statuses: 'read' } }) },
+      { path: '/app/installations/79/access_tokens', body: JSON.stringify({ token: 'gate3_tok', permissions: {} }) },
+      { path: `/repos/${Bot.OWNER}/${Bot.REPO}`, body: JSON.stringify({ full_name: `${Bot.OWNER}/${Bot.REPO}`, owner: { login: Bot.OWNER } }) },
+      { path: '/installation/repositories', body: JSON.stringify({ repositories: [{ full_name: `${Bot.OWNER}/${Bot.REPO}` }] }) },
+      { path: `/repos/${Bot.OWNER}/${Bot.REPO}/git/ref/heads/rebuild/chrome-native-host-v2`, body: JSON.stringify({ ref: 'refs/heads/rebuild/chrome-native-host-v2', object: { sha: 'gate3sha' } }) }
+    ]);
+
+    // Complete setup
+    r = await request(gp3, 'GET', '/setup?installation_id=79&state=gate3-state', gg3);
+    assert.strictEqual(r.status, 200);
+
+    // Branch protection fails
+    r = await request(gp3, 'POST', '/api/branch-protection', gg3);
+    assert.strictEqual(r.status, 422);
+    assert.strictEqual(Bot.serverState.branchGate, 'unavailable');
+    assert.ok(Bot.serverState.branchGateError);
+
+    // Completion page must still have skip button enabled (not disabled)
+    const statusRes = await request(gp3, 'GET', '/api/status', { Host: gg3.Host });
+    const statusBody = JSON.parse(statusRes.body);
+    assert.ok(statusBody.html, 'status must return html after gate failure');
+    // Skip button must be present and NOT disabled
+    assert.ok(statusBody.html.includes('btn-skip-gate'), 'skip button must be present after gate failure');
+    assert.ok(!statusBody.html.includes('btn-skip-gate" disabled'), 'skip button must not be disabled after gate failure');
+    // Error message must be shown in the page
+    assert.ok(statusBody.html.includes('配置失败'), 'completion page must show gate failure message');
+    // Configure button should still be enabled for retry
+    assert.ok(statusBody.html.includes('btn-configure-gate"'), 'configure button must be present after failure');
+    ok('gate_failure_shows_error_skip_retain');
+
+    // After failure, skip must still work and close server
+    r = await request(gp3, 'POST', '/api/done', gg3);
+    assert.strictEqual(r.status, 200);
+    assert.deepStrictEqual(JSON.parse(r.body), { status: 'done' });
+    await new Promise(r2 => { if (Bot.serverState.server && Bot.serverState.server.listening) { Bot.serverState.server.once('close', r2); } else { r2(); } });
+    assert.ok(!Bot.serverState.server || !Bot.serverState.server.listening);
+    ok('gate_failure_skip_still_closes');
+
+    // Bot install must remain successful despite gate failure
+    const cfg = Bot.loadBotConfig();
+    assert.ok(cfg);
+    assert.strictEqual(Number(cfg.installation_id), 79);
+    ok('gate_failure_does_not_affect_bot_install');
+
+    gateMock3.restore();
     await closeServer();
   } finally { clean(); Bot.clearSensitiveMemory(); }
 
