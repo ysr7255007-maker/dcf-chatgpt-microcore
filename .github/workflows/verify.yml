@@ -29,6 +29,7 @@ jobs:
       - name: Verify compact result implementation
         run: |
           node --check chrome-extension/code-units/local-agent-dialogue/main.js
+          npm run build:chrome
           node tests/chrome-local-agent-dialogue.test.js
           npm run verify:chrome
       - name: Commit verified result
