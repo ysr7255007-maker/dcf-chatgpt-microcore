@@ -12,7 +12,7 @@ const code = fs.readFileSync(path.join(root, 'chrome-extension/code-units/local-
 assert(ref);
 assert(index.defaults.includes(ref.id));
 assert.strictEqual(index.units.length, 10);
-assert.strictEqual(ref.version, '1.0.0-rc.2-local-agent-dialogue.12');
+assert.strictEqual(ref.version, '1.0.0-rc.2-local-agent-dialogue.13');
 assert.strictEqual(ref.phase, 57);
 assert.strictEqual(ref.world_id, 'dcf-firstparty-local-agent-dialogue');
 assert.doesNotThrow(() => new Function(code));
@@ -71,7 +71,20 @@ for (const token of [
   '一键验收并回传',
   '检查最新助手回复',
   '历史消息只建立基线',
-  "type: 'unit.started'"
+  "type: 'unit.started'",
+  'function ensureRuntimeAlive(reason',
+  'WATCHDOG_INTERVAL_MS',
+  'OBSERVER_STALL_MS',
+  'diagnostics.observer_generation',
+  'diagnostics.last_mutation_at',
+  'diagnostics.last_consume_at',
+  'diagnostics.last_recovery_reason',
+  "ensureRuntimeAlive('watchdog')",
+  "ensureRuntimeAlive('visibility')",
+  "ensureRuntimeAlive('focus')",
+  'watchdogTimer',
+  'visibilityListener',
+  'focusListener'
 ]) assert(code.includes(token), `missing ${token}`);
 
 for (const token of [
@@ -161,5 +174,10 @@ console.log(JSON.stringify({
   reasoning_mode_covers_all_assistant_turns: true,
   diagnostic_mode_is_bounded_and_structured: true,
   raw_messages_not_returned: true,
-  persisted_model_is_canonical: true
+  persisted_model_is_canonical: true,
+  ensure_runtime_alive_watchdog: true,
+  observer_stall_detection: true,
+  root_replacement_recovery: true,
+  visibility_focus_supplementary: true,
+  bounded_diagnostics: true
 }, null, 2));

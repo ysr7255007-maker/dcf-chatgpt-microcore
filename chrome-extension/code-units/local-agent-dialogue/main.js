@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.local-agent-dialogue';
-  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.12';
+  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.13';
   const LOCAL_AGENT_ID = 'dcf.firstparty.local-agent';
   const PANEL_ID = 'dcf-panel-local-agent';
   const SHELL_ID = 'dcf-chrome-shell-host';
@@ -65,6 +65,18 @@
   let mountTimer = null;
   let rootTimer = null;
   let elapsedTimer = null;
+  let watchdogTimer = null;
+
+  const WATCHDOG_INTERVAL_MS = 4000;
+  const OBSERVER_STALL_MS = 12000;
+  const diagnostics = {
+    observer_generation: 0,
+    last_mutation_at: 0,
+    last_consume_at: 0,
+    last_watchdog_at: 0,
+    last_recovery_reason: '',
+    recoveries: 0
+  };
 
   const queue = [];
   const baselineNodes = new WeakSet();
@@ -462,8 +474,11 @@
     if (!root || root === conversationRoot) return false;
     conversationObserver?.disconnect();
     conversationRoot = root;
+    diagnostics.observer_generation += 1;
+    diagnostics.last_mutation_at = Date.now();
     baselineCurrentConversation(root);
     conversationObserver = new MutationObserver((records) => {
+      diagnostics.last_mutation_at = Date.now();
       for (const record of records) {
         const direct = containingAssistantNode(record.target);
         if (direct && direct === currentCandidate) scheduleInspect(direct);
@@ -491,6 +506,7 @@
   function enqueue(requestData) {
     if (activeJob?.request.id === requestData.id || queue.some((item) => item.id === requestData.id)) return;
     queue.push(requestData);
+    diagnostics.last_consume_at = Date.now();
     state.last_request_id = requestData.id;
     state.stage = 'received';
     state.status = '已识别新的完整工件，等待委派';
@@ -1065,6 +1081,57 @@
     return true;
   }
 
+  function ensureRuntimeAlive(reason = 'watchdog') {
+    if (destroyed) return;
+    diagnostics.last_watchdog_at = Date.now();
+    let recovered = false;
+
+    const root = pageConversationRoot();
+    if (root && root !== conversationRoot) {
+      attachConversationRoot();
+      diagnostics.last_recovery_reason = `root_replaced:${reason}`;
+      diagnostics.recoveries += 1;
+      recovered = true;
+    } else if (root && conversationRoot && !conversationRoot.isConnected) {
+      conversationObserver?.disconnect();
+      conversationRoot = null;
+      attachConversationRoot();
+      diagnostics.last_recovery_reason = `root_detached:${reason}`;
+      diagnostics.recoveries += 1;
+      recovered = true;
+    }
+
+    if (!recovered && root && root === conversationRoot) {
+      const now = Date.now();
+      const stallMs = now - diagnostics.last_mutation_at;
+      const hasNewContent = latestAssistantNode() && !baselineNodes.has(latestAssistantNode());
+      if (stallMs > OBSERVER_STALL_MS && hasNewContent) {
+        diagnostics.last_recovery_reason = `observer_stall:${reason}:stall_${Math.round(stallMs / 1000)}s`;
+        diagnostics.recoveries += 1;
+        recovered = true;
+      }
+      if (hasNewContent && currentCandidate !== latestAssistantNode()) {
+        currentCandidate = latestAssistantNode();
+        scheduleInspect(currentCandidate, true);
+        diagnostics.last_consume_at = Date.now();
+        if (!recovered) {
+          diagnostics.last_recovery_reason = `candidate_refresh:${reason}`;
+          diagnostics.recoveries += 1;
+        }
+      }
+    }
+
+    if (!mountHost?.isConnected || !mountRoot) {
+      ensurePanelMount();
+      if (mountHost?.isConnected) {
+        diagnostics.last_recovery_reason = `remount:${reason}`;
+        diagnostics.recoveries += 1;
+      }
+    }
+
+    attachShellObserver();
+  }
+
   function attachWatchers() {
     documentObserver = new MutationObserver(() => {
       attachShellObserver();
@@ -1096,23 +1163,31 @@
     panelObserver?.disconnect();
     if (shellReadyListener) document.removeEventListener('dcf:shell-ready', shellReadyListener, true);
     if (panelReadyListener) document.removeEventListener('dcf:panel-ready', panelReadyListener, true);
+    document.removeEventListener('visibilitychange', visibilityListener);
+    window.removeEventListener('focus', focusListener);
     clearInterval(mountTimer);
     clearInterval(rootTimer);
     clearInterval(elapsedTimer);
+    clearInterval(watchdogTimer);
     mountHost?.remove();
     queue.length = 0;
     activeJob = null;
   }
 
+  let visibilityListener = null;
+  let focusListener = null;
+
   globalThis[GLOBAL_KEY] = {
     version: UNIT_VERSION,
     destroy,
+    ensureRuntimeAlive,
+    diagnostics,
     intake_model: 'new-assistant-event-stream',
     request_markers: { start: MARKERS.request[0], end: MARKERS.request[1] },
     result_markers: { start: MARKERS.result[0], end: MARKERS.result[1] },
     permission_request_markers: { start: MARKERS.permissionRequest[0], end: MARKERS.permissionRequest[1] },
     permission_decision_markers: { start: MARKERS.permissionDecision[0], end: MARKERS.permissionDecision[1] },
-    lifecycle: { timeout_basis: 'observable-idle-time', permission_wait_pauses_idle_timeout: true }
+    lifecycle: { timeout_basis: 'observable-idle-time', permission_wait_pauses_idle_timeout: true, watchdog_interval_ms: WATCHDOG_INTERVAL_MS, observer_stall_ms: OBSERVER_STALL_MS }
   };
 
   try {
@@ -1120,6 +1195,11 @@
     mountTimer = setInterval(ensurePanelMount, 1200);
     rootTimer = setInterval(attachConversationRoot, 1200);
     elapsedTimer = setInterval(() => { if (activeJob) render(); }, 1000);
+    watchdogTimer = setInterval(() => ensureRuntimeAlive('watchdog'), WATCHDOG_INTERVAL_MS);
+    visibilityListener = () => { if (!document.hidden) ensureRuntimeAlive('visibility'); };
+    focusListener = () => ensureRuntimeAlive('focus');
+    document.addEventListener('visibilitychange', visibilityListener);
+    window.addEventListener('focus', focusListener);
     loadState().then(async () => {
       for (let attempt = 0; attempt < 65 && !ensurePanelMount(); attempt += 1) await sleep(80);
       if (!ensurePanelMount()) throw new Error('对话闭环未能挂载到本机 Agent 面板');
