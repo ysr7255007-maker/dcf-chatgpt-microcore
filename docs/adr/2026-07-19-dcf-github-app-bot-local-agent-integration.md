@@ -33,7 +33,7 @@ Bot 凭据保存在本机用户配置目录（`~/Library/Application Support/DCF
    - Installation token 仅在当前操作期间使用，不保存到磁盘；
    - JWT 有效期不超过 10 分钟，每次操作重新生成；
 - Agent 不持久化任何 GitHub 凭据，只保存 App ID、Installation ID 和私钥路径等非敏感标识。
-   - 引导会核对 `/installation/repositories` 返回的 token 范围仅含目标仓库、`/app` 为当前 App、仓库 owner 与精确候选 ref/SHA；App 的安装范围可能更大，但本次验证 token 不会更大。
+   - 引导会核对 JWT 调用的 `/app` 为当前 App、JWT 调用的 `/app/installations/{id}` 返回的 account.login、repository_selection 和 permissions 符合预期、installation token 调用的 `/installation/repositories` 范围仅含目标仓库、仓库 owner 与精确候选 ref/SHA；App 的安装范围可能更大，但本次验证 token 不会更大。
 
 4. **浏览器插件不直接持有私钥**：
    - 插件不读取私钥文件；

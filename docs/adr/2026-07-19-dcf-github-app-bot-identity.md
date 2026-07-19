@@ -35,7 +35,7 @@ DCF Local Agent 已具备通过 OpenCode HTTP API 创建会话、执行任务、
    - 目录权限 0700，私钥和 secret 文件权限 0600；
    - 安装令牌（installation token）仅在验证时临时生成，不持久化；
 - 私钥、client_secret、webhook_secret 不在终端、网页、日志或测试输出中显示。
-   - 敏感文件使用拒绝符号链接、0600 随机临时文件、同步和原子 rename 的事务写入；出现失败会清理临时/半成品文件。
+   - 敏感文件使用拒绝符号链接、0600 随机独占临时文件、同步和原子 link（NOREPLACE 语义，目标存在时原子失败）的事务写入，提交后清理临时文件；出现失败会清理临时/半成品文件。
 
 4. **仓库内不保存敏感信息**：
    - `.gitignore` 只添加注释说明；
@@ -69,6 +69,11 @@ DCF Local Agent 已具备通过 OpenCode HTTP API 创建会话、执行任务、
 - 自动化测试验证凭据不进入仓库；
 - 自动化测试验证安装令牌不持久化；
 - 自动化测试验证 CSRF state 保护；
+- 自动化测试验证 /app 和 /app/installations/{id} 使用 JWT，installation token 只用于仓库和 ref 操作；
+- 自动化测试验证原子写入使用 linkSync NOREPLACE 语义，不会覆盖已有目标；
+- 自动化测试验证已完成安装验证的向导服务器自动关闭；
+- 自动化测试验证 pending-install 状态的保存、恢复、同 installation 重试和不同 installation 拒绝；
+- 自动化测试验证完整无网络状态机（manifest 回调 → 凭据保存 → JWT 身份验证 → 限定 installation token → 仓库/ref 验证 → 完成页 → 服务关闭）；
 - 实际操作验证：待用户通过向导完成从创建 GitHub App 到安装并验证权限的全流程。真实 GitHub App 创建、manifest 接受与安装仍待用户在本机向导现场完成。自动化验证不宣称已创建真实 App。
 
 ## Rejected alternatives
