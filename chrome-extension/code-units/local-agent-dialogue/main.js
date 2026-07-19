@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.local-agent-dialogue';
-  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.11';
+  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.12';
   const LOCAL_AGENT_ID = 'dcf.firstparty.local-agent';
   const PANEL_ID = 'dcf-panel-local-agent';
   const SHELL_ID = 'dcf-chrome-shell-host';
@@ -703,9 +703,10 @@
 
   async function returnPermissionRequest(job, permission, snap) {
     const id = permissionId(permission);
-    if (!id || job.notified_permissions.has(id)) return;
-    job.notified_permissions.add(id);
+    if (!id) return;
     job.awaiting_permission_id = id;
+    if (job.notified_permissions.has(id)) return;
+    job.notified_permissions.add(id);
     counters.permission_requests += 1;
     state.stage = 'needs_user';
     state.status = '权限请求已送回当前对话，等待判断';
@@ -807,7 +808,6 @@
         state.status = 'OpenCode 正在等待回答；当前阶段仅自动转交权限请求';
         render();
       } else {
-        if (job.awaiting_permission_id) job.awaiting_permission_id = '';
         const assistantResult = latestAssistantText(snap.messages);
         const terminalStatus = ['idle', 'completed'].includes(snap.status_type);
         if ((job.response_state === 'fulfilled' || terminalStatus) && assistantResult) {
