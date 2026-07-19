@@ -44,6 +44,7 @@ jobs:
           git rm .github/workflows/one-shot-dialogue-compact-result.yml .github/scripts/compact-dialogue-patch.py
           git add chrome-extension/code-units/local-agent-dialogue/main.js \
             tests/chrome-local-agent-dialogue.test.js \
+            tests/chrome-build.integration.test.js \
             releases/chrome/official-index.json \
             docs/adr/2026-07-19-dcf-dialogue-compact-result-boundary.md \
             docs/adr/status-index.md \
