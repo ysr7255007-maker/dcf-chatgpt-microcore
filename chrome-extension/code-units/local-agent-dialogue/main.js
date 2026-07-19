@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.local-agent-dialogue';
-  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.15';
+  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.16';
   const LOCAL_AGENT_ID = 'dcf.firstparty.local-agent';
   const PANEL_ID = 'dcf-panel-local-agent';
   const SHELL_ID = 'dcf-chrome-shell-host';
@@ -98,8 +98,11 @@
     started_at: 0,
     progress: { status_type: '', messages: 0, todo: 0, diff: 0, permissions: 0, questions: 0, preview: '', last_activity_at: '' },
     control_plane: { seq: 0, last_progress_at: 0, last_stage_sent: '', workdir: '', branch: '', head: '', changed_files: 0, test_status: '', commit_status: '', push_status: '', blocked_reason: '', permission_id: '' },
-    last_terminal: null
+    last_terminal: null,
+    completed_commands: []
   };
+  const RESOLVE_REQUEST_ID_RE = /^[A-Za-z0-9._:-]{1,128}$/;
+  const RESOLVE_SESSION_ID_RE = /^ses_[A-Za-z0-9_-]+$/;
 
   function normalizeSettings(raw = {}) {
     const legacyTimeout = raw.idle_timeout_ms ?? raw.timeout_ms;
@@ -123,6 +126,7 @@
     outbox.items = Array.isArray(data.outbox) ? data.outbox.filter((item) => item && item.text && item.state !== 'delivered').slice(-8) : [];
     outbox.status = outbox.items.length ? `恢复 ${outbox.items.length} 个待回传工件` : '';
     if (outbox.items.length) scheduleOutboxPump();
+    state.completed_commands = list(data.completed_commands).map(String).slice(-100);
     if (data.active_task && typeof data.active_task === 'object' && !activeJob) {
       const task = data.active_task;
       if (!['completed', 'failed', 'cancelled'].includes(task.state) && task.request_id && task.session_id) {
@@ -177,6 +181,7 @@
         last_request_id: state.last_request_id,
         last_session_id: state.last_session_id,
         last_terminal: state.last_terminal,
+        completed_commands: state.completed_commands.slice(-100),
         outbox: outbox.items.slice(-5),
         active_task: activeJob ? {
           request_id: activeJob.request.id, session_id: activeJob.session_id,
@@ -251,21 +256,68 @@
     };
   }
 
+  function resolveControlTarget(parsed) {
+    if (parsed.target === 'current') {
+      if (!activeJob) return { error: 'no_active_task', message: '当前没有活动任务' };
+      return { request_id: activeJob.request.id, session_id: activeJob.session_id };
+    }
+    if (parsed.request_id && parsed.session_id) {
+      if (!activeJob) {
+        const lt = state.last_terminal;
+        if (lt && lt.request_id === parsed.request_id && lt.session_id === parsed.session_id) return { request_id: lt.request_id, session_id: lt.session_id, terminal: true };
+        return { error: 'no_active_task', message: '无匹配活动任务' };
+      }
+      if (activeJob.request.id !== parsed.request_id || activeJob.session_id !== parsed.session_id) {
+        return { error: 'session_mismatch', message: `显式 session ${parsed.session_id} 与当前活动 session ${activeJob.session_id} 不匹配` };
+      }
+      return { request_id: parsed.request_id, session_id: parsed.session_id };
+    }
+    if (parsed.request_id) {
+      if (activeJob && activeJob.request.id === parsed.request_id) return { request_id: parsed.request_id, session_id: activeJob.session_id };
+      const lt = state.last_terminal;
+      if (lt && lt.request_id === parsed.request_id) return { request_id: lt.request_id, session_id: lt.session_id, terminal: true };
+      const queued = queue.filter((item) => item.id === parsed.request_id);
+      if (queued.length > 1) return { error: 'ambiguous_target', message: `request_id ${parsed.request_id} 匹配多个等待中的任务` };
+      if (queued.length === 1) return { request_id: queued[0].id, session_id: '', queued: true };
+      return { error: 'no_active_task', message: `request_id ${parsed.request_id} 无匹配活动或等待任务` };
+    }
+    return { error: 'invalid_target', message: '无法解析控制命令目标' };
+  }
+
+  function structuredErrorPayload(code, message, extra) {
+    const payload = { schema: 'dcf.local-agent.progress.v1', error: { code, message }, timestamp: new Date().toISOString() };
+    if (extra) Object.assign(payload, extra);
+    return payload;
+  }
+
   async function executeControl(parsed) {
+    if (parsed.command_id && state.completed_commands.includes(parsed.command_id)) {
+      const t = { schema: 'dcf.local-agent.progress.v1', timestamp: new Date().toISOString(), command_id: parsed.command_id, state: 'completed', summary: `ACK ${parsed.command}: command_id ${parsed.command_id} 已执行过，幂等返回`, ack: { command: parsed.command, status: 'already_completed', command_id: parsed.command_id } };
+      await sendArtifact(artifact(MARKERS.progress, t), true).catch(() => {});
+      return;
+    }
+    const resolved = resolveControlTarget(parsed);
+    if (resolved.error) {
+      await sendArtifact(artifact(MARKERS.progress, structuredErrorPayload(resolved.error, resolved.message, { command_id: parsed.command_id || '' })), true).catch(() => {});
+      return;
+    }
+    parsed.request_id = resolved.request_id;
+    parsed.session_id = resolved.session_id;
     const job = activeJob;
     if (!job) {
       if (parsed.command === 'cancel') {
-        const lt = state.last_terminal;
-        if (lt && lt.request_id === parsed.request_id && lt.session_id === parsed.session_id) {
-          const t = { schema: 'dcf.local-agent.progress.v1', request_id: parsed.request_id, session_id: parsed.session_id, seq: ++state.control_plane.seq, timestamp: new Date().toISOString(), state: lt.status, stage: lt.status, summary: `ACK cancel: 任务已处于终态 ${lt.status}，幂等返回`, last_activity_at: new Date().toISOString(), runtime_ms: 0, idle_ms: 0, workdir: '', branch: '', head: '', changed_files: 0, diff_summary: [], test_status: '', commit_status: '', push_status: '', blocked_reason: '', permission_id: '', ack: { command: 'cancel', status: 'already_terminal', terminal_status: lt.status } };
-          await sendArtifact(artifact(MARKERS.progress, t), true).catch(() => {});
-          return;
-        }
-        throw new Error(`cancel 拒绝：未知地址 ${parsed.request_id}/${parsed.session_id}，无匹配终态记录`);
+        const t = { schema: 'dcf.local-agent.progress.v1', request_id: parsed.request_id, session_id: parsed.session_id, seq: ++state.control_plane.seq, timestamp: new Date().toISOString(), state: 'completed', stage: 'completed', summary: `ACK cancel: 终态任务，幂等返回`, last_activity_at: new Date().toISOString(), runtime_ms: 0, idle_ms: 0, changed_files: 0, diff_summary: [], blocked_reason: '', permission_id: '', ack: { command: 'cancel', status: 'already_terminal' } };
+        await sendArtifact(artifact(MARKERS.progress, t), true).catch(() => {});
+        return;
       }
-      throw new Error(`控制命令 ${parsed.command} 拒绝：当前没有活动任务`);
+      if (resolved.queued) {
+        const t = { schema: 'dcf.local-agent.progress.v1', request_id: parsed.request_id, session_id: '', seq: ++state.control_plane.seq, timestamp: new Date().toISOString(), state: 'queued', stage: 'received', summary: `ACK ${parsed.command}: request_id ${parsed.request_id} 在等待队列中，尚未创建 session`, last_activity_at: new Date().toISOString(), runtime_ms: 0, idle_ms: 0, changed_files: 0, diff_summary: [], blocked_reason: '', permission_id: '', ack: { command: parsed.command, status: 'queued' } };
+        await sendArtifact(artifact(MARKERS.progress, t), true).catch(() => {});
+        return;
+      }
+      await sendArtifact(artifact(MARKERS.progress, structuredErrorPayload('no_active_task', `控制命令 ${parsed.command} 拒绝：当前没有活动任务`, { command_id: parsed.command_id || '' })), true).catch(() => {});
+      return;
     }
-    if (parsed.request_id !== job.request.id || parsed.session_id !== job.session_id) throw new Error(`控制命令寻址不匹配：期望 ${job.request.id}/${job.session_id}`);
     const terminal = ['completed', 'failed', 'cancelled'];
     if (parsed.command === 'steer' && terminal.includes(state.stage)) {
       await sendArtifact(artifact(MARKERS.progress, controlAck(job, 'steer', 'rejected', `任务已处于终态 ${state.stage}`)), true).catch(() => {});
@@ -275,6 +327,7 @@
       const snap = job.last_snapshot || await snapshot(job);
       const ack = controlAck(job, 'status', 'ok', '立即回传检查点');
       ack.checkpoint = { status_type: snap.status_type, messages: (snap.messages || []).length, todo: (snap.todo || []).length, diff: (snap.diff || []).length, permissions: (snap.permissions || []).length, preview: latestAssistantText(snap.messages || []).slice(-900) };
+      if (parsed.command_id) { state.completed_commands = [...state.completed_commands, parsed.command_id].slice(-100); persist().catch(() => {}); }
       await sendArtifact(artifact(MARKERS.progress, ack), true).catch(() => {});
       return;
     }
@@ -283,6 +336,7 @@
       if (!instruction) throw new Error('steer 缺少 instruction');
       await request(`/session/${encodeURIComponent(job.session_id)}/message`, { config: job.config, method: 'POST', body: { parts: [{ type: 'text', text: `[DCF steer] ${instruction}` }] }, timeout: 30000 });
       job.last_activity_at = Date.now();
+      if (parsed.command_id) { state.completed_commands = [...state.completed_commands, parsed.command_id].slice(-100); persist().catch(() => {}); }
       await sendArtifact(artifact(MARKERS.progress, controlAck(job, 'steer', 'ok', '已注入原 session')), true).catch(() => {});
       return;
     }
@@ -317,6 +371,7 @@
       state.stage = 'cancelled'; state.status = '任务已中止';
       job.cancel_confirmed = true;
       state.last_terminal = { request_id: job.request.id, session_id: job.session_id, status: 'cancelled', at: new Date().toISOString() };
+      if (parsed.command_id) { state.completed_commands = [...state.completed_commands, parsed.command_id].slice(-100); persist().catch(() => {}); }
       sendArtifact(artifact(MARKERS.progress, controlAck(job, parsed.command, 'ok', '执行器已中止并确认停止')), true);
       render();
       return;
@@ -585,10 +640,25 @@
       if (payload?.schema !== 'dcf.local-agent.control.v1') throw new Error('控制命令 schema 无效');
       const command = String(payload.command || '').trim().toLowerCase();
       if (!['status', 'steer', 'cancel', 'cancel_after_checkpoint'].includes(command)) throw new Error(`不支持的控制命令：${command}`);
-      const control = { kind: 'control', command, request_id: String(payload.request_id || ''), session_id: String(payload.session_id || ''), instruction: String(payload.instruction || '').slice(0, 30000) };
-      if (!/^[A-Za-z0-9._:-]{1,128}$/.test(control.request_id)) throw new Error('控制命令 request_id 无效');
-      if (!/^ses_[A-Za-z0-9_-]+$/.test(control.session_id)) throw new Error('控制命令 session_id 无效');
-      return control;
+      const command_id = String(payload.command_id || '').trim();
+      const target = String(payload.target || '').trim().toLowerCase();
+      const request_id = String(payload.request_id || '').trim();
+      const session_id = String(payload.session_id || '').trim();
+      const instruction = String(payload.instruction || '').slice(0, 30000);
+      const hasTarget = target === 'current';
+      const hasRequestId = RESOLVE_REQUEST_ID_RE.test(request_id);
+      const hasSessionId = RESOLVE_SESSION_ID_RE.test(session_id);
+      const validModes = hasTarget + hasRequestId + hasSessionId;
+      if (command_id && !RESOLVE_REQUEST_ID_RE.test(command_id)) throw new Error('控制命令 command_id 无效');
+      if (command_id && !hasTarget && !hasRequestId) throw new Error('控制命令必须提供 target=current、request_id 或 request_id+session_id');
+      if (!command_id && !hasTarget && !hasRequestId) throw new Error('控制命令缺少 command_id 且未提供 target 或 request_id');
+      if (hasTarget) {
+        if (hasRequestId || hasSessionId) throw new Error('target=current 时不得同时提供 request_id 或 session_id');
+        return { kind: 'control', command, command_id, target: 'current', request_id: '', session_id: '', instruction };
+      }
+      if (hasRequestId && hasSessionId) return { kind: 'control', command, command_id, target: '', request_id, session_id, instruction };
+      if (hasRequestId) return { kind: 'control', command, command_id, target: '', request_id, session_id: '', instruction };
+      throw new Error('控制命令无法解析目标：提供 request_id 或 target=current');
     }
     const decisionEnvelope = extractEnvelope(text, MARKERS.permissionDecision);
     if (decisionEnvelope) {
@@ -1218,6 +1288,7 @@
     state.processed_ids = [...state.processed_ids.filter((id) => id !== requestData.id), requestData.id].slice(-80);
     state.stage = 'submitting';
     state.status = '会话已创建，正在提交同步消息请求';
+    emitProgress(job, null, true);
     await persist();
     render();
     request(`/session/${encodeURIComponent(session_id)}/message`, {
@@ -1347,10 +1418,10 @@
     if (action === 'acceptance') return runAcceptance();
     if (action === 'latest') return inspectLatestAssistant();
     if (action === 'clear') return clearProcessed();
-    if (action === 'ctl-status' && activeJob) { await executeControl({ kind: 'control', command: 'status', request_id: activeJob.request.id, session_id: activeJob.session_id, instruction: '' }); return; }
-    if (action === 'ctl-steer' && activeJob) { const instruction = prompt('输入要注入原 session 的补充指令：'); if (instruction && instruction.trim()) await executeControl({ kind: 'control', command: 'steer', request_id: activeJob.request.id, session_id: activeJob.session_id, instruction: instruction.trim() }); return; }
-    if (action === 'ctl-cancel' && activeJob) { await executeControl({ kind: 'control', command: 'cancel', request_id: activeJob.request.id, session_id: activeJob.session_id, instruction: '' }); return; }
-    if (action === 'ctl-cancel-cp' && activeJob) { await executeControl({ kind: 'control', command: 'cancel_after_checkpoint', request_id: activeJob.request.id, session_id: activeJob.session_id, instruction: '' }); return; }
+    if (action === 'ctl-status' && activeJob) { await executeControl({ kind: 'control', command: 'status', command_id: `ctl-ui-${hash(activeJob.request.id)}-${Date.now()}`, request_id: activeJob.request.id, session_id: activeJob.session_id }); return; }
+    if (action === 'ctl-steer' && activeJob) { const instruction = prompt('输入要注入原 session 的补充指令：'); if (instruction && instruction.trim()) await executeControl({ kind: 'control', command: 'steer', command_id: `ctl-ui-${hash(activeJob.request.id)}-${Date.now()}`, request_id: activeJob.request.id, session_id: activeJob.session_id, instruction: instruction.trim() }); return; }
+    if (action === 'ctl-cancel' && activeJob) { await executeControl({ kind: 'control', command: 'cancel', command_id: `ctl-ui-${hash(activeJob.request.id)}-${Date.now()}`, request_id: activeJob.request.id, session_id: activeJob.session_id }); return; }
+    if (action === 'ctl-cancel-cp' && activeJob) { await executeControl({ kind: 'control', command: 'cancel_after_checkpoint', command_id: `ctl-ui-${hash(activeJob.request.id)}-${Date.now()}`, request_id: activeJob.request.id, session_id: activeJob.session_id }); return; }
     if (action !== 'return') return;
     const pending = outbox.items.find((item) => item.state === 'awaiting_manual_send' || item.state === 'click_unconfirmed' || item.state === 'recoverable_failure');
     if (!pending && !pendingArtifact) { state.status = '当前没有待回传工件'; render(); return; }
@@ -1542,7 +1613,9 @@
     progress_markers: { start: MARKERS.progress[0], end: MARKERS.progress[1] },
     control_markers: { start: MARKERS.control[0], end: MARKERS.control[1] },
     lifecycle: { timeout_basis: 'observable-idle-time', permission_wait_pauses_idle_timeout: true, watchdog_interval_ms: WATCHDOG_INTERVAL_MS, observer_stall_ms: OBSERVER_STALL_MS, heartbeat_interval_ms: HEARTBEAT_INTERVAL_MS, stuck_threshold_ms: STUCK_THRESHOLD_MS },
-    control_plane: { supported_commands: ['status', 'steer', 'cancel', 'cancel_after_checkpoint'], progress_schema: 'dcf.local-agent.progress.v1', control_schema: 'dcf.local-agent.control.v1' }
+    control_plane: { supported_commands: ['status', 'steer', 'cancel', 'cancel_after_checkpoint', 'target_current', 'request_id_only', 'exact_addressing'], progress_schema: 'dcf.local-agent.progress.v1', control_schema: 'dcf.local-agent.control.v1' },
+    resolve_control_target: resolveControlTarget,
+    completed_commands: state.completed_commands
   };
 
   try {
