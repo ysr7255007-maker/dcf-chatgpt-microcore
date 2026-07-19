@@ -1,7 +1,7 @@
 # ADR: DCF GitHub App Bot 本地 Agent 集成接口
 
 Date: 2026-07-19  
-Status: accepted
+Status: automated verification complete, real GitHub App creation and installation pending user acceptance
 
 ## Context
 

@@ -1,7 +1,7 @@
 # ADR: DCF GitHub App Bot 身份与治理边界
 
 Date: 2026-07-19  
-Status: accepted
+Status: automated verification complete, real GitHub App creation and installation pending user acceptance
 
 ## Context
 
@@ -69,7 +69,7 @@ DCF Local Agent 已具备通过 OpenCode HTTP API 创建会话、执行任务、
 - 自动化测试验证凭据不进入仓库；
 - 自动化测试验证安装令牌不持久化；
 - 自动化测试验证 CSRF state 保护；
-- 实际操作验证：待用户通过向导完成从创建 GitHub App 到安装并验证权限的全流程；自动化验证不宣称已创建真实 App。
+- 实际操作验证：待用户通过向导完成从创建 GitHub App 到安装并验证权限的全流程。真实 GitHub App 创建、manifest 接受与安装仍待用户在本机向导现场完成。自动化验证不宣称已创建真实 App。
 
 ## Rejected alternatives
 

@@ -75,7 +75,33 @@ async function close() { if (Bot.serverState.server) await new Promise(resolve =
   } finally { clean(); Bot.clearSensitiveMemory(); }
 
   const escaped = Bot.renderCompleteHTML({ app_slug: '<script>alert(1)</script>', app_id: '<x>', installation_id: 1, repository: '<img>', permission_verification: { candidate_ref: '<script>', all_verified: true } }, { app_slug: '<script>' });
-  assert.ok(!escaped.includes('<script>alert')); assert.match(escaped, /&lt;script&gt;/); ok('completion_html_escapes_corrupt_config');
+  assert.ok(!escaped.includes('<script>alert')); assert.match(escaped, /&lt;script&gt;/); assert.ok(escaped.includes('App 安装')); assert.ok(escaped.includes('权限验证')); assert.ok(escaped.includes('分支门禁')); ok('completion_html_escapes_corrupt_config');
   const a = Bot.generateCSRFState(), b = Bot.generateCSRFState(); assert.match(a, /^[0-9a-f]{64}$/); assert.notStrictEqual(a, b); ok('unpredictable_csrf_state');
+
+  // Completion page has three distinct sections: App installation, permission verification, branch gate
+  const sections = Bot.renderCompleteHTML({
+    app_slug: 'dcf-bot', app_id: '1', installation_id: 1,
+    repository: Bot.REPOSITORY,
+    permission_verification: { all_verified: true, contents: 'write', pull_requests: 'write', candidate_ref: Bot.CANDIDATE_REF }
+  }, { app_slug: 'dcf-bot' });
+  assert.ok(sections.includes('<section><h2>App 安装'));
+  assert.ok(sections.includes('<section><h2>权限验证'));
+  assert.ok(sections.includes('<section><h2>分支门禁'));
+  ok('completion_page_three_state_sections');
+
+  sandbox();
+  try {
+    Bot.serverState.currentStep = 'complete-warn';
+    Bot.saveBotConfig({ schema: 'dcf.github-app-bot.config.v1', app_id: 1, app_slug: 'bot', installation_id: 7, repository: Bot.REPOSITORY, permission_verification: { all_verified: false } });
+    Bot.saveCredentials({ id: 1, slug: 'bot', client_id: 'x', client_secret: 'y', webhook_secret: 'z' }, 'key');
+    Bot.serverState.server = new (require('events').EventEmitter)();
+    Bot.serverState.port = 12345;
+    let captured;
+    const fakeRes = { writeHead: (code, headers) => { captured = { code, headers }; }, end: (body) => { captured.body = JSON.parse(body); } };
+    Bot.handleStatus(fakeRes);
+    assert.strictEqual(captured.body.step, 'complete-warn');
+    assert.strictEqual(captured.body.permission_verified, false);
+    ok('handle_status_preserves_complete_warn');
+  } finally { clean(); Bot.clearSensitiveMemory(); }
   console.log(JSON.stringify({ ok: true, total: tests.length, passed: tests.length, tests }, null, 2));
 })().catch(error => { console.error(error.stack || error.message); process.exitCode = 1; });
