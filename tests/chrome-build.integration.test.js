@@ -25,12 +25,12 @@ for (const unit of index.units) {
 }
 const localAgent = index.units.find((unit) => unit.id === 'dcf.firstparty.local-agent');
 assert(localAgent);
-assert.strictEqual(localAgent.version, '1.0.0-rc.2-local-agent.3');
+assert.strictEqual(localAgent.version, '1.0.0-rc.2-local-agent.4');
 assert.strictEqual(localAgent.default_enabled, true);
 assert.strictEqual(localAgent.phase, 55);
 const dialogue = index.units.find((unit) => unit.id === 'dcf.firstparty.local-agent-dialogue');
 assert(dialogue);
-assert.strictEqual(dialogue.version, '1.0.0-rc.2-local-agent-dialogue.12');
+assert.strictEqual(dialogue.version, '1.0.0-rc.2-local-agent-dialogue.13');
 assert.strictEqual(dialogue.default_enabled, true);
 assert.strictEqual(dialogue.phase, 57);
 const manager = index.units.find((unit) => unit.id === 'dcf.firstparty.plugin-manager');

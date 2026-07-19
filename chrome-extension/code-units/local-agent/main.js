@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.local-agent';
-  const UNIT_VERSION = '1.0.0-rc.2-local-agent.3';
+  const UNIT_VERSION = '1.0.0-rc.2-local-agent.4';
   const PANEL_ID = 'local-agent';
   const HOST_ID = 'dcf-panel-local-agent';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_LOCAL_AGENT__';
@@ -533,7 +533,7 @@
     if (!destroyed && shouldPoll()) {
       pollTimer = setTimeout(async () => {
         try { await refreshSelected(); render(); schedulePoll(); }
-        catch (error) { setError(error); }
+        catch (error) { setError(error); schedulePoll(); }
       }, state.config.poll_interval_ms);
     }
   }
