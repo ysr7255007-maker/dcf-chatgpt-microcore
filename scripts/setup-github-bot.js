@@ -101,7 +101,12 @@ function httpsRequest(method, url, body, headers) {
     const opts = {
       hostname: u.hostname, port: u.port || 443,
       path: u.pathname + u.search, method,
-      headers: { 'Accept': 'application/vnd.github+json', ...headers }
+      headers: {
+        'Accept': 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+        'User-Agent': 'dcf-github-app-bootstrap',
+        ...headers
+      }
     };
     if (body != null) {
       const data = typeof body === 'string' ? body : JSON.stringify(body);
@@ -277,17 +282,17 @@ function sanitizeForLog(obj, depth) {
 }
 
 // === Server ===
-function startServer() {
+function startServer(requestedPort = 0) {
   return new Promise((resolve, reject) => {
     const s = http.createServer((req, res) => handleRequest(req, res));
     s.on('error', (err) => {
       if (err.code === 'EADDRINUSE') {
-        reject(new Error(`端口被占用 (${LOOPBACK}:${s.address()?.port || '?'})。请释放端口后重试。`));
+        reject(new Error(`端口被占用 (${LOOPBACK}:${requestedPort || '自动选择的端口'})。请释放端口后重试。`));
       } else {
         reject(err);
       }
     });
-    s.listen(0, LOOPBACK, () => {
+    s.listen(requestedPort, LOOPBACK, () => {
       serverState.server = s;
       serverState.port = s.address().port;
       resolve(serverState.port);
@@ -617,6 +622,7 @@ function mainPageHTML() {
 
 <div id="intro" class="card info">
   <p>向导会执行以下步骤：</p>
+  <p>若 <code>DCF Local Agent Bot</code> 名称已存在，GitHub 会提示冲突；请在 GitHub 页面改为清晰的唯一名称后再创建。</p>
   <div class="step"><span class="step-icon">1.</span><span><strong>创建 GitHub App</strong> — 通过 Manifest 在 GitHub 注册专用 Bot 身份</span></div>
   <div class="step"><span class="step-icon">2.</span><span><strong>兑换并保存凭据</strong> — 凭据安全保存到本机用户配置目录</span></div>
   <div class="step"><span class="step-icon">3.</span><span><strong>安装到仓库</strong> — 安装到 <code>${REPOSITORY}</code> 并验证权限</span></div>

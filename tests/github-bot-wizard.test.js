@@ -4,6 +4,8 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const http = require('http');
+const https = require('https');
+const { EventEmitter } = require('events');
 
 const Bot = require('../scripts/setup-github-bot');
 
@@ -16,12 +18,13 @@ let origHome;
 
 function setupTempDir() {
   tmpDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'dcf-bot-test-'));
-  origHome = process.env.HOME;
-  process.env.HOME = tmpDir;
+  origHome = process.env.DCF_GITHUB_BOT_CONFIG_DIR;
+  process.env.DCF_GITHUB_BOT_CONFIG_DIR = tmpDir;
 }
 
 function cleanupTempDir() {
-  if (origHome !== undefined) process.env.HOME = origHome;
+  if (origHome === undefined) delete process.env.DCF_GITHUB_BOT_CONFIG_DIR;
+  else process.env.DCF_GITHUB_BOT_CONFIG_DIR = origHome;
   if (tmpDir && fs.existsSync(tmpDir)) {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -31,11 +34,13 @@ function cleanupTempDir() {
 (async () => {
   // 1. Manifest exact permissions
   (function testManifestExactPermissions() {
-    const m = Bot.createManifest(54321);
+    const m = Bot.createManifest(54321, 'setup-state');
     assert.strictEqual(m.name, Bot.APP_SUGGESTED_NAME);
     assert.strictEqual(m.public, false);
     assert.strictEqual(m.hook_attributes.active, false);
     assert.strictEqual(typeof m.setup_url, 'string');
+    assert.strictEqual(m.setup_url, 'http://127.0.0.1:54321/setup?state=setup-state');
+    assert.strictEqual(m.setup_on_update, false);
     assert.strictEqual(typeof m.redirect_url, 'string');
     assert.deepStrictEqual(m.default_permissions, {
       contents: 'write', pull_requests: 'write',
@@ -47,7 +52,7 @@ function cleanupTempDir() {
 
   // 2. No workflow or admin permission
   (function testNoWorkflowAdmin() {
-    const m = Bot.createManifest(54321);
+    const m = Bot.createManifest(54321, 'setup-state');
     const perms = m.default_permissions || {};
     assert.strictEqual(perms.workflows, undefined);
     assert.strictEqual(perms.administration, undefined);
@@ -87,34 +92,26 @@ function cleanupTempDir() {
     ok('jwt_generation');
   })();
 
-  // 5. Loopback-only binding
-  const srv5 = http.createServer(() => {});
-  await new Promise((resolve, reject) => {
-    srv5.listen(0, Bot.LOOPBACK, () => {
-      const addr = srv5.address();
-      try {
-        assert.strictEqual(addr.address, Bot.LOOPBACK);
-        ok('loopback_binding');
-      } catch (e) { fail('loopback_binding', e); }
-      srv5.close(resolve);
-    });
-    srv5.on('error', reject);
-  });
+  // 5. The real wizard server only binds loopback and can be cleaned up.
+  const loopbackPort = await Bot.startServer();
+  assert.strictEqual(Bot.serverState.server.address().address, Bot.LOOPBACK);
+  await new Promise(resolve => Bot.serverState.server.close(resolve));
+  Bot.serverState.server = null;
+  Bot.serverState.port = null;
+  assert.ok(loopbackPort > 0);
+  ok('loopback_binding_and_cleanup');
 
-  // 6. Port conflict
+  // 6. Actual wizard port conflict returns a safe diagnostic.
   const srv6 = http.createServer(() => {});
-  await new Promise((resolve) => {
+  await new Promise((resolve, reject) => {
     srv6.listen(0, Bot.LOOPBACK, () => {
       const port = srv6.address().port;
-      const srvConflict = http.createServer(() => {});
-      srvConflict.listen(port, Bot.LOOPBACK, () => {
-        srvConflict.close(); srv6.close();
-        fail('port_conflict', new Error('should have failed'));
-        resolve();
-      });
-      srvConflict.on('error', (err) => {
+      Bot.startServer(port).then(() => {
+        srv6.close();
+        reject(new Error('wizard unexpectedly acquired occupied port'));
+      }).catch((err) => {
         try {
-          assert.strictEqual(err.code, 'EADDRINUSE');
+          assert.match(err.message, /端口被占用/);
           ok('port_conflict');
         } catch (e) { fail('port_conflict', e); }
         srv6.close();
@@ -122,6 +119,32 @@ function cleanupTempDir() {
       });
     });
   });
+
+  // 6b. Conversion uses the documented endpoint with a no-network mock.
+  const realHttpsRequest = https.request;
+  let capturedRequest;
+  https.request = (options, callback) => {
+    capturedRequest = options;
+    const request = new EventEmitter();
+    request.write = () => {};
+    request.end = () => {
+      const response = new EventEmitter();
+      response.statusCode = 201;
+      callback(response);
+      response.emit('data', Buffer.from(JSON.stringify({ id: 7, slug: 'mock-bot' })));
+      response.emit('end');
+    };
+    return request;
+  };
+  try {
+    const converted = await Bot.exchangeCode('one-time-code');
+    assert.deepStrictEqual(converted, { id: 7, slug: 'mock-bot' });
+    assert.strictEqual(capturedRequest.method, 'POST');
+    assert.strictEqual(capturedRequest.path, '/app-manifests/one-time-code/conversions');
+    ok('manifest_conversion_mock_no_network');
+  } finally {
+    https.request = realHttpsRequest;
+  }
 
   // 7. Credential directory permissions
   (function testCredentialDirPermissions() {
@@ -182,10 +205,13 @@ function cleanupTempDir() {
       const c1 = Bot.loadCredentials();
       assert.strictEqual(c1.app_id, 999);
       assert.strictEqual(c1.app_slug, 'test-bot');
-      assert.strictEqual(c1.pem, true);
+      assert.strictEqual(c1.pem, undefined);
+      assert.strictEqual(c1.client_secret, 'x');
+      assert.strictEqual(c1.webhook_secret, 'y');
       // Second load returns same data
       const c2 = Bot.loadCredentials();
       assert.strictEqual(c2.app_id, 999);
+      assert.throws(() => Bot.saveCredentials({ id: 1000, slug: 'replacement' }, 'replacement-pem'), /不会静默覆盖/);
       ok('duplicate_detection');
     } finally { cleanupTempDir(); }
   })();
@@ -289,6 +315,30 @@ function cleanupTempDir() {
     assert.ok(files.some(f => f.includes('github-app-bot-identity')), 'identity ADR');
     assert.ok(files.some(f => f.includes('github-app-bot-local-agent-integration')), 'integration ADR');
     ok('adr_files_exist');
+  })();
+
+  // 21. Callback state expires and cancellation removes transient state.
+  (function testTimeoutAndCancellationCleanup() {
+    Bot.serverState.csrf = 'state';
+    Bot.serverState.setupState = 'setup';
+    Bot.serverState.expiresAt = Date.now() - 1;
+    assert.strictEqual(Bot.isExpired(), true);
+    Bot.clearSensitiveMemory();
+    assert.strictEqual(Bot.serverState.csrf, null);
+    assert.strictEqual(Bot.serverState.setupState, null);
+    ok('timeout_and_cancellation_cleanup');
+  })();
+
+  // 22. The stable local-Agent config cannot accidentally retain an
+  // installation token.
+  (function testInstallationTokenNotWritten() {
+    setupTempDir();
+    try {
+      Bot.saveBotConfig({ schema: 'dcf.github-app-bot.config.v1', app_id: 1, app_slug: 'x', installation_id: 2, repository: 'owner/repo', private_key_path: '/tmp/key', permission_verification: { contents: 'write' } });
+      const raw = fs.readFileSync(path.join(tmpDir, Bot.CONFIG_FILENAME), 'utf8');
+      assert.ok(!/access_token|installation_token|\"token\"/.test(raw));
+      ok('installation_token_not_written');
+    } finally { cleanupTempDir(); }
   })();
 
   // Print results
