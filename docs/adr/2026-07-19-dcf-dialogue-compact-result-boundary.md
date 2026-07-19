@@ -24,7 +24,7 @@ A final-text-only result solved the context problem, but it also removed two use
 ## Consequences
 
 - Normal dialogue remains extremely compact.
-- Reasoning review can assess the whole reasoning trajectory rather than only the final Assistant turn.
+- Reasoning review preserves every reasoning-bearing Assistant turn with its message identity and timestamps, so the remote assistant can inspect the full chronological trajectory rather than only the last turn.
 - Flow debugging receives enough structured evidence to identify wrong-model selection, truncation, tool failure or bridge state errors without copying the session transcript.
 - The plugin keeps raw messages internal for observation and manual recovery only.
 
