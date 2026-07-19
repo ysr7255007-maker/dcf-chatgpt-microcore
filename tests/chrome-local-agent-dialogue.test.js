@@ -11,8 +11,8 @@ const code = fs.readFileSync(path.join(root, 'chrome-extension/code-units/local-
 
 assert(ref);
 assert(index.defaults.includes(ref.id));
-assert.strictEqual(index.units.length, 10);
-assert.strictEqual(ref.version, '1.0.0-rc.2-local-agent-dialogue.14');
+assert.strictEqual(index.units.length, 11);
+assert.strictEqual(ref.version, '1.0.0-rc.2-local-agent-dialogue.15');
 assert.strictEqual(ref.phase, 57);
 assert.strictEqual(ref.world_id, 'dcf-firstparty-local-agent-dialogue');
 assert.doesNotThrow(() => new Function(code));
@@ -110,7 +110,18 @@ for (const token of [
   '查看进展',
   '补充指令',
   '中止任务',
-  '保存检查点后中止'
+  '保存检查点后中止',
+  'async function confirmSessionStopped(job)',
+  'abort_failed',
+  'abort_sent_but_session_still_busy',
+  'last_terminal',
+  'function outboxId(text)',
+  'async function confirmDelivery(text, id)',
+  'outbox.items',
+  'click_unconfirmed',
+  'recoverable_failure',
+  'composer_occupied',
+  'button_unavailable'
 ]) assert(code.includes(token), `missing ${token}`);
 
 for (const token of [

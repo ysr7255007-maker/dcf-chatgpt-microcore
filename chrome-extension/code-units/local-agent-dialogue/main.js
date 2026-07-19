@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.local-agent-dialogue';
-  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.14';
+  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.15';
   const LOCAL_AGENT_ID = 'dcf.firstparty.local-agent';
   const PANEL_ID = 'dcf-panel-local-agent';
   const SHELL_ID = 'dcf-chrome-shell-host';
@@ -53,6 +53,7 @@
   let queueBusy = false;
   let pendingArtifact = '';
   let pendingForceSend = false;
+  const outbox = { items: [], status: '' };
   let conversationRoot = null;
   let currentCandidate = null;
   let conversationObserver = null;
@@ -96,7 +97,8 @@
     last_session_id: '',
     started_at: 0,
     progress: { status_type: '', messages: 0, todo: 0, diff: 0, permissions: 0, questions: 0, preview: '', last_activity_at: '' },
-    control_plane: { seq: 0, last_progress_at: 0, last_stage_sent: '', workdir: '', branch: '', head: '', changed_files: 0, test_status: '', commit_status: '', push_status: '', blocked_reason: '', permission_id: '' }
+    control_plane: { seq: 0, last_progress_at: 0, last_stage_sent: '', workdir: '', branch: '', head: '', changed_files: 0, test_status: '', commit_status: '', push_status: '', blocked_reason: '', permission_id: '' },
+    last_terminal: null
   };
 
   function normalizeSettings(raw = {}) {
@@ -117,6 +119,9 @@
     state.processed_ids = list(data.processed_ids).map(String).slice(-80);
     state.last_request_id = String(data.last_request_id || '');
     state.last_session_id = String(data.last_session_id || '');
+    state.last_terminal = data.last_terminal && typeof data.last_terminal === 'object' ? data.last_terminal : null;
+    outbox.items = Array.isArray(data.outbox) ? data.outbox.filter((item) => item && item.text && item.state !== 'delivered').slice(-5) : [];
+    outbox.status = outbox.items.length ? `恢复 ${outbox.items.length} 个待回传工件` : '';
     if (data.active_task && typeof data.active_task === 'object' && !activeJob) {
       const task = data.active_task;
       if (!['completed', 'failed', 'cancelled'].includes(task.state) && task.request_id && task.session_id) {
@@ -168,6 +173,8 @@
         processed_ids: state.processed_ids.slice(-80),
         last_request_id: state.last_request_id,
         last_session_id: state.last_session_id,
+        last_terminal: state.last_terminal,
+        outbox: outbox.items.slice(-5),
         active_task: activeJob ? {
           request_id: activeJob.request.id, session_id: activeJob.session_id,
           state: state.stage, seq: state.control_plane.seq,
@@ -249,9 +256,13 @@
     const job = activeJob;
     if (!job) {
       if (parsed.command === 'cancel') {
-        const t = { schema: 'dcf.local-agent.progress.v1', request_id: parsed.request_id, session_id: parsed.session_id, seq: ++state.control_plane.seq, timestamp: new Date().toISOString(), state: 'completed', stage: state.stage, summary: 'ACK cancel: 任务已结束，幂等返回当前终态', last_activity_at: new Date().toISOString(), runtime_ms: 0, idle_ms: 0, workdir: '', branch: '', head: '', changed_files: 0, diff_summary: [], test_status: '', commit_status: '', push_status: '', blocked_reason: '', permission_id: '', ack: { command: 'cancel', status: 'already_terminal' } };
-        await sendArtifact(artifact(MARKERS.progress, t), true).catch(() => {});
-        return;
+        const lt = state.last_terminal;
+        if (lt && lt.request_id === parsed.request_id && lt.session_id === parsed.session_id) {
+          const t = { schema: 'dcf.local-agent.progress.v1', request_id: parsed.request_id, session_id: parsed.session_id, seq: ++state.control_plane.seq, timestamp: new Date().toISOString(), state: lt.status, stage: lt.status, summary: `ACK cancel: 任务已处于终态 ${lt.status}，幂等返回`, last_activity_at: new Date().toISOString(), runtime_ms: 0, idle_ms: 0, workdir: '', branch: '', head: '', changed_files: 0, diff_summary: [], test_status: '', commit_status: '', push_status: '', blocked_reason: '', permission_id: '', ack: { command: 'cancel', status: 'already_terminal', terminal_status: lt.status } };
+          await sendArtifact(artifact(MARKERS.progress, t), true).catch(() => {});
+          return;
+        }
+        throw new Error(`cancel 拒绝：未知地址 ${parsed.request_id}/${parsed.session_id}，无匹配终态记录`);
       }
       throw new Error(`控制命令 ${parsed.command} 拒绝：当前没有活动任务`);
     }
@@ -285,14 +296,45 @@
         await sendArtifact(artifact(MARKERS.progress, cp), true).catch(() => {});
       }
       state.stage = 'cancelling'; state.status = '正在中止任务…'; render();
-      await request(`/session/${encodeURIComponent(job.session_id)}/abort`, { config: job.config, method: 'POST', body: {}, timeout: 15000 }).catch(() => {});
+      let abortError = null;
+      try {
+        await request(`/session/${encodeURIComponent(job.session_id)}/abort`, { config: job.config, method: 'POST', body: {}, timeout: 15000 });
+      } catch (error) { abortError = error; }
+      if (abortError) {
+        state.stage = 'running'; state.status = `中止失败，任务继续观察：${String(abortError?.message || abortError)}`;
+        state.control_plane.blocked_reason = `abort_failed: ${String(abortError?.message || abortError).slice(0, 200)}`;
+        await sendArtifact(artifact(MARKERS.progress, controlAck(job, parsed.command, 'blocked', `abort 请求失败，任务保留：${String(abortError?.message || abortError).slice(0, 200)}`)), true).catch(() => {});
+        render();
+        return;
+      }
+      const confirmed = await confirmSessionStopped(job);
+      if (!confirmed) {
+        state.stage = 'running'; state.status = 'abort 已发送但 session 仍在运行，继续观察';
+        state.control_plane.blocked_reason = 'abort_sent_but_session_still_busy';
+        await sendArtifact(artifact(MARKERS.progress, controlAck(job, parsed.command, 'blocked', 'abort 已发送但 session 未停止，任务保留')), true).catch(() => {});
+        render();
+        return;
+      }
       state.stage = 'cancelled'; state.status = '任务已中止';
-      await sendArtifact(artifact(MARKERS.progress, controlAck(job, parsed.command, 'ok', '执行器已中止')), true).catch(() => {});
+      state.last_terminal = { request_id: job.request.id, session_id: job.session_id, status: 'cancelled', at: new Date().toISOString() };
+      await sendArtifact(artifact(MARKERS.progress, controlAck(job, parsed.command, 'ok', '执行器已中止并确认停止')), true).catch(() => {});
       await sendArtifact(artifact(MARKERS.result, resultPayload(job, 'cancelled', job.last_snapshot || await snapshot(job))), true).catch(() => {});
       activeJob = null; persist().catch(() => {}); render();
       return;
     }
     throw new Error(`未知控制命令：${parsed.command}`);
+  }
+
+  async function confirmSessionStopped(job) {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await sleep(Math.max(500, state.settings.poll_interval_ms));
+      try {
+        const snap = await snapshot(job);
+        job.last_snapshot = snap;
+        if (!['busy', 'retry'].includes(snap.status_type)) return true;
+      } catch (_) { return true; }
+    }
+    return false;
   }
 
   function shellShadow() { return document.getElementById(SHELL_ID)?.shadowRoot || null; }
@@ -879,25 +921,81 @@
     throw new Error('工件已写入输入框，但发送按钮暂不可用');
   }
 
+  function outboxId(text) {
+    const reqMatch = text.match(/"request_id"\s*:\s*"([^"]+)"/);
+    const seqMatch = text.match(/"seq"\s*:\s*(\d+)/);
+    const schemaMatch = text.match(/"schema"\s*:\s*"([^"]+)"/);
+    return `${schemaMatch ? schemaMatch[1] : 'unknown'}:${reqMatch ? reqMatch[1] : hash(text)}:${seqMatch ? seqMatch[1] : '0'}`;
+  }
+
   async function sendArtifact(text, forceSend = false) {
-    pendingArtifact = text;
-    pendingForceSend = forceSend;
+    const id = outboxId(text);
+    if (outbox.items.some((item) => item.id === id && item.state !== 'delivered')) return true;
+    const entry = { id, text, force_send: forceSend, state: 'waiting_idle', created_at: Date.now(), attempts: 0 };
+    outbox.items.push(entry);
+    outbox.items = outbox.items.slice(-5);
+    persist().catch(() => {});
     const started = Date.now();
-    while (!destroyed && pendingArtifact === text && Date.now() - started < 120000) {
+    while (!destroyed && Date.now() - started < 120000) {
       const target = composer();
-      if (target && !composerValue(target).trim() && !isStreaming()) {
-        fillComposer(text);
-        if (forceSend || state.settings.auto_send_results) await clickSend();
-        pendingArtifact = '';
-        pendingForceSend = false;
-        return true;
+      if (!target) { entry.state = 'composer_unavailable'; await sleep(500); continue; }
+      if (composerValue(target).trim()) { entry.state = 'composer_occupied'; await sleep(500); continue; }
+      if (isStreaming()) { entry.state = 'page_streaming'; await sleep(500); continue; }
+      entry.state = 'filling';
+      fillComposer(text);
+      if (forceSend || state.settings.auto_send_results) {
+        const sendBtn = document.querySelector('[data-testid="send-button"]') || document.querySelector('button[aria-label*="Send"],button[aria-label*="\u53d1\u9001"]');
+        if (!sendBtn || sendBtn.disabled || sendBtn.getAttribute('aria-disabled') === 'true') { entry.state = 'button_unavailable'; await sleep(500); continue; }
+        entry.state = 'click_unconfirmed';
+        entry.attempts += 1;
+        await clickSend();
+        const confirmed = await confirmDelivery(text, id);
+        if (confirmed) {
+          entry.state = 'delivered';
+          outbox.items = outbox.items.filter((item) => item.id !== id);
+          persist().catch(() => {});
+          return true;
+        }
+        entry.state = 'click_unconfirmed';
+        await sleep(1000);
+        continue;
       }
-      await sleep(500);
+      pendingArtifact = text;
+      pendingForceSend = forceSend;
+      entry.state = 'awaiting_manual_send';
+      persist().catch(() => {});
+      return true;
     }
+    entry.state = 'recoverable_failure';
+    entry.error = '超时未发送';
+    outbox.status = '工件等待回传';
     state.stage = 'return_wait';
     state.status = '工件等待回传';
     state.error = '当前对话尚未空闲，未覆盖输入框';
+    persist().catch(() => {});
     render();
+    return false;
+  }
+
+  async function confirmDelivery(text, id) {
+    const reqMatch = text.match(/"request_id"\s*:\s*"([^"]+)"/);
+    const requestId = reqMatch ? reqMatch[1] : '';
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      await sleep(500);
+      const root = conversationRoot || pageConversationRoot();
+      if (!root) continue;
+      const userNodes = Array.from(root.querySelectorAll('[data-message-author-role="user"]'));
+      for (let i = userNodes.length - 1; i >= Math.max(0, userNodes.length - 3); i -= 1) {
+        const nodeText = String(userNodes[i].innerText || userNodes[i].textContent || '');
+        if (requestId && nodeText.includes(requestId)) return true;
+        if (nodeText.includes('DCF_LOCAL_AGENT') && nodeText.includes(id.split(':')[0])) return true;
+      }
+      if (!composerValue(composer()).trim() && !isStreaming()) {
+        await sleep(1000);
+        const afterNodes = Array.from((conversationRoot || pageConversationRoot() || document).querySelectorAll('[data-message-author-role="user"]'));
+        if (afterNodes.length > userNodes.length) return true;
+      }
+    }
     return false;
   }
 
@@ -1208,11 +1306,13 @@
     if (action === 'ctl-cancel' && activeJob) { await executeControl({ kind: 'control', command: 'cancel', request_id: activeJob.request.id, session_id: activeJob.session_id, instruction: '' }); return; }
     if (action === 'ctl-cancel-cp' && activeJob) { await executeControl({ kind: 'control', command: 'cancel_after_checkpoint', request_id: activeJob.request.id, session_id: activeJob.session_id, instruction: '' }); return; }
     if (action !== 'return') return;
-    if (!pendingArtifact) { state.status = '当前没有待回传工件'; render(); return; }
+    const pending = outbox.items.find((item) => item.state === 'awaiting_manual_send' || item.state === 'click_unconfirmed' || item.state === 'recoverable_failure');
+    if (!pending && !pendingArtifact) { state.status = '当前没有待回传工件'; render(); return; }
+    const text = pending ? pending.text : pendingArtifact;
     if (composerValue(composer()).trim() || isStreaming()) throw new Error('当前对话尚未空闲');
-    const text = pendingArtifact;
     fillComposer(text);
-    if (pendingForceSend || state.settings.auto_send_results) await clickSend();
+    if (pending?.force_send || pendingForceSend || state.settings.auto_send_results) await clickSend();
+    if (pending) { pending.state = 'delivered'; outbox.items = outbox.items.filter((item) => item.id !== pending.id); persist().catch(() => {}); }
     pendingArtifact = '';
     pendingForceSend = false;
     render();
