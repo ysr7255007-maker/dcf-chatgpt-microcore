@@ -72,12 +72,12 @@ Updated: 2026-07-19
 - request IDs are persisted for deduplication;
 - an occupied ChatGPT composer is never overwritten.
 - GitHub App Bot initialization wizard provides a guided setup for creating, securing, and installing a dedicated `DCF Local Agent Bot` GitHub App with minimal permissions (`contents:write`, `pull_requests:write`, `actions/checks/statuses:read`);
-- CSRF-protected manifest flow exchanges a temporary code for App credentials;
+- the local-only service enforces exact loopback Host, route methods, same-origin mutation requests, a per-page CSRF header, CSP/frame/nosniff/no-cache response headers and one-time manifest/setup callback state;
 - credentials (PEM private key, App ID, slug, client ID) are saved to the user config directory at `~/Library/Application Support/DCF/github-bot/` with mode 0700/0600;
 - `npm run setup:github-bot` starts the wizard on `127.0.0.1` only;
-- installs to `ysr7255007-maker/dcf-chatgpt-microcore` and verifies `contents:write` and `pull_requests:write` with a short-lived JWT-generated installation token;
+- installs to `ysr7255007-maker/dcf-chatgpt-microcore`; each short-lived JWT-generated installation token is explicitly restricted to that repository, verifies `/installation/repositories`, the current App, owner and exact `refs/heads/rebuild/chrome-native-host-v2` SHA before configuration is written;
 - bot config (`bot-config.json`) is the non-sensitive machine-readable interface for future Local Agent Git operations;
-- optional branch protection configuration for `rebuild/chrome-native-host-v2` using the user's `gh` identity;
+- optional branch protection configuration for `rebuild/chrome-native-host-v2` using the user's `gh` identity and real required check names `verify` and `verify-and-package`;
 - permissions, contents:write and pull_requests:write are verified; workflows and administration are intentionally excluded.
 
 ## Automated evidence
@@ -98,7 +98,7 @@ Updated: 2026-07-19
 - return-profile tests prove final-text isolation, complete current-session reasoning extraction, bounded diagnostic evidence and absence of raw `messages`;
 - model-persistence tests prove safe model-value round trips, persisted fallback rendering and one canonical model for automatic delegation;
 - Local Agent failure diagnostics remains loopback-only, GET-only, one-report-per-session and excludes message text, credentials, Provider private options and raw configuration.
-- GitHub App Bot wizard tests prove: manifest exact permissions, CSRF randomness, JWT RS256 structure, loopback-only binding, private key file mode 0600, credential directory mode 0700, log redaction of secrets, duplicate detection, no workflow/admin permissions, server state machine, and non-persisted installation tokens.
+- GitHub App Bot wizard tests prove: manifest exact permissions and inactive webhook URL, loopback Host/method/Origin/session-CSRF boundaries, security response headers, exact branch-protection payload, repository-limited installation-token request, credential 0700/0600 atomic-write and symlink guards, callback replay/idempotency, escaped completion output and non-persisted installation tokens. Real GitHub App creation and installation remain user-site acceptance steps.
 
 ## Current live boundary
 

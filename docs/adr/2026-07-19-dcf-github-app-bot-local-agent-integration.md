@@ -26,13 +26,14 @@ Bot 凭据保存在本机用户配置目录（`~/Library/Application Support/DCF
    - Agent 从 `bot-config.json` 读取 app_id 和 private_key_path；
    - 从私钥路径读取 PEM；
    - 生成一个 10 分钟有效期的 JWT（`RS256`，iss = app_id）；
-   - 使用 JWT POST 到 `/app/installations/{installation_id}/access_tokens` 获取 installation token；
+   - 使用 JWT POST 到 `/app/installations/{installation_id}/access_tokens` 并传入 `repositories: ["dcf-chatgpt-microcore"]` 获取 installation token；
    - 使用 installation token 执行 GitHub API 调用。
 
 3. **安全约束**：
    - Installation token 仅在当前操作期间使用，不保存到磁盘；
    - JWT 有效期不超过 10 分钟，每次操作重新生成；
-   - Agent 不持久化任何 GitHub 凭据，只保存 App ID、Installation ID 和私钥路径等非敏感标识。
+- Agent 不持久化任何 GitHub 凭据，只保存 App ID、Installation ID 和私钥路径等非敏感标识。
+   - 引导会核对 `/installation/repositories` 返回的 token 范围仅含目标仓库、`/app` 为当前 App、仓库 owner 与精确候选 ref/SHA；App 的安装范围可能更大，但本次验证 token 不会更大。
 
 4. **浏览器插件不直接持有私钥**：
    - 插件不读取私钥文件；

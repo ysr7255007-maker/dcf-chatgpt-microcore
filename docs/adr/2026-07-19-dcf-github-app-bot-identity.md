@@ -27,13 +27,15 @@ DCF Local Agent 已具备通过 OpenCode HTTP API 创建会话、执行任务、
    - `actions: read`、`checks: read`、`statuses: read` — 读取 CI 状态供 Agent 判断；
    - 不申请 `workflows` — Bot 不能修改工作流定义；
    - 不申请 `administration` — Bot 不能修改仓库设置或分支保护；
-   - Webhook 不激活 — Bot 不需要事件推送，使用拉取式查询。
+- Webhook 不激活 — Bot 不需要事件推送，使用拉取式查询。
+  - Manifest 仍提供一个合法完整的 loopback `hook_attributes.url`，但 `active: false` 且 `default_events: []`；它不是事件接收端。
 
 3. **凭据安全**：
    - 私钥（PEM）只保存在本机用户配置目录（macOS: `~/Library/Application Support/DCF/github-bot/`）；
    - 目录权限 0700，私钥和 secret 文件权限 0600；
    - 安装令牌（installation token）仅在验证时临时生成，不持久化；
-   - 私钥、client_secret、webhook_secret 不在终端、网页、日志或测试输出中显示。
+- 私钥、client_secret、webhook_secret 不在终端、网页、日志或测试输出中显示。
+   - 敏感文件使用拒绝符号链接、0600 随机临时文件、同步和原子 rename 的事务写入；出现失败会清理临时/半成品文件。
 
 4. **仓库内不保存敏感信息**：
    - `.gitignore` 只添加注释说明；
@@ -67,7 +69,7 @@ DCF Local Agent 已具备通过 OpenCode HTTP API 创建会话、执行任务、
 - 自动化测试验证凭据不进入仓库；
 - 自动化测试验证安装令牌不持久化；
 - 自动化测试验证 CSRF state 保护；
-- 实际操作验证：通过向导完成从创建 GitHub App 到安装并验证权限的全流程。
+- 实际操作验证：待用户通过向导完成从创建 GitHub App 到安装并验证权限的全流程；自动化验证不宣称已创建真实 App。
 
 ## Rejected alternatives
 
