@@ -30,9 +30,18 @@ jobs:
           python3 .github/scripts/patch-local-agent-docs.py
           sed -i "s/^\\\\'use strict\\\\';/'use strict';/" tests/chrome-local-agent-status.test.js tests/chrome-local-agent-dialogue.test.js
       - name: Verify repository
+        shell: bash
         run: |
-          npm ci
-          npm run verify
+          npm ci --silent
+          set +e
+          npm run verify > verify.log 2>&1
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            tail -120 verify.log
+            exit "$status"
+          fi
+          tail -40 verify.log
       - name: Commit verified implementation
         shell: bash
         run: |
