@@ -30,10 +30,26 @@ jobs:
         run: |
           node --check chrome-extension/code-units/local-agent-dialogue/main.js
           npm run build:chrome
-      - name: Run compact dialogue test
+      - name: Chrome host unit
+        run: node tests/chrome-host.unit.test.js
+      - name: Chrome build integration
+        run: node tests/chrome-build.integration.test.js
+      - name: Chrome workspace UI
+        run: node tests/chrome-workspace-ui.test.js
+      - name: Compact dialogue
         run: node tests/chrome-local-agent-dialogue.test.js
-      - name: Run full Chrome verification
-        run: npm run verify:chrome
+      - name: Local Agent status
+        run: node tests/chrome-local-agent-status.test.js
+      - name: Local Agent diagnostics
+        run: node tests/chrome-local-agent-diagnostics.test.js
+      - name: Chrome lifecycle
+        run: node tests/chrome-lifecycle.integration.test.js
+      - name: Chrome build determinism
+        run: node tests/chrome-build-determinism.test.js
+      - name: Final Chrome validation
+        run: |
+          node --check dist/dcf-chrome-extension/src/background.js
+          node scripts/validate-json.js dist/dcf-chrome-extension/config.json releases/chrome/official-index.json dist/verification-summary.json
       - name: Commit verified result
         shell: bash
         run: |
