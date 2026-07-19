@@ -38,6 +38,23 @@ DCF 是用户与 AI 共同维护的个人认知基础设施。它的产品目标
 
 `0.18.2` 已被 DCF Next 吸收，不再建立单独迁移和兼容路径。
 
+## GitHub App Bot 初始化
+
+DCF Local Agent 需要一个专用 GitHub App Bot 身份来创建分支、提交和 PR。首次使用前运行：
+
+```bash
+npm run setup:github-bot
+```
+
+本命令启动一个仅绑定 `127.0.0.1` 的临时服务并打开浏览器向导页面，引导完成以下步骤：
+
+1. **创建 GitHub App** — 通过 Manifest 在 GitHub 注册 `DCF Local Agent Bot`（仅需 `contents:write` / `pull_requests:write` 等最小权限）；
+2. **兑换并保存凭据** — 凭据保存到本机用户配置目录（`~/Library/Application Support/DCF/github-bot/`），目录权限 0700，私钥 0600；
+3. **安装到仓库** — 安装到 `ysr7255007-maker/dcf-chatgpt-microcore` 并验证权限；
+4. **（可选）配置分支保护** — 如本机 `gh` 身份有管理权限，可配置候选分支审批规则。
+
+Bot 不获得 `workflows` 和 `administration` 权限。私钥仅存在于本机用户配置目录，不进入仓库。安装令牌仅在验证时临时生成，不持久化。
+
 ## 构建与验证
 
 ```bash

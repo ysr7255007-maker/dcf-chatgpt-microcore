@@ -1,1 +1,6 @@
 node_modules/
+dist/
+# GitHub App Bot credentials are stored outside the repo at:
+# macOS:   ~/Library/Application Support/DCF/github-bot/
+# Linux:   ~/.config/dcf/github-bot/
+# Windows: %APPDATA%\DCF\github-bot\

@@ -4,6 +4,8 @@ Updated: 2026-07-19
 
 ## Current
 
+- `2026-07-19-dcf-github-app-bot-identity.md` — **accepted; implementation verified**; a dedicated GitHub App Bot as the Local Agent's implementation identity, with strictly separated user-review governance, minimal `contents:write`/`pull_requests:write` permissions, no workflows or administration, credentials stored only in the local user config directory at mode 0700/0600, and one-time bootstrap exception using the user's own credentials
+- `2026-07-19-dcf-github-app-bot-local-agent-integration.md` — **accepted; implementation verified**; `bot-config.json` at the credential directory defines the stable interface for Local Agent Git operations: `app_id`, `installation_id`, `private_key_path`, JWT-based auth and in-memory-only installation tokens
 - `2026-07-19-dcf-local-agent-model-persistence.md` — **accepted; implementation and GitHub Action verification complete; live browser acceptance pending**; one persisted provider/model selection governs workbench, continued-session and dialogue delegation paths
 - `2026-07-19-dcf-dialogue-compact-result-boundary.md` — **accepted; implementation and GitHub Action verification complete; live browser acceptance pending**; final, all-session reasoning-review and bounded diagnostic profiles replace raw message-history return
 - `2026-07-19-dcf-dialogue-activity-timeout-permission-delegation.md` — **accepted; real-browser acceptance passed**; observable-idle timeout replaced total wall-clock timeout, permission waits pause inactivity, and a conversation-issued `once` decision returned to the same OpenCode session which completed with one final result
