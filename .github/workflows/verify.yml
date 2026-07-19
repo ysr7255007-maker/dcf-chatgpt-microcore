@@ -31,19 +31,14 @@ jobs:
       - name: Commit verified implementation
         shell: bash
         run: |
+          set -euxo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git fetch origin rebuild/chrome-native-host-v2
           git checkout origin/rebuild/chrome-native-host-v2 -- .github/workflows/verify.yml
-          git rm .github/scripts/patch-dialogue-permission-awaiting-race.py
-          git add chrome-extension/code-units/local-agent-dialogue/main.js
-          git add tests/chrome-build.integration.test.js
-          git add tests/chrome-workspace-ui.test.js
-          git add tests/chrome-local-agent-dialogue.test.js
-          git add releases/chrome/official-index.json
-          git add docs/adr/2026-07-19-dcf-dialogue-activity-timeout-permission-delegation.md
-          git add docs/current-state.md
-          git add .github/workflows/verify.yml
+          rm -f .github/scripts/patch-dialogue-permission-awaiting-race.py
+          git add -A
+          git status --short
           git diff --cached --check
           git commit -m 'fix: retain pending permission identity across polling gaps'
           git push origin HEAD:${{ github.head_ref }}
