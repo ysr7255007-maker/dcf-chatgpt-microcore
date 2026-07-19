@@ -7,69 +7,9 @@ on:
       - main
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  patch-compact-dialogue:
-    if: github.event_name == 'pull_request' && github.head_ref == 'work/dialogue-compact-result-action-20260719'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref }}
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-      - name: Apply compact dialogue patch and ADR
-        run: python3 .github/scripts/compact-dialogue-patch.py
-      - name: Install dependencies
-        run: npm ci
-      - name: Build Chrome index
-        run: |
-          node --check chrome-extension/code-units/local-agent-dialogue/main.js
-          npm run build:chrome
-      - name: Chrome host unit
-        run: node tests/chrome-host.unit.test.js
-      - name: Chrome build integration
-        run: node tests/chrome-build.integration.test.js
-      - name: Chrome workspace UI
-        run: node tests/chrome-workspace-ui.test.js
-      - name: Compact dialogue
-        run: node tests/chrome-local-agent-dialogue.test.js
-      - name: Local Agent status
-        run: node tests/chrome-local-agent-status.test.js
-      - name: Local Agent diagnostics
-        run: node tests/chrome-local-agent-diagnostics.test.js
-      - name: Chrome lifecycle
-        run: node tests/chrome-lifecycle.integration.test.js
-      - name: Chrome build determinism
-        run: node tests/chrome-build-determinism.test.js
-      - name: Final Chrome validation
-        run: |
-          node --check dist/dcf-chrome-extension/src/background.js
-          node scripts/validate-json.js dist/dcf-chrome-extension/config.json releases/chrome/official-index.json dist/verification-summary.json
-      - name: Commit verified result
-        shell: bash
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git fetch origin rebuild/chrome-native-host-v2
-          git checkout origin/rebuild/chrome-native-host-v2 -- .github/workflows/verify.yml
-          git rm .github/workflows/one-shot-dialogue-compact-result.yml .github/scripts/compact-dialogue-patch.py
-          git add chrome-extension/code-units/local-agent-dialogue/main.js \
-            tests/chrome-local-agent-dialogue.test.js \
-            tests/chrome-build.integration.test.js \
-            releases/chrome/official-index.json \
-            docs/adr/2026-07-19-dcf-dialogue-compact-result-boundary.md \
-            docs/adr/status-index.md \
-            docs/current-state.md \
-            .github/workflows/verify.yml
-          git diff --cached --check
-          git commit -m 'fix: keep dialogue results compact'
-          git push origin HEAD:${{ github.head_ref }}
-
   verify:
     runs-on: ubuntu-latest
     steps:

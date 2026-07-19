@@ -12,7 +12,7 @@ const code = fs.readFileSync(path.join(root, 'chrome-extension/code-units/local-
 assert(ref);
 assert(index.defaults.includes(ref.id));
 assert.strictEqual(index.units.length, 10);
-assert.strictEqual(ref.version, '1.0.0-rc.2-local-agent-dialogue.9');
+assert.strictEqual(ref.version, '1.0.0-rc.2-local-agent-dialogue.10');
 assert.strictEqual(ref.phase, 57);
 assert.strictEqual(ref.world_id, 'dcf-firstparty-local-agent-dialogue');
 assert.doesNotThrow(() => new Function(code));
@@ -32,6 +32,10 @@ for (const token of [
   "timeout_basis: 'observable-idle-time'",
   'permission_wait_pauses_idle_timeout: true',
   'idle_timeout_ms',
+  'function assistantText(record)',
+  'function latestAssistantText(messages)',
+  "part?.type !== 'text'",
+  'assistant_result: latestAssistantText(snap.messages)',
   'function activityFingerprint(snap, job)',
   'function noteActivity(job, fingerprint)',
   'async function confirmInactive(job, fingerprint)',
@@ -63,6 +67,9 @@ for (const token of [
 
 for (const token of [
   '/prompt_async',
+  "if (part.type === 'text' || part.type === 'reasoning')",
+  'function latestAssistant(messages)',
+  "messages: job.request.return_mode === 'full' ? snap.messages : undefined",
   "resultPayload(job, 'needs_user'",
   'Date.now() - started >= job.request.timeout_ms',
   'timeout: requestData.timeout_ms',
@@ -76,6 +83,23 @@ assert.match(code, /if \(pendingPermissions\.length\)[\s\S]*state\.stage = 'need
 assert.match(code, /applyPermissionDecision\(parsed\)/);
 assert.match(code, /replyPermissionNative\(job, decision\)/);
 
+
+const helperStart = code.indexOf('function assistantText(record)');
+const helperEnd = code.indexOf('function normalizeArtifactText', helperStart);
+assert(helperStart >= 0 && helperEnd > helperStart);
+const helperFactory = new Function('list', 'messageRole', `${code.slice(helperStart, helperEnd)}\nreturn { assistantText, latestAssistantText };`);
+const helpers = helperFactory(
+  (value) => Array.isArray(value) ? value : value && typeof value === 'object' ? Object.values(value) : [],
+  (value) => String(value?.info?.role || value?.info?.type || '').toLowerCase()
+);
+const noisyMessages = [
+  { info: { role: 'assistant' }, parts: [{ type: 'reasoning', text: 'private reasoning' }, { type: 'tool', tool: 'bash' }, { type: 'step-finish', reason: 'tool-calls' }] },
+  { info: { role: 'assistant' }, parts: [{ type: 'reasoning', text: 'ignore me' }, { type: 'text', text: 'FINAL' }, { type: 'tool', tool: 'read' }, { type: 'text', text: 'SECOND' }, { type: 'step-finish', reason: 'stop' }] }
+];
+assert.strictEqual(helpers.latestAssistantText(noisyMessages), 'FINAL\nSECOND');
+assert.strictEqual(helpers.latestAssistantText([{ info: { role: 'assistant' }, parts: [{ type: 'reasoning', text: 'reasoning only' }] }]), '');
+assert(!/messages:\s*job\.request\.return_mode/.test(code));
+
 console.log(JSON.stringify({
   ok: true,
   plugin_version: ref.version,
@@ -87,5 +111,7 @@ console.log(JSON.stringify({
   permission_intervention_is_not_a_final_result: true,
   history_is_baseline_not_queue: true,
   hot_update_remount_watchers: true,
-  no_new_panel: true
+  no_new_panel: true,
+  compact_final_text_only: true,
+  raw_messages_not_returned: true
 }, null, 2));
