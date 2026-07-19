@@ -576,6 +576,12 @@ async function handleSetup(req, res, url) {
 
 // === GitHub CLI helper ===
 async function getUserGitHubToken() {
+  const statusOk = await new Promise((resolve) => {
+    const child = spawn('gh', ['auth', 'status'], { stdio: 'ignore' });
+    child.on('close', (code) => resolve(code === 0));
+    child.on('error', () => resolve(false));
+  });
+  if (!statusOk) return null;
   return new Promise((resolve) => {
     const child = spawn('gh', ['auth', 'token'], { stdio: ['pipe', 'pipe', 'pipe'] });
     let out = '';
