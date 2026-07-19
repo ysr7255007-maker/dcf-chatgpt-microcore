@@ -81,7 +81,10 @@
     panels.clear();
   }
 
-  globalThis[GLOBAL_KEY] = { version: UNIT_VERSION, destroy };
+  function readRuntimeEvidence() {
+    return { mounted: Boolean(host?.isConnected), mount_generation: host?.dataset?.dcfMountGeneration || 'unavailable', active_panel: activeId || 'unavailable', pinned_panels: pinnedIds.slice(), panel_count: panels.size };
+  }
+  globalThis[GLOBAL_KEY] = { version: UNIT_VERSION, destroy, readRuntimeEvidence };
 
   try {
     document.getElementById(HOST_ID)?.remove();

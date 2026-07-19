@@ -1427,6 +1427,7 @@
       }
     }
 
+    if (recovered) diagnostics.last_recovery_at = Date.now();
     attachShellObserver();
   }
 
@@ -1483,10 +1484,14 @@
       active_session_id: job?.session_id || null,
       stage: state.stage || null,
       status: state.status || null,
-      waiting_permission: Boolean(job?.notified_permission_id),
+      waiting_permission: Boolean(job?.awaiting_permission_id),
       active_last_activity_at: job?.last_activity_at || null,
+      last_recovery_at: diagnostics.last_recovery_at || null,
       outbox_pending_count: outbox.items.length,
-      outbox_states: outbox.items.map((item) => ({ schema: String(item.id || '').split(':')[0] || null, state: item.state || null, attempts: Number(item.attempts || 0), last_error: item.error ? String(item.error).slice(0, 240) : null }))
+      outbox_states: outbox.items.map((item) => {
+        const [schema, request_id, seq] = String(item.id || '').split(':');
+        return { schema: schema || null, request_id: request_id || null, session_id: job?.session_id || null, seq: /^\d+$/.test(seq) ? Number(seq) : null, state: item.state || null, attempts: Number(item.attempts || 0), last_error: item.error ? String(item.error).slice(0, 240) : null };
+      })
     };
   }
 

@@ -19,7 +19,7 @@
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/shell/main.js",
       "default_enabled": true,
       "description": "DCF 的统一可见入口与独立插件面板挂载。",
-      "hash": "2e708a48f4a4524429251556ccdbe906f0b4fcab5409ec7173974d9bc56eee0f",
+      "hash": "c5a7b29035bda98092f477a136649c4243a7dd218635b1e378476b26dc53bc75",
       "host_api": "2",
       "id": "dcf.firstparty.shell",
       "matches": [
@@ -127,7 +127,7 @@
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/local-agent-dialogue/main.js",
       "default_enabled": true,
       "description": "将严格的对话委派工件交给本机 OpenCode，并把结构化结果自动送回当前对话。",
-      "hash": "927d6dd961cb23076a2c82d66b31eb6286b3d98868c235f8f5030b87d031f02a",
+      "hash": "a7f639193e88cf964f2e8eeac5203e055602bdeb200a9303531a6966d7d200f7",
       "host_api": "2",
       "id": "dcf.firstparty.local-agent-dialogue",
       "matches": [
@@ -217,7 +217,7 @@
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/runtime-evidence/main.js",
       "default_enabled": true,
       "description": "默认关闭的本机 loopback 运行态证据桥，不发送对话正文或凭据。",
-      "hash": "ccb3f9ff2a726d25cee0e29505d3fee297d310de7867990bfaafe387c5a71195",
+      "hash": "1fb1a6fa8018fde768c734e9c94fd24316adede5a30087a665936536dce9c7d3",
       "host_api": "2",
       "id": "dcf.firstparty.runtime-evidence",
       "matches": [

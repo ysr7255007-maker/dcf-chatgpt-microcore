@@ -130,7 +130,7 @@
     return {
       ok: true, host_version: C.HOST_VERSION, user_scripts_available: available, state_revision: state.revision,
       snapshots: C.clone(state.snapshots), code_units: Object.fromEntries(Object.entries(state.code_units).map(([id, entry]) => [id, Object.keys(entry.versions || {}).sort()])),
-      actual_scripts: scripts.map((item) => item.id), migration: C.clone(state.migration), update: C.clone(state.update), plugin_ids: Object.keys(state.plugin_data).sort()
+      actual_scripts: scripts.map((item) => item.id), recent_evidence: C.clone((state.evidence || []).slice(-80)), migration: C.clone(state.migration), update: C.clone(state.update), plugin_ids: Object.keys(state.plugin_data).sort()
     };
   };
 })(self);
