@@ -35,7 +35,7 @@ assert.strictEqual(dialogue.default_enabled, true);
 assert.strictEqual(dialogue.phase, 57);
 const manager = index.units.find((unit) => unit.id === 'dcf.firstparty.plugin-manager');
 assert(manager);
-assert.strictEqual(manager.version, '1.0.0-rc.2-plugin-manager.2');
+assert.strictEqual(manager.version, '1.0.0-rc.2-plugin-manager.3');
 assert.strictEqual(manager.default_enabled, true);
 assert.strictEqual(manager.phase, 70);
 assert(!fs.existsSync(path.join(extension, 'official/code-units.json')));

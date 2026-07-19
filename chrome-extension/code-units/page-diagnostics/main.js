@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.page-diagnostics';
-  const UNIT_VERSION = '1.0.0-rc.2-page-diagnostics.1';
+  const UNIT_VERSION = '1.0.0-rc.2-page-diagnostics.2';
   const PANEL_ID = 'dcf-panel-page-diagnostics';
   const HOST_ID = 'dcf-panel-page-diagnostics';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_PAGE_DIAGNOSTICS__';
