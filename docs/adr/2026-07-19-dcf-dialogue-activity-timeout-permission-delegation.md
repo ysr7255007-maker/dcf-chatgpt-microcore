@@ -1,7 +1,7 @@
 # ADR: 对话闭环按可观察活动判断停滞，并把权限裁决交回当前对话
 
 - 日期：2026-07-19
-- 状态：已接受，真实浏览器验收通过
+- 状态：已接受；原权限闭环真实浏览器验收通过；权限身份竞态修复已完成自动验证，待更新后复验
 - 范围：`dcf.firstparty.local-agent-dialogue`
 
 ## 背景
@@ -106,6 +106,8 @@ DCF 回传的权限包完整包含：
 
 下一阶段先使用已经打通的本机 AI 查询当前 OpenCode 版本的真实权限保存、枚举、撤销和拒绝接口，再单独设计完整权限管理。不得根据最新源码或假设直接实现 Always 撤销与封锁。
 
-## Permission-wait identity retention correction
+## 权限等待身份竞态修正
 
-A returned permission request remains the active permission identity until its native reply succeeds or the delegated job ends. A polling snapshot that temporarily omits the permission must not clear `awaiting_permission_id`. The permission request path refreshes that identity before duplicate-return suppression, so the same OpenCode permission is not resent to ChatGPT but remains eligible to receive the matching decision. This prevents a transient permission-endpoint gap from turning a valid decision into a request/session/permission mismatch.
+已经回传到当前对话的权限请求，在原生回复成功或本次委派任务结束前，始终保持为当前等待权限。轮询快照暂时没有返回该权限时，不得清空 `awaiting_permission_id`。
+
+权限请求处理会在“重复工件抑制”之前重新锚定同一个权限 ID：同一权限不会重复发送到 ChatGPT，但仍可接收稍后返回的匹配决定。由此避免权限端点的一次短暂缺失，把合法决定误判成 request/session/permission 不匹配。
