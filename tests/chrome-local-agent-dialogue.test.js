@@ -12,7 +12,7 @@ const code = fs.readFileSync(path.join(root, 'chrome-extension/code-units/local-
 assert(ref);
 assert(index.defaults.includes(ref.id));
 assert.strictEqual(index.units.length, 11);
-assert.strictEqual(ref.version, '1.0.0-rc.2-local-agent-dialogue.15');
+assert.strictEqual(ref.version, '1.0.0-rc.2-local-agent-dialogue.16');
 assert.strictEqual(ref.phase, 57);
 assert.strictEqual(ref.world_id, 'dcf-firstparty-local-agent-dialogue');
 assert.doesNotThrow(() => new Function(code));
@@ -127,7 +127,20 @@ for (const token of [
   'function countUserMessages()',
   'function isCritical(entry)',
   'cancel_confirmed',
-  'baseline_users'
+  'baseline_users',
+  'function resolveControlTarget(parsed)',
+  'function structuredErrorPayload(code, message, extra)',
+  "target === 'current'",
+  "error: 'no_active_task'",
+  "error: 'session_mismatch'",
+  "error: 'ambiguous_target'",
+  'completed_commands',
+  "state.completed_commands.includes(parsed.command_id)",
+  'emitProgress(job, null, true)',
+  'RESOLVE_REQUEST_ID_RE',
+  'RESOLVE_SESSION_ID_RE',
+  'ctl-ui-',
+  "'already_completed'"
 ]) assert(code.includes(token), `missing ${token}`);
 
 for (const token of [
