@@ -26,12 +26,14 @@ jobs:
         run: python3 .github/scripts/compact-dialogue-patch.py
       - name: Install dependencies
         run: npm ci
-      - name: Verify compact result implementation
+      - name: Build Chrome index
         run: |
           node --check chrome-extension/code-units/local-agent-dialogue/main.js
           npm run build:chrome
-          node tests/chrome-local-agent-dialogue.test.js
-          npm run verify:chrome
+      - name: Run compact dialogue test
+        run: node tests/chrome-local-agent-dialogue.test.js
+      - name: Run full Chrome verification
+        run: npm run verify:chrome
       - name: Commit verified result
         shell: bash
         run: |
