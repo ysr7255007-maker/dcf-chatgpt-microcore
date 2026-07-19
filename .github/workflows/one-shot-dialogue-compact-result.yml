@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - work/dialogue-compact-result-action-20260719
+  pull_request:
+    branches:
+      - rebuild/chrome-native-host-v2
 
 permissions:
   contents: write
