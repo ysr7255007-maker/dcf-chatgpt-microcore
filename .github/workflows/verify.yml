@@ -7,50 +7,9 @@ on:
       - main
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  finalize-compact-dialogue:
-    if: github.event_name == 'pull_request' && github.head_ref == 'work/dialogue-compact-result-action-20260719'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref }}
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-      - name: Update workspace dialogue version baseline
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path('tests/chrome-workspace-ui.test.js')
-          text = path.read_text()
-          old = "assert.strictEqual(versions['dcf.firstparty.local-agent-dialogue'], '1.0.0-rc.2-local-agent-dialogue.9');"
-          new = "assert.strictEqual(versions['dcf.firstparty.local-agent-dialogue'], '1.0.0-rc.2-local-agent-dialogue.10');"
-          if old not in text:
-              raise SystemExit('workspace dialogue version baseline not found')
-          path.write_text(text.replace(old, new, 1))
-          PY
-      - name: Install dependencies
-        run: npm ci
-      - name: Verify Chrome candidate
-        run: npm run verify:chrome
-      - name: Commit verified baseline
-        shell: bash
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git fetch origin rebuild/chrome-native-host-v2
-          git checkout origin/rebuild/chrome-native-host-v2 -- .github/workflows/verify.yml
-          git add tests/chrome-workspace-ui.test.js .github/workflows/verify.yml
-          git diff --cached --check
-          git commit -m 'test: align dialogue workspace version'
-          git push origin HEAD:${{ github.head_ref }}
-
   verify:
     runs-on: ubuntu-latest
     steps:
