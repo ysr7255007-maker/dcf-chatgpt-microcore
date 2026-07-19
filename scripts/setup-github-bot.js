@@ -18,6 +18,8 @@ const CONFIG_FILENAME = 'bot-config.json';
 const PENDING_INSTALL_FILENAME = 'pending-install.json';
 const CANDIDATE_REF = 'refs/heads/rebuild/chrome-native-host-v2';
 const REQUIRED_CHECKS = ['verify', 'verify-and-package'];
+const EXPECTED_PERMISSIONS = { contents: 'write', pull_requests: 'write', actions: 'read', checks: 'read', statuses: 'read' };
+const DANGEROUS_PERMISSIONS = ['workflows', 'administration'];
 const MAX_RESPONSE_BYTES = 1024 * 1024;
 const REQUEST_TIMEOUT_MS = 15_000;
 
@@ -73,6 +75,17 @@ function loadCredentials() { return loadJson(existingCredentialsPath()); }
 function loadBotConfig() { return loadJson(existingConfigPath()); }
 function loadPendingInstall() { return loadJson(pendingInstallPath()); }
 function clearPendingInstall() { try { if (fs.existsSync(pendingInstallPath())) fs.unlinkSync(pendingInstallPath()); } catch (_) {} }
+function verifyPermissions(p) {
+  p = p || {};
+  const missing = []; const dangerous = [];
+  for (const [key, val] of Object.entries(EXPECTED_PERMISSIONS)) {
+    if (p[key] !== val) missing.push({ key, expected: val, actual: p[key] || undefined });
+  }
+  for (const key of DANGEROUS_PERMISSIONS) {
+    if (key in p && p[key] !== 'none' && p[key] !== undefined) dangerous.push({ key, actual: p[key] });
+  }
+  return { all_verified: missing.length === 0 && dangerous.length === 0, missing, dangerous };
+}
 function savePendingInstall(installationId) {
   const existing = loadPendingInstall();
   if (existing && Number(existing.installation_id) === Number(installationId)) return existing;
@@ -81,10 +94,23 @@ function savePendingInstall(installationId) {
   const pending = { schema: 'dcf.github-app-bot.pending-install.v1', app_id: creds.app_id, app_slug: creds.app_slug, installation_id: installationId, recovery_state: crypto.randomBytes(32).toString('hex'), created_at: new Date().toISOString() };
   const dir = secureDirectory(configDir());
   const file = pendingInstallPath();
+  assertNoSymlink(file, true);
   const temp = path.join(dir, `.pending-${crypto.randomBytes(16).toString('hex')}.tmp`);
-  fs.writeFileSync(temp, JSON.stringify(pending, null, 2), { mode: 0o600 });
-  fs.chmodSync(temp, 0o600);
-  fs.renameSync(temp, file);
+  let fd;
+  try {
+    fd = fs.openSync(temp, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL, 0o600);
+    fs.writeFileSync(fd, JSON.stringify(pending, null, 2), 'utf8');
+    fs.fsyncSync(fd); fs.closeSync(fd); fd = null;
+    fs.chmodSync(temp, 0o600);
+    if (fs.lstatSync(temp).isSymbolicLink()) throw new Error('拒绝符号链接临时文件');
+    fs.linkSync(temp, file);
+    fs.unlinkSync(temp);
+    fs.chmodSync(file, 0o600);
+  } catch (error) {
+    if (fd != null) try { fs.closeSync(fd); } catch (_) {}
+    try { if (fs.existsSync(temp)) fs.unlinkSync(temp); } catch (_) {}
+    throw error;
+  }
   return pending;
 }
 function saveCredentials(appData, privateKeyPem) {
@@ -130,13 +156,14 @@ const createInstallationToken = (jwt, id) => httpsRequest('POST', `https://api.g
 const getRepositoryInfo = token => httpsRequest('GET', `https://api.github.com/repos/${OWNER}/${REPO}`, null, auth(token)).then(r => r.body);
 const listInstallationRepositories = token => httpsRequest('GET', 'https://api.github.com/installation/repositories', null, auth(token)).then(r => r.body);
 const getAppWithJwt = jwt => httpsRequest('GET', 'https://api.github.com/app', null, auth(jwt)).then(r => r.body);
+const getInstallations = jwt => httpsRequest('GET', 'https://api.github.com/app/installations', null, auth(jwt)).then(r => r.body);
 const getInstallation = (jwt, id) => httpsRequest('GET', `https://api.github.com/app/installations/${id}`, null, auth(jwt)).then(r => r.body);
 const getCandidateRef = token => httpsRequest('GET', `https://api.github.com/repos/${OWNER}/${REPO}/git/ref/heads/rebuild/chrome-native-host-v2`, null, auth(token)).then(r => r.body);
 function branchProtectionPayload() { return { required_status_checks: { strict: true, contexts: REQUIRED_CHECKS }, required_pull_request_reviews: { required_approving_review_count: 1, dismiss_stale_reviews: true, require_last_push_approval: true, bypass_pull_request_allowances: { users: [], teams: [], apps: [] } }, enforce_admins: true, required_conversation_resolution: true, restrictions: null, allow_force_pushes: false, allow_deletions: false }; }
 const setBranchProtection = (token, rules) => httpsRequest('PUT', `https://api.github.com/repos/${OWNER}/${REPO}/branches/rebuild%2Fchrome-native-host-v2/protection`, rules, auth(token)).then(r => r.body);
 
 const serverState = { manifestState: null, manifestStateUsed: false, setupState: null, setupStateUsed: false, pageCsrf: null, expiresAt: null, server: null, port: null, currentStep: 'intro', error: null, branchGate: 'not-configured' };
-function clearSensitiveMemory() { serverState.manifestState = null; serverState.setupState = null; serverState.pageCsrf = null; serverState.expiresAt = null; }
+function clearSensitiveMemory() { serverState.manifestState = null; serverState.setupState = null; serverState.expiresAt = null; }
 function isExpired() { return !!serverState.expiresAt && Date.now() > serverState.expiresAt; }
 function resetState() { const pageCsrf = serverState.pageCsrf; clearSensitiveMemory(); serverState.pageCsrf = pageCsrf; serverState.manifestStateUsed = false; serverState.setupStateUsed = false; serverState.currentStep = 'intro'; serverState.error = null; }
 function claimSetupCallback(installationId, state) {
@@ -164,8 +191,12 @@ function validateRequest(req, res, allowed, mutation) {
 function startServer(port = 0) { return new Promise((resolve, reject) => { const server = http.createServer(handleRequest); server.on('error', error => reject(error.code === 'EADDRINUSE' ? new Error(`端口被占用 (${LOOPBACK}:${port || '自动选择的端口'})`) : error)); server.listen(port, LOOPBACK, () => { serverState.server = server; serverState.port = server.address().port; serverState.pageCsrf = generateCSRFState(); resolve(serverState.port); }); }); }
 function handleRequest(req, res) {
   const url = new URL(req.url, expectedOrigin()); const route = url.pathname;
-  const table = { '/': [['GET'], false, () => serveHTML(res, 200, mainPageHTML())], '/callback': [['GET'], false, () => handleCallback(res, url)], '/setup': [['GET'], false, () => handleSetup(res, url)], '/api/status': [['GET'], false, () => handleStatus(res)], '/api/complete': [['GET'], false, () => handleComplete(res)], '/api/start': [['POST'], true, () => handleStart(res)], '/api/cancel': [['POST'], true, () => handleCancel(res)], '/api/retry-verification': [['POST'], true, () => handleRetryVerification(res)], '/api/branch-protection-status': [['GET'], false, () => handleBranchProtectionStatus(res)], '/api/branch-protection': [['POST'], true, () => handleBranchProtection(res)] };
+  const table = { '/': [['GET'], false, () => serveHTML(res, 200, mainPageHTML())], '/callback': [['GET'], false, () => handleCallback(res, url)], '/setup': [['GET'], false, () => handleSetup(res, url)], '/api/status': [['GET'], false, () => handleStatus(res)], '/api/complete': [['GET'], false, () => handleComplete(res)], '/api/start': [['POST'], true, () => handleStart(res)], '/api/cancel': [['POST'], true, () => handleCancel(res)], '/api/retry-verification': [['POST'], true, () => handleRetryVerification(res)], '/api/branch-protection-status': [['GET'], false, () => handleBranchProtectionStatus(res)], '/api/branch-protection': [['POST'], true, () => handleBranchProtection(res)], '/api/done': [['POST'], true, () => handleDone(res)] };
   const item = table[route]; if (!item) return reject(res, 404, 'not found'); if (!validateRequest(req, res, item[0], item[1])) return; return item[2]();
+}
+function handleDone(res) {
+  serveJSON(res, 200, { status: 'done' });
+  if (serverState.server) setImmediate(() => serverState.server.close());
 }
 function handleStart(res) {
   const creds = loadCredentials(); const config = loadBotConfig();
@@ -174,7 +205,9 @@ function handleStart(res) {
     serverState.pageCsrf = serverState.pageCsrf || generateCSRFState();
     serverState.expiresAt = Date.now() + 3600000;
     serverState.currentStep = 'pending-install';
-    return serveJSON(res, 200, { pending_install: true, app_slug: creds.app_slug, app_id: creds.app_id, message: 'App 已创建，需要完成安装验证。' });
+    const pending = loadPendingInstall();
+    const install_url = `https://github.com/apps/${encodeURIComponent(creds.app_slug)}/installations/new`;
+    return serveJSON(res, 200, { pending_install: true, app_slug: creds.app_slug, app_id: creds.app_id, install_url, has_pending: !!pending, message: 'App 已创建，需要完成安装验证。如安装回调因重启丢失，请重新安装。' });
   }
   resetState(); serverState.manifestState = generateCSRFState(); serverState.setupState = generateCSRFState(); serverState.pageCsrf = serverState.pageCsrf || generateCSRFState(); serverState.expiresAt = Date.now() + 3600000; serverState.currentStep = 'started';
   return serveJSON(res, 200, { github_url: `https://github.com/settings/apps/new?state=${serverState.manifestState}`, manifest: JSON.stringify(createManifest(serverState.port, serverState.setupState)) });
@@ -216,48 +249,114 @@ async function handleSetup(res, url) {
     if (repo.full_name !== REPOSITORY || repo.owner?.login !== OWNER) throw new Error('目标仓库或账号不匹配');
     const accessible = scope.repositories || []; if (accessible.length !== 1 || accessible[0].full_name !== REPOSITORY) throw new Error('installation token 范围不是唯一目标仓库');
     if (ref.ref !== CANDIDATE_REF || !ref.object?.sha) throw new Error('候选分支 ref 不匹配');
-    const p = installation.permissions || {}; const ok = p.contents === 'write' && p.pull_requests === 'write';
-    saveBotConfig({ schema: 'dcf.github-app-bot.config.v1', app_id: creds.app_id, app_slug: creds.app_slug, installation_id: id, repository: REPOSITORY, private_key_path: creds.private_key_path, created_at: creds.created_at, permission_verification: { contents: p.contents, pull_requests: p.pull_requests, actions: p.actions, checks: p.checks, statuses: p.statuses, all_verified: ok, token_repository_scope: REPOSITORY, app_installation_range_note: 'Installation may include more repositories; this verification token is restricted to DCF only.', candidate_ref: CANDIDATE_REF, candidate_sha: ref.object.sha } });
-    clearPendingInstall(); clearSensitiveMemory(); serverState.currentStep = ok ? 'complete' : 'complete-warn';
+    const p = installation.permissions || {}; const v = verifyPermissions(p);
+    saveBotConfig({ schema: 'dcf.github-app-bot.config.v1', app_id: creds.app_id, app_slug: creds.app_slug, installation_id: id, repository: REPOSITORY, private_key_path: creds.private_key_path, created_at: creds.created_at, permission_verification: { contents: p.contents, pull_requests: p.pull_requests, actions: p.actions, checks: p.checks, statuses: p.statuses, all_verified: v.all_verified, missing: v.missing, dangerous: v.dangerous, token_repository_scope: REPOSITORY, app_installation_range_note: 'Installation may include more repositories; this verification token is restricted to DCF only.', candidate_ref: CANDIDATE_REF, candidate_sha: ref.object.sha } });
+    clearPendingInstall(); clearSensitiveMemory(); serverState.currentStep = v.all_verified ? 'complete' : 'complete-warn';
     const html = renderCompleteHTML(loadBotConfig(), creds);
     serveHTML(res, 200, html);
-    if (serverState.server) setImmediate(() => serverState.server.close());
   } catch (e) { serverState.currentStep = 'error'; serverState.error = `安装验证失败：${e.message}。可在浏览器重试验证，或重新运行向导。pending-install 状态已保存。`; serveHTML(res, 500, redirectHome()); }
 }
+async function discoverAndVerify(creds, installationId) {
+  const jwt = generateJWT(creds.app_id, readSecureFile(creds.private_key_path));
+  const [app, installation] = await Promise.all([getAppWithJwt(jwt), getInstallation(jwt, installationId)]);
+  if (Number(app.id) !== Number(creds.app_id)) throw new Error('App 身份不匹配');
+  if (Number(installation.id) !== installationId) throw new Error('Installation ID 不匹配');
+  if (!installation.account || installation.account.login !== OWNER) throw new Error('Installation 不属于目标账号');
+  if (installation.repository_selection !== 'selected') throw new Error('Installation 应为手动选择仓库');
+  const tokenData = await createInstallationToken(jwt, installationId); const token = tokenData.token; if (!token) throw new Error('GitHub 未返回 installation token');
+  const [repo, scope, ref] = await Promise.all([getRepositoryInfo(token), listInstallationRepositories(token), getCandidateRef(token)]);
+  if (repo.full_name !== REPOSITORY || repo.owner?.login !== OWNER) throw new Error('目标仓库或账号不匹配');
+  const accessible = scope.repositories || []; if (accessible.length !== 1 || accessible[0].full_name !== REPOSITORY) throw new Error('installation token 范围不是唯一目标仓库');
+  if (ref.ref !== CANDIDATE_REF || !ref.object?.sha) throw new Error('候选分支 ref 不匹配');
+  savePendingInstall(installationId);
+  return { creds, installation, token, sha: ref.object.sha, permissions: installation.permissions || {} };
+}
 async function handleRetryVerification(res) {
-  const pending = loadPendingInstall(); if (!pending) return reject(res, 400, '没有待恢复的安装');
-  const creds = loadCredentials(); if (!creds) return reject(res, 400, '凭据不存在');
-  if (Number(creds.app_id) !== Number(pending.app_id)) return reject(res, 400, '凭据与待恢复的安装不匹配');
-  const config = loadBotConfig();
-  if (config && Number(config.installation_id) !== Number(pending.installation_id)) return reject(res, 400, '当前配置的 installation 与待恢复的不一致');
+  let creds = loadCredentials(); if (!creds) return reject(res, 400, '凭据不存在');
+  let pending = loadPendingInstall();
   try {
-    const jwt = generateJWT(creds.app_id, readSecureFile(creds.private_key_path));
-    const [app, installation] = await Promise.all([getAppWithJwt(jwt), getInstallation(jwt, pending.installation_id)]);
-    if (Number(app.id) !== Number(creds.app_id)) throw new Error('App 身份不匹配');
-    if (Number(installation.id) !== Number(pending.installation_id)) throw new Error('Installation ID 不匹配');
-    if (!installation.account || installation.account.login !== OWNER) throw new Error('Installation 不属于目标账号');
-    if (installation.repository_selection !== 'selected') throw new Error('Installation 应为手动选择仓库');
-    const tokenData = await createInstallationToken(jwt, pending.installation_id); const token = tokenData.token; if (!token) throw new Error('GitHub 未返回 installation token');
-    const [repo, scope, ref] = await Promise.all([getRepositoryInfo(token), listInstallationRepositories(token), getCandidateRef(token)]);
-    if (repo.full_name !== REPOSITORY || repo.owner?.login !== OWNER) throw new Error('目标仓库或账号不匹配');
-    const accessible = scope.repositories || []; if (accessible.length !== 1 || accessible[0].full_name !== REPOSITORY) throw new Error('installation token 范围不是唯一目标仓库');
-    if (ref.ref !== CANDIDATE_REF || !ref.object?.sha) throw new Error('候选分支 ref 不匹配');
-    const p = installation.permissions || {}; const ok = p.contents === 'write' && p.pull_requests === 'write';
-    saveBotConfig({ schema: 'dcf.github-app-bot.config.v1', app_id: creds.app_id, app_slug: creds.app_slug, installation_id: pending.installation_id, repository: REPOSITORY, private_key_path: creds.private_key_path, created_at: creds.created_at, permission_verification: { contents: p.contents, pull_requests: p.pull_requests, actions: p.actions, checks: p.checks, statuses: p.statuses, all_verified: ok, token_repository_scope: REPOSITORY, app_installation_range_note: 'Installation may include more repositories; this verification token is restricted to DCF only.', candidate_ref: CANDIDATE_REF, candidate_sha: ref.object.sha } });
-    clearPendingInstall(); clearSensitiveMemory(); serverState.currentStep = ok ? 'complete' : 'complete-warn';
+    if (!pending) {
+      const jwt = generateJWT(creds.app_id, readSecureFile(creds.private_key_path));
+      const allInstalls = await getInstallations(jwt);
+      const match = allInstalls.installations ? allInstalls.installations.find(i => i.account && i.account.login === OWNER && i.repository_selection === 'selected') : null;
+      if (!match) return reject(res, 400, '没有待恢复的安装，且在目标账号上未发现匹配的 Installation。请重新运行向导。');
+      pending = savePendingInstall(match.id);
+    }
+    if (Number(creds.app_id) !== Number(pending.app_id)) return reject(res, 400, '凭据与待恢复的安装不匹配');
+    const config = loadBotConfig();
+    if (config && Number(config.installation_id) !== Number(pending.installation_id)) return reject(res, 400, '当前配置的 installation 与待恢复的不一致');
+    const { permissions, sha } = await discoverAndVerify(creds, pending.installation_id);
+    const v = verifyPermissions(permissions);
+    saveBotConfig({ schema: 'dcf.github-app-bot.config.v1', app_id: creds.app_id, app_slug: creds.app_slug, installation_id: pending.installation_id, repository: REPOSITORY, private_key_path: creds.private_key_path, created_at: creds.created_at, permission_verification: { contents: permissions.contents, pull_requests: permissions.pull_requests, actions: permissions.actions, checks: permissions.checks, statuses: permissions.statuses, all_verified: v.all_verified, missing: v.missing, dangerous: v.dangerous, token_repository_scope: REPOSITORY, app_installation_range_note: 'Installation may include more repositories; this verification token is restricted to DCF only.', candidate_ref: CANDIDATE_REF, candidate_sha: sha } });
+    clearPendingInstall(); clearSensitiveMemory(); serverState.currentStep = v.all_verified ? 'complete' : 'complete-warn';
     const html = renderCompleteHTML(loadBotConfig(), creds);
     serveJSON(res, 200, { status: 'ok', html });
-    if (serverState.server) setImmediate(() => serverState.server.close());
   } catch (e) { serverState.currentStep = 'error'; serverState.error = `重试验证失败：${e.message}`; serveJSON(res, 500, { error: e.message }); }
 }
 function redirectHome() { return '<!doctype html><meta http-equiv="refresh" content="0;url=/">'; }
 function redirectInstall(slug) { const target = `https://github.com/apps/${encodeURIComponent(slug)}/installations/new`; return `<!doctype html><p>请选择 Only select repositories → ${html(REPOSITORY)}。</p><script>location.replace(${JSON.stringify(target)})</script>`; }
 function badge(state, label) { const color = state === 'success' ? '#2da44e' : state === 'warn' ? '#d4920c' : '#ccc'; return `<span style="display:inline-block;background:${color};color:#fff;border-radius:4px;font-size:12px;padding:1px 8px;margin:0 4px">${html(label)}</span>`; }
-function renderCompleteHTML(config, creds) { const p = config.permission_verification || {}; const appBadge = badge('success', '已安装'); const permBadge = badge(p.all_verified ? 'success' : 'warn', p.all_verified ? '已验证' : '需检查'); const gateStatus = serverState.branchGate === 'configured' ? badge('success', '已配置') : serverState.branchGate === 'unavailable' ? badge('warn', '不可用') : badge('', '未配置'); const row = (k, v) => `<li><code>${html(k)}</code>: ${html(v || 'missing')}</li>`; return `<section><h2>App 安装${appBadge}</h2><p><strong>Bot：</strong>${html(config.app_slug || creds.app_slug)}</p><p>App ID：${html(config.app_id)}；Installation ID：${html(config.installation_id)}</p><p>仓库：<code>${html(config.repository)}</code></p><p>本地凭据目录：<code>${html(configDir())}</code></p></section><section><h2>权限验证${permBadge}</h2><ul>${row('contents', p.contents)}${row('pull_requests', p.pull_requests)}${row('candidate ref', p.candidate_ref)}</ul></section><section><h2>分支门禁${gateStatus}</h2><p>候选分支 <code>${html(CANDIDATE_REF)}</code> 保护规则已${serverState.branchGate === 'configured' ? '配置' : serverState.branchGate === 'unavailable' ? '尝试配置但不可用' : '未配置'}。</p></section><p>后续 Local Agent 可创建分支、提交和 PR；用户账号负责审查、Approve 和 Merge。</p>`; }
-function mainPageHTML() { return `<!doctype html><meta charset="utf-8"><title>DCF GitHub App Bot 初始化</title><style>body{font:16px system-ui;max-width:720px;margin:40px auto;padding:0 16px}button{padding:9px 14px;margin:4px;cursor:pointer}.card{border:1px solid #ccc;padding:16px;border-radius:8px}</style><div class="card" id="view"><p>加载中...</p></div><script>const csrf=${JSON.stringify(html(serverState.pageCsrf))};async function poll(){try{const s=await(await fetch('/api/status')).json();const v=document.getElementById('view');if(s.html){v.innerHTML=s.html;return}if(s.step==='error'){v.innerHTML='<h2>错误</h2><p>'+s.message+'</p><button onclick="location.reload()">刷新</button>';return}if(s.step==='creds-exist'||s.step==='pending-install'||s.step==='creds-done'){v.innerHTML='<h2>等待安装验证</h2><p>App <strong>'+s.app_slug+'</strong> 已创建。</p><p>请完成安装后<button onclick="retry()">重新验证</button>或<button onclick="cancel()">取消</button></p><p>如未安装，请在 GitHub 安装页面选择 <strong>Only select repositories</strong>。</p>';return}if(s.step==='cancelled'){v.innerHTML='<p>向导已取消。<button onclick="location.reload()">重新开始</button></p>';return}v.innerHTML='<p>此向导只绑定 127.0.0.1。若名称冲突，请在 GitHub 创建页改为唯一名称。</p><button id="start">创建 DCF Local Agent Bot</button><button onclick="cancel()">取消</button>';document.getElementById('start').onclick=start}catch(e){document.getElementById('view').innerHTML='<p>状态查询失败。</p><button onclick="location.reload()">重试</button>'}}async function start(){try{const r=await(await fetch('/api/start',{method:'POST',headers:{'X-DCF-Wizard-CSRF':csrf}})).json();if(r.error)throw Error(r.error);if(r.pending_install){document.getElementById('view').innerHTML='<h2>等待安装验证</h2><p>App <strong>'+r.app_slug+'</strong> 已创建。请安装后<button onclick="retry()">重新验证</button>。</p>';return}const f=document.createElement('form');f.method='POST';f.action=r.github_url;const i=document.createElement('input');i.name='manifest';i.value=r.manifest;f.appendChild(i);document.body.appendChild(f);f.submit()}catch(e){document.getElementById('view').innerHTML='<p>'+e.message+'</p>'}}async function retry(){document.getElementById('view').innerHTML='<p>验证中...</p>';try{const r=await(await fetch('/api/retry-verification',{method:'POST',headers:{'X-DCF-Wizard-CSRF':csrf}})).json();if(r.html){document.getElementById('view').innerHTML=r.html}else{document.getElementById('view').innerHTML='<p>'+r.error+'</p><button onclick="location.reload()">重试</button>'}}catch(e){document.getElementById('view').innerHTML='<p>重试验证失败：'+e.message+'</p><button onclick="location.reload()">重试</button>'}}async function cancel(){await fetch('/api/cancel',{method:'POST',headers:{'X-DCF-Wizard-CSRF':csrf}});location.reload()}poll();</script>`; }
+function renderPermissionRows(p) {
+  let html2 = '';
+  for (const [key, val] of Object.entries(EXPECTED_PERMISSIONS)) {
+    const actual = p[key] || '<span style="color:#d00">missing</span>';
+    const ok = p[key] === val;
+    html2 += `<li><code>${html(key)}</code>: ${ok ? html(actual) : '<span style="color:#d00">' + html(actual || 'missing') + '</span>'} <small>期望: ${html(val)}</small></li>`;
+  }
+  for (const key of DANGEROUS_PERMISSIONS) {
+    if (key in p && p[key] !== 'none' && p[key] !== undefined) {
+      html2 += `<li><code>${html(key)}</code>: <span style="color:#d00">${html(p[key])}</span> <small>危险权限</small></li>`;
+    }
+  }
+  if (p.missing && p.missing.length > 0) {
+    for (const m of p.missing) {
+      html2 += `<li><code>${html(m.key)}</code>: <span style="color:#d00">缺失 (期望 ${html(m.expected)}, 实际 ${html(m.actual || 'none')})</span></li>`;
+    }
+  }
+  if (p.dangerous && p.dangerous.length > 0) {
+    for (const d of p.dangerous) {
+      html2 += `<li><code>${html(d.key)}</code>: <span style="color:#d00">危险权限: ${html(d.actual)}</span></li>`;
+    }
+  }
+  return html2;
+}
+function renderCompleteHTML(config, creds) { const p = config.permission_verification || {}; const appBadge = badge('success', '已安装'); const permBadge = badge(p.all_verified ? 'success' : 'warn', p.all_verified ? '已验证' : '需检查'); const gateStatus = serverState.branchGate === 'configured' ? badge('success', '已配置') : serverState.branchGate === 'unavailable' ? badge('warn', '不可用') : badge('', '未配置'); const branchGateDisabled = serverState.branchGate === 'configured' || serverState.branchGate === 'unavailable' ? 'disabled' : ''; return `<section><h2>App 安装${appBadge}</h2><p><strong>Bot：</strong>${html(config.app_slug || creds.app_slug)}</p><p>App ID：${html(config.app_id)}；Installation ID：${html(config.installation_id)}</p><p>仓库：<code>${html(config.repository)}</code></p><p>本地凭据目录：<code>${html(configDir())}</code></p></section><section><h2>权限验证${permBadge}</h2><ul>${renderPermissionRows(p)}</ul></section><section><h2>分支门禁${gateStatus}</h2><p>候选分支 <code>${html(CANDIDATE_REF)}</code> 保护规则将要求：</p><ul><li>严格状态检查：<code>${REQUIRED_CHECKS.map(c => html(c)).join('</code>, <code>')}</code></li><li>必需 <strong>1</strong> 个审查 + 过期 dismiss + 最后推送审查</li><li>管理员同样受保护、对话必须解决</li><li>禁止 force-push、禁止删除</li></ul><p>此操作使用本机 <code>gh</code> 用户的管理身份，Bot 本人不会获得 administration 权限。</p><p><button id="btn-configure-gate" ${branchGateDisabled}>配置门禁</button> <button id="btn-skip-gate" ${branchGateDisabled}>跳过</button></p></section><p>后续 Local Agent 可创建分支、提交和 PR；用户账号负责审查、Approve 和 Merge。</p>`; }
+function mainPageHTML() { return `<!doctype html><meta charset="utf-8"><title>DCF GitHub App Bot 初始化</title><style>body{font:16px system-ui;max-width:720px;margin:40px auto;padding:0 16px}button{padding:9px 14px;margin:4px;cursor:pointer}.card{border:1px solid #ccc;padding:16px;border-radius:8px}</style><div class="card" id="view"><p>加载中...</p></div><script>
+const csrf=${JSON.stringify(html(serverState.pageCsrf))};
+function txt(id, s){var e=document.getElementById(id);if(e)e.textContent=s;}
+function setViewHTML(html){document.getElementById('view').innerHTML=html;}
+function showError(msg){setViewHTML('<h2>错误</h2><p id="err-msg"></p><button onclick="location.reload()">刷新</button>');txt('err-msg',msg);}
+function showPending(appSlug,installUrl,hasPending){
+  var h='<h2>等待安装验证</h2><p>App <strong id="pslug"></strong> 已创建。</p><p>';
+  if(installUrl)h+='<a id="install-link" href="'+encodeURI(installUrl)+'">打开 GitHub 安装页面</a><br>';
+  h+='请完成安装后<button onclick="retry()">重新验证</button>或<button onclick="cancel()">取消</button></p>';
+  if(!hasPending)h+='<p>如已安装但重试验证未发现，可点击上方链接重新安装。</p>';
+  setViewHTML(h);txt('pslug',appSlug||'');
+}
+async function poll(){try{var s=await(await fetch('/api/status')).json();var v=document.getElementById('view');if(s.html){v.innerHTML=s.html;attachGateHandlers();return}
+if(s.step==='error'){showError(s.message||'');return}
+if(s.step==='creds-exist'||s.step==='pending-install'||s.step==='creds-done'){showPending(s.app_slug,s.install_url,false);return}
+if(s.step==='cancelled'){setViewHTML('<p>向导已取消。<button onclick="location.reload()">重新开始</button></p>');return}
+setViewHTML('<p>此向导只绑定 127.0.0.1。若名称冲突，请在 GitHub 创建页改为唯一名称。</p><button id="start">创建 DCF Local Agent Bot</button><button onclick="cancel()">取消</button>');document.getElementById('start').onclick=start
+}catch(e){showError('状态查询失败。')}}
+async function start(){try{var r=await(await fetch('/api/start',{method:'POST',headers:{'X-DCF-Wizard-CSRF':csrf}})).json();if(r.error)throw Error(r.error);if(r.pending_install){showPending(r.app_slug,r.install_url,r.has_pending);return}
+var f=document.createElement('form');f.method='POST';f.action=r.github_url;var i=document.createElement('input');i.name='manifest';i.value=r.manifest;f.appendChild(i);document.body.appendChild(f);f.submit()
+}catch(e){showError(e.message||'启动失败')}}
+function attachGateHandlers(){
+  var bc=document.getElementById('btn-configure-gate');if(bc)bc.onclick=configureGate;
+  var bs=document.getElementById('btn-skip-gate');if(bs)bs.onclick=skipGate;
+}
+async function configureGate(){try{var r=await(await fetch('/api/branch-protection',{method:'POST',headers:{'X-DCF-Wizard-CSRF':csrf}})).json();if(r.error)throw Error(r.error);setViewHTML('<p>门禁已配置。<button onclick="done()">完成</button></p>');txt('err-msg',r.required_checks?'规则: '+r.required_checks.join(', '):'');}catch(e){showError(e.message||'配置门禁失败')}}
+async function skipGate(){setViewHTML('<p>已跳过门禁配置。<button onclick="done()">完成</button></p>')}
+async function done(){await fetch('/api/done',{method:'POST',headers:{'X-DCF-Wizard-CSRF':csrf}})}
+async function retry(){setViewHTML('<p>验证中...</p>');try{var r=await(await fetch('/api/retry-verification',{method:'POST',headers:{'X-DCF-Wizard-CSRF':csrf}})).json();if(r.html){setViewHTML(r.html);attachGateHandlers();return}
+showError(r.error||'验证失败')
+}catch(e){showError('重试验证失败')}}
+async function cancel(){await fetch('/api/cancel',{method:'POST',headers:{'X-DCF-Wizard-CSRF':csrf}});location.reload()}
+poll();</script>`; }
 function openBrowser(url) { try { const command = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open'; return spawn(command, [url], { shell: command === 'start', stdio: 'ignore' }); } catch (_) { return null; } }
 async function main() { try { await startServer(); const child = openBrowser(expectedOrigin()); if (!child) throw new Error('无法打开浏览器'); child.once('error', () => { if (serverState.server) serverState.server.close(); }); await new Promise(resolve => serverState.server.once('close', resolve)); } finally { clearSensitiveMemory(); if (serverState.server) serverState.server.close(); } }
 function shutdown() { clearSensitiveMemory(); if (serverState.server) serverState.server.close(() => process.exit(0)); else process.exit(0); }
 process.on('SIGINT', shutdown); process.on('SIGTERM', shutdown);
-module.exports = { OWNER, REPO, REPOSITORY, APP_SUGGESTED_NAME, LOOPBACK, CANDIDATE_REF, REQUIRED_CHECKS, CREDENTIAL_FILENAME, PRIVATE_KEY_FILENAME, CONFIG_FILENAME, PENDING_INSTALL_FILENAME, configDir, secureDirectory, writeSecureFile, atomicWriteSecure, readSecureFile, generateCSRFState, createManifest, generateJWT, httpsRequest, exchangeCode, createInstallationToken, getRepositoryInfo, listInstallationRepositories, getAppWithJwt, getInstallation, getCandidateRef, branchProtectionPayload, saveCredentials, loadCredentials, saveBotConfig, loadBotConfig, savePendingInstall, loadPendingInstall, clearPendingInstall, serverState, startServer, handleRequest, handleStatus, handleCancel, handleSetup, handleRetryVerification, clearSensitiveMemory, isExpired, claimSetupCallback, html, renderCompleteHTML, main };
+module.exports = { OWNER, REPO, REPOSITORY, APP_SUGGESTED_NAME, LOOPBACK, CANDIDATE_REF, REQUIRED_CHECKS, EXPECTED_PERMISSIONS, DANGEROUS_PERMISSIONS, CREDENTIAL_FILENAME, PRIVATE_KEY_FILENAME, CONFIG_FILENAME, PENDING_INSTALL_FILENAME, configDir, secureDirectory, writeSecureFile, atomicWriteSecure, readSecureFile, generateCSRFState, createManifest, generateJWT, httpsRequest, exchangeCode, createInstallationToken, getRepositoryInfo, listInstallationRepositories, getAppWithJwt, getInstallations, getInstallation, getCandidateRef, branchProtectionPayload, saveCredentials, loadCredentials, saveBotConfig, loadBotConfig, savePendingInstall, loadPendingInstall, clearPendingInstall, serverState, startServer, handleRequest, handleStatus, handleCancel, handleSetup, handleRetryVerification, clearSensitiveMemory, isExpired, claimSetupCallback, html, renderCompleteHTML, mainPageHTML, verifyPermissions, main };
 if (require.main === module) main().catch(error => { console.error(`初始化失败：${error.message}`); shutdown(); });
