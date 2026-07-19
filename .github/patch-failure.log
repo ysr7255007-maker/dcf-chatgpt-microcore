@@ -1,0 +1,104 @@
+
+> dcf-chatgpt-microcore@0.18.2 verify
+> npm run verify:chrome && npm run verify:legacy
+
+
+> dcf-chatgpt-microcore@0.18.2 verify:chrome
+> npm run build:chrome && npm run test:chrome && node --check dist/dcf-chrome-extension/src/background.js && node scripts/validate-json.js dist/dcf-chrome-extension/config.json releases/chrome/official-index.json dist/verification-summary.json
+
+
+> dcf-chatgpt-microcore@0.18.2 build:chrome
+> node scripts/build-chrome-extension.js
+
+{
+  "ok": true,
+  "version": "1.0.0-rc.2",
+  "plugin_index_ref": "rebuild/chrome-native-host-v2",
+  "extension_dir": "dist/dcf-chrome-extension",
+  "zip": "dist/dcf-chrome-extension-1.0.0-rc.2.zip",
+  "plugins": 10,
+  "extension_files": 14
+}
+
+> dcf-chatgpt-microcore@0.18.2 test:chrome
+> node tests/chrome-host.unit.test.js && node tests/chrome-build.integration.test.js && node tests/chrome-workspace-ui.test.js && node tests/chrome-local-agent-dialogue.test.js && node tests/chrome-local-agent-status.test.js && node tests/chrome-local-agent-diagnostics.test.js && node tests/chrome-lifecycle.integration.test.js && node tests/chrome-build-determinism.test.js
+
+{
+  "ok": true,
+  "rc1_absorption": true,
+  "pure_plugin_data": true,
+  "unique_worlds": true,
+  "immutable_units": true,
+  "exact_snapshots": true
+}
+{
+  "ok": true,
+  "version": "1.0.0-rc.2",
+  "plugin_index_ref": "rebuild/chrome-native-host-v2",
+  "extension_dir": "dist/dcf-chrome-extension",
+  "zip": "dist/dcf-chrome-extension-1.0.0-rc.2.zip",
+  "plugins": 10,
+  "extension_files": 14
+}
+{
+  "ok": true,
+  "pure_base": true,
+  "independent_plugins": 10,
+  "local_agent_is_pure_plugin": true,
+  "dialogue_loop_is_pure_plugin": true,
+  "history_is_baseline_not_queue": true,
+  "dialogue_hot_remount": true,
+  "shell_shadow_dialogue_mount": true,
+  "dialogue_shadow_event_binding": true,
+  "dialogue_one_click_acceptance": true,
+  "normalized_opencode_status": true,
+  "synchronous_message_completion": true,
+  "robust_artifact_parsing": true,
+  "stable_dialogue_controls": true,
+  "pinned_tab_memory_is_plugin_owned": true,
+  "base_unchanged": true,
+  "dark_mode": true,
+  "next_migration_only": true
+}
+{
+  "ok": true,
+  "plugin_hashes": 10,
+  "workspace_tabs": true,
+  "tab_arrows_and_wheel": true,
+  "function_tab_locked": true,
+  "function_page_pinning": true,
+  "pinned_tabs_survive_updates": true,
+  "selectable_ammo_cards": true,
+  "shared_ammo_controls": true,
+  "dialogue_one_click_acceptance": true,
+  "changed_hashes": {
+    "dcf.firstparty.local-agent": "b2aba29b21ba385c26cb61a9a0f9eab3cd9b57caf62a1e07c5a7672f5bd60d8c",
+    "dcf.firstparty.local-agent-dialogue": "79b64d74b3af612587c2dbccd95657a8b5c429eb4e6282323ace36ede4eb3516",
+    "dcf.firstparty.plugin-manager": "d561e4289b05d3545d73e4f3093d2fb6fe0785651c97f75dd243fb2e67969b9c"
+  }
+}
+node:internal/assert/utils:77
+    throw err;
+    ^
+
+AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+
+  assert(!/\bmessages\s*:\s*snap\.messages\b/.test(code))
+
+    at Object.<anonymous> (/home/runner/work/dcf-chatgpt-microcore/dcf-chatgpt-microcore/tests/chrome-local-agent-dialogue.test.js:96:1)
+    at Module._compile (node:internal/modules/cjs/loader:1781:14)
+    at Object..js (node:internal/modules/cjs/loader:1913:10)
+    at Module.load (node:internal/modules/cjs/loader:1505:32)
+    at Function._load (node:internal/modules/cjs/loader:1309:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)
+    at node:internal/main/run_main_module:36:49 {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}
+
+Node.js v22.23.1
