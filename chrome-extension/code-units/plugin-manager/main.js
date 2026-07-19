@@ -15,7 +15,8 @@
     'dcf.firstparty.local-agent': { panel_id: 'local-agent', title: '本机 Agent' },
     'dcf.firstparty.backup': { panel_id: 'backup', title: '备份恢复' },
     'dcf.firstparty.plugin-manager': { panel_id: 'plugins', title: '功能' },
-    'dcf.firstparty.diagnostics': { panel_id: 'diagnostics', title: '诊断' }
+    'dcf.firstparty.diagnostics': { panel_id: 'diagnostics', title: '诊断' },
+    'dcf.firstparty.page-diagnostics': { panel_id: 'dcf-panel-page-diagnostics', title: '页面诊断' }
   };
 
   const send = (message) => chrome.runtime.sendMessage(message).then((result) => {
