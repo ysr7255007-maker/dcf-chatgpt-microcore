@@ -57,7 +57,8 @@ const specs = [
   ['dcf.firstparty.backup', '备份恢复', '独立插件数据的一键备份与恢复。', 'backup', 60],
   ['dcf.firstparty.plugin-manager', '功能管理', '低频功能启停与统一 DCF 更新入口。', 'plugin-manager', 70],
   ['dcf.firstparty.diagnostics', '诊断', '正常时压缩状态，异常时自动回传本机 Agent 的隐私受限证据。', 'diagnostics', 90],
-  ['dcf.firstparty.page-diagnostics', '页面诊断', '默认关闭的页面生命周期与流式渲染诊断，固定环形缓冲区，不记录对话正文。', 'page-diagnostics', 95]
+  ['dcf.firstparty.page-diagnostics', '页面诊断', '默认关闭的页面生命周期与流式渲染诊断，固定环形缓冲区，不记录对话正文。', 'page-diagnostics', 95],
+  ['dcf.firstparty.runtime-evidence', '运行证据', '默认关闭的本机 loopback 运行态证据桥，不发送对话正文或凭据。', 'runtime-evidence', 97]
 ].map(([id, title, description, folder, phase]) => ({ id, title, description, folder, phase }));
 
 const units = specs.map((spec) => {

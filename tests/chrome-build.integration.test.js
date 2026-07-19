@@ -14,8 +14,8 @@ assert.strictEqual(manifest.version, '1.0.0.2');
 assert.strictEqual(config.schema, 'dcf.chrome.config.v1');
 assert(config.plugin_index_url.includes('/rebuild/chrome-native-host-v2/'));
 assert.strictEqual(index.schema, 'dcf.plugin_index.v1');
-assert.strictEqual(index.units.length, 11);
-assert.strictEqual(index.defaults.length, 11);
+assert.strictEqual(index.units.length, 12);
+assert.strictEqual(index.defaults.length, 12);
 assert.strictEqual(new Set(index.units.map((unit) => unit.world_id)).size, index.units.length);
 assert.strictEqual(new Set(index.units.map((unit) => unit.id)).size, index.units.length);
 for (const unit of index.units) {
@@ -56,7 +56,7 @@ assert(!migration.includes('dcf-chatgpt-microcore-host'));
 console.log(JSON.stringify({
   ok: true,
   pure_base: true,
-  independent_plugins: 10,
+  independent_plugins: 12,
   local_agent_is_pure_plugin: true,
   dialogue_loop_is_pure_plugin: true,
   history_is_baseline_not_queue: true,

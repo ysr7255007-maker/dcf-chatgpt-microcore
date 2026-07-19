@@ -812,7 +812,19 @@
     panel && panel.remove();
   }
 
-  globalThis[GLOBAL_KEY] = { version: UNIT_VERSION, destroy };
+  function readRuntimeEvidence() {
+    return {
+      connected: Boolean(state.connected),
+      endpoint: state.config.base_url,
+      selected_session_id: state.selected_session_id || null,
+      session_status: currentStatusType(),
+      last_poll_at: state.last_poll_at || null,
+      endpoint_errors: Object.fromEntries(Object.entries(state.endpoint_errors || {}).map(([key, value]) => [key, String(value || '').slice(0, 240)])),
+      poll_failures: Object.keys(state.endpoint_errors || {}).length
+    };
+  }
+
+  globalThis[GLOBAL_KEY] = { version: UNIT_VERSION, destroy, readRuntimeEvidence };
 
   try {
     document.getElementById(HOST_ID)?.remove();

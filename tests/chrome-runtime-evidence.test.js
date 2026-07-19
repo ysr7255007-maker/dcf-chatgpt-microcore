@@ -1,0 +1,24 @@
+'use strict';
+const assert = require('assert');
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+
+const root = path.resolve(__dirname, '..');
+const index = JSON.parse(fs.readFileSync(path.join(root, 'releases/chrome/official-index.json'), 'utf8'));
+const ref = index.units.find((unit) => unit.id === 'dcf.firstparty.runtime-evidence');
+assert(ref, 'runtime evidence plugin is indexed');
+const code = fs.readFileSync(path.join(root, 'chrome-extension/code-units/runtime-evidence/main.js'), 'utf8');
+assert.strictEqual(crypto.createHash('sha256').update(code).digest('hex'), ref.hash, 'index hash tracks evidence plugin');
+for (const token of ['dcf.runtime.snapshot.v1', 'dcf.runtime.event.v1', 'dcf.runtime.publish.v1', '127.0.0.1', 'conversation_text_included: false', 'credentials_included: false', 'config.enabled = event.target.checked', 'diagnostic.start', 'diagnostic.stop', 'readRuntimeEvidence']) assert(code.includes(token), `missing ${token}`);
+for (const forbidden of ['document.cookie', 'localStorage', 'sessionStorage', 'innerHTML ||', 'textContent ||', 'messageText', 'task_draft', 'memoryPassword']) assert(!code.includes(forbidden), `privacy boundary includes ${forbidden}`);
+const localAgent = fs.readFileSync(path.join(root, 'chrome-extension/code-units/local-agent/main.js'), 'utf8');
+assert(localAgent.includes('function readRuntimeEvidence()'));
+assert(!localAgent.slice(localAgent.indexOf('function readRuntimeEvidence()')).includes('state.messages'));
+const dialogue = fs.readFileSync(path.join(root, 'chrome-extension/code-units/local-agent-dialogue/main.js'), 'utf8');
+assert(dialogue.includes('function readRuntimeEvidence()'));
+assert(dialogue.includes('outbox_pending_count'));
+const bridge = fs.readFileSync(path.join(root, 'scripts/dcf-runtime-evidence-bridge.js'), 'utf8');
+for (const token of ["const host = process.env.DCF_RUNTIME_BRIDGE_HOST || '127.0.0.1'", 'maxEvents = 256', 'retentionMs = 30 * 60 * 1000', '/dcf/runtime/snapshot', '/dcf/runtime/events', '/dcf/runtime/checks/run', 'diagnostic\\/(start|stop)', 'user_intervention_required']) assert(bridge.includes(token), `bridge missing ${token}`);
+assert(!bridge.includes('child_process'));
+console.log(JSON.stringify({ ok: true, schemas: ['dcf.runtime.snapshot.v1', 'dcf.runtime.event.v1'], loopback_only: true, bridge_default_off: true, privacy_whitelist: true }, null, 2));

@@ -2,6 +2,14 @@
 
 Updated: 2026-07-19
 
+## Runtime evidence bridge (Issue #58, in development)
+
+- `dcf.firstparty.runtime-evidence` is a default-disabled first-party plugin that publishes only whitelisted DCF runtime state to a local loopback collector.
+- `scripts/dcf-runtime-evidence-bridge.js` provides versioned snapshot, event, connection, health-check and controlled page-diagnostic endpoints on `127.0.0.1:4178` by default.
+- It is not a browser automation, DOM, console, CDP, Native Host, or OpenCode proxy. Bridge failure cannot block DCF.
+- Conversation text, Assistant output, user input, cookies, credentials, raw DOM, raw logs and reasoning are excluded by construction.
+- The integration with Issue #52 outbox states and Issue #53 page diagnostics must be synchronized with the merged PR #57 protocol before this branch is submitted.
+
 ## Current product state
 
 - Chrome candidate: `1.0.0-rc.2`

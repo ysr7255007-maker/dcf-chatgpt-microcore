@@ -229,7 +229,12 @@
     panel = null;
   }
 
-  globalThis[GLOBAL_KEY] = { version: UNIT_VERSION, destroy, start, stop, report, ring };
+  function readRuntimeEvidence() {
+    const result = ring.length ? report() : null;
+    return { running, ring_size: ring.length, analysis: result?.analysis?.conclusion || null, summary: result?.summary || null };
+  }
+
+  globalThis[GLOBAL_KEY] = { version: UNIT_VERSION, destroy, start, stop, report, readRuntimeEvidence, ring };
 
   try {
     document.getElementById(HOST_ID)?.remove();
