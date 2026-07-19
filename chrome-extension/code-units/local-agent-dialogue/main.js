@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.local-agent-dialogue';
-  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.10';
+  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.11';
   const LOCAL_AGENT_ID = 'dcf.firstparty.local-agent';
   const PANEL_ID = 'dcf-panel-local-agent';
   const SHELL_ID = 'dcf-chrome-shell-host';
@@ -260,6 +260,24 @@
     for (let index = messages.length - 1; index >= 0; index -= 1) {
       if (messageRole(messages[index]).includes('assistant')) {
         const text = messageText(messages[index]);
+        if (text) return text;
+      }
+    }
+    return '';
+  }
+
+  function formalAssistantText(message) {
+    return list(message?.parts)
+      .filter((part) => part && part.type === 'text')
+      .map((part) => String(part.text || ''))
+      .join('\n')
+      .trim();
+  }
+
+  function latestAssistantFormalText(messages) {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (messageRole(messages[index]).includes('assistant')) {
+        const text = formalAssistantText(messages[index]);
         if (text) return text;
       }
     }
@@ -577,7 +595,7 @@
       tool,
       task_context: {
         original_task: job.request.task,
-        recent_assistant_output: latestAssistant(snap.messages).slice(-6000),
+        recent_assistant_output: latestAssistantFormalText(snap.messages).slice(-6000),
         todo: snap.todo,
         diff: snap.diff
       },
@@ -701,12 +719,11 @@
       request_id: job.request.id,
       status,
       session_id: job.session_id,
-      assistant_result: latestAssistant(snap.messages),
+      assistant_result: latestAssistantFormalText(snap.messages),
       todo: snap.todo,
       diff: snap.diff,
       permissions: snap.permissions,
       questions: snap.questions,
-      messages: job.request.return_mode === 'full' ? snap.messages : undefined,
       execution: {
         elapsed_ms: Date.now() - job.started_at,
         status_type: snap.status_type,
@@ -740,7 +757,7 @@
         render();
       } else {
         if (job.awaiting_permission_id) job.awaiting_permission_id = '';
-        const assistantResult = latestAssistant(snap.messages);
+        const assistantResult = latestAssistantFormalText(snap.messages);
         const terminalStatus = ['idle', 'completed'].includes(snap.status_type);
         if ((job.response_state === 'fulfilled' || terminalStatus) && assistantResult) {
           const finalSnap = await snapshot(job);
@@ -832,7 +849,7 @@
       request_id: requestData?.id || job?.request.id || 'unknown',
       status: 'bridge_error',
       session_id: job?.session_id || '',
-      assistant_result: latestAssistant(snap.messages || []),
+      assistant_result: latestAssistantFormalText(snap.messages || []),
       todo: snap.todo || [], diff: snap.diff || [], permissions: snap.permissions || [], questions: snap.questions || [],
       execution: {
         elapsed_ms: state.started_at ? Date.now() - state.started_at : 0,

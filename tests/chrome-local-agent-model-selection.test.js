@@ -14,7 +14,7 @@ const dialogueRef = index.units.find((unit) => unit.id === 'dcf.firstparty.local
 assert(localAgentRef);
 assert(dialogueRef);
 assert.strictEqual(localAgentRef.version, '1.0.0-rc.2-local-agent.3');
-assert.strictEqual(dialogueRef.version, '1.0.0-rc.2-local-agent-dialogue.10');
+assert.strictEqual(dialogueRef.version, '1.0.0-rc.2-local-agent-dialogue.11');
 assert.strictEqual(crypto.createHash('sha256').update(localAgentCode).digest('hex'), localAgentRef.hash);
 assert.strictEqual(crypto.createHash('sha256').update(dialogueCode).digest('hex'), dialogueRef.hash);
 
