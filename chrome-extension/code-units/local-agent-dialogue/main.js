@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.local-agent-dialogue';
-  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.9';
+  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.10';
   const LOCAL_AGENT_ID = 'dcf.firstparty.local-agent';
   const PANEL_ID = 'dcf-panel-local-agent';
   const SHELL_ID = 'dcf-chrome-shell-host';
@@ -221,24 +221,21 @@
     return collection[id] || list(collection).find((item) => String(item?.sessionID || item?.session_id || item?.sessionId || item?.id || '') === id) || null;
   }
 
-  function partText(part) {
-    if (!part || typeof part !== 'object') return '';
-    if (part.type === 'text' || part.type === 'reasoning') return String(part.text || '');
-    if (part.type === 'tool') {
-      const title = part.state?.title || part.state?.error || '';
-      return `[${part.tool || part.name || 'tool'} · ${statusType(part.state)}${title ? ` · ${title}` : ''}]`;
+  function assistantText(record) {
+    if (!messageRole(record).includes('assistant')) return '';
+    const texts = [];
+    for (const part of list(record?.parts)) {
+      if (part?.type !== 'text') continue;
+      const text = String(part.text || '').trim();
+      if (text) texts.push(text);
     }
-    if (part.type === 'step-finish' && part.reason) return `[步骤结束 · ${part.reason}]`;
-    return '';
+    return texts.join('\n').trim();
   }
 
-  const messageText = (record) => list(record?.parts).map(partText).filter(Boolean).join('\n').trim();
-  function latestAssistant(messages) {
+  function latestAssistantText(messages) {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
-      if (messageRole(messages[index]).includes('assistant')) {
-        const text = messageText(messages[index]);
-        if (text) return text;
-      }
+      const text = assistantText(messages[index]);
+      if (text) return text;
     }
     return '';
   }
@@ -514,7 +511,7 @@
       diff: snap.diff.length,
       permissions: snap.permissions.length,
       questions: snap.questions.length,
-      preview: latestAssistant(snap.messages).slice(-900),
+      preview: latestAssistantText(snap.messages).slice(-900),
       last_activity_at: new Date(job.last_activity_at).toLocaleTimeString()
     };
   }
@@ -554,7 +551,7 @@
       tool,
       task_context: {
         original_task: job.request.task,
-        recent_assistant_output: latestAssistant(snap.messages).slice(-6000),
+        recent_assistant_output: latestAssistantText(snap.messages).slice(-6000),
         todo: snap.todo,
         diff: snap.diff
       },
@@ -678,12 +675,11 @@
       request_id: job.request.id,
       status,
       session_id: job.session_id,
-      assistant_result: latestAssistant(snap.messages),
+      assistant_result: latestAssistantText(snap.messages),
       todo: snap.todo,
       diff: snap.diff,
       permissions: snap.permissions,
       questions: snap.questions,
-      messages: job.request.return_mode === 'full' ? snap.messages : undefined,
       execution: {
         elapsed_ms: Date.now() - job.started_at,
         status_type: snap.status_type,
@@ -717,7 +713,7 @@
         render();
       } else {
         if (job.awaiting_permission_id) job.awaiting_permission_id = '';
-        const assistantResult = latestAssistant(snap.messages);
+        const assistantResult = latestAssistantText(snap.messages);
         const terminalStatus = ['idle', 'completed'].includes(snap.status_type);
         if ((job.response_state === 'fulfilled' || terminalStatus) && assistantResult) {
           const finalSnap = await snapshot(job);
@@ -809,7 +805,7 @@
       request_id: requestData?.id || job?.request.id || 'unknown',
       status: 'bridge_error',
       session_id: job?.session_id || '',
-      assistant_result: latestAssistant(snap.messages || []),
+      assistant_result: latestAssistantText(snap.messages || []),
       todo: snap.todo || [], diff: snap.diff || [], permissions: snap.permissions || [], questions: snap.questions || [],
       execution: {
         elapsed_ms: state.started_at ? Date.now() - state.started_at : 0,
