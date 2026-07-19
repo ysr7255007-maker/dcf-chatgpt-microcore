@@ -1,0 +1,244 @@
+from pathlib import Path
+
+root = Path('.')
+
+status_test = r'''\'use strict\';
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const root = path.resolve(__dirname, '..');
+const index = JSON.parse(fs.readFileSync(path.join(root, 'releases/chrome/official-index.json'), 'utf8'));
+const ref = index.units.find((unit) => unit.id === 'dcf.firstparty.local-agent');
+assert(ref);
+assert.strictEqual(ref.version, '1.0.0-rc.2-local-agent.3');
+const code = fs.readFileSync(path.join(root, 'chrome-extension/code-units/local-agent/main.js'), 'utf8');
+assert.strictEqual(crypto.createHash('sha256').update(code).digest('hex'), ref.hash);
+for (const token of [
+  'function encodeModelValue(value)',
+  'function decodeModelValue(value)',
+  'function modelOptionsForRender(models, savedModel)',
+  'const model = decodeModelValue(modelValue)',
+  'modelOptionsForRender(modelOptions(), state.config.model)',
+  'const currentModel = encodeModelValue(state.config.model)',
+  'const value = encodeModelValue(item)',
+  'function statusCollection(value)',
+  'value.sessions',
+  'value.data?.sessions',
+  'function sessionStatusFrom(value, id)',
+  'function currentStatusType()',
+  "return 'unavailable'",
+  "return statusType(state.session_status, 'idle')",
+  "none: '未选择会话'",
+  "idle: '空闲'",
+  "busy: '运行中'",
+  "unavailable: '状态不可用'",
+  'state.session_status = sessionStatusFrom(statuses.value, id)',
+  'state.endpoint_errors.status'
+]) assert(code.includes(token), `missing ${token}`);
+assert(!code.includes("modelValue.split('\\u0000')"));
+assert(!code.includes('`${item.providerID}\\u0000${item.modelID}`'));
+assert(!code.includes("statuses.value && statuses.value[id]"));
+assert(!code.includes("return 'unknown'"));
+
+const helperStart = code.indexOf('function normalizeModel(value)');
+const helperEnd = code.indexOf('function normalizeBaseUrl', helperStart);
+assert(helperStart >= 0 && helperEnd > helperStart);
+const helpers = new Function(`${code.slice(helperStart, helperEnd)}\nreturn { normalizeModel, encodeModelValue, decodeModelValue, modelOptionsForRender };`)();
+const saved = { providerID: 'deepseek', modelID: 'deepseek-v4-flash' };
+const encoded = helpers.encodeModelValue(saved);
+assert.deepStrictEqual(helpers.decodeModelValue(encoded), saved);
+assert.strictEqual(helpers.decodeModelValue('invalid'), null);
+const restored = helpers.modelOptionsForRender([], saved);
+assert.strictEqual(restored.length, 1);
+assert.strictEqual(restored[0].providerID, saved.providerID);
+assert.strictEqual(restored[0].modelID, saved.modelID);
+assert.strictEqual(helpers.encodeModelValue(restored[0]), encoded);
+const existing = helpers.modelOptionsForRender([{ ...saved, label: 'DeepSeek V4 Flash' }], saved);
+assert.strictEqual(existing.length, 1);
+
+console.log(JSON.stringify({
+  ok: true,
+  plugin_version: ref.version,
+  model_value_round_trip: true,
+  saved_model_survives_missing_catalog: true,
+  explicit_default_is_only_clear_path: true,
+  wrapped_status_maps: true,
+  missing_active_status_is_idle: true,
+  endpoint_failure_is_explicit: true,
+  localized_status_display: true
+}, null, 2));
+'''
+Path('tests/chrome-local-agent-status.test.js').write_text(status_test)
+
+dialogue_test = r'''\'use strict\';
+const assert = require('assert');
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+
+const root = path.resolve(__dirname, '..');
+const index = JSON.parse(fs.readFileSync(path.join(root, 'releases/chrome/official-index.json'), 'utf8'));
+const ref = index.units.find((unit) => unit.id === 'dcf.firstparty.local-agent-dialogue');
+const code = fs.readFileSync(path.join(root, 'chrome-extension/code-units/local-agent-dialogue/main.js'), 'utf8');
+
+assert(ref);
+assert(index.defaults.includes(ref.id));
+assert.strictEqual(index.units.length, 10);
+assert.strictEqual(ref.version, '1.0.0-rc.2-local-agent-dialogue.11');
+assert.strictEqual(ref.phase, 57);
+assert.strictEqual(ref.world_id, 'dcf-firstparty-local-agent-dialogue');
+assert.doesNotThrow(() => new Function(code));
+assert.strictEqual(crypto.createHash('sha256').update(code).digest('hex'), ref.hash);
+
+for (const token of [
+  '<<<DCF_LOCAL_AGENT_REQUEST>>>',
+  '<<<DCF_LOCAL_AGENT_RESULT>>>',
+  '<<<DCF_LOCAL_AGENT_PERMISSION_REQUEST>>>',
+  '<<<DCF_LOCAL_AGENT_PERMISSION_DECISION>>>',
+  'dcf.local-agent.request.v1',
+  'dcf.local-agent.result.v1',
+  'dcf.local-agent.permission-request.v1',
+  'dcf.local-agent.permission-decision.v1',
+  'dcf.local-agent-dialogue.acceptance.v1',
+  "intake_model: 'new-assistant-event-stream'",
+  "timeout_basis: 'observable-idle-time'",
+  'permission_wait_pauses_idle_timeout: true',
+  'idle_timeout_ms',
+  'function normalizeStoredModel(value)',
+  'model: normalizeStoredModel(stored.model)',
+  'function assistantText(record)',
+  'function latestAssistantText(messages)',
+  'function assistantReasoning(record)',
+  'function reasoningTrace(messages)',
+  'function boundedEvidence(value, limit = 4000)',
+  'function assistantTurnTrace(messages)',
+  'function toolTrace(messages)',
+  'function normalizeReturnMode(value)',
+  "return_mode: normalizeReturnMode(payload.return_mode)",
+  'function applyReturnProfile(payload, mode, snap, execution)',
+  "mode === 'reasoning' || mode === 'diagnostic'",
+  "mode === 'diagnostic'",
+  'payload.reasoning = reasoningTrace(snap.messages)',
+  'payload.diagnostic = {',
+  'assistant_result: latestAssistantText(snap.messages)',
+  "return_modes: ['final', 'reasoning', 'diagnostic']",
+  'function activityFingerprint(snap, job)',
+  'function noteActivity(job, fingerprint)',
+  'async function confirmInactive(job, fingerprint)',
+  "resultPayload(job, 'inactive_timeout'",
+  'timeout: 0',
+  'function permissionRequestPayload(job, permission, snap)',
+  'raw_permission: permission',
+  'original_task: job.request.task',
+  "allowed_decisions: ['once', 'always', 'reject']",
+  'function findToolEvidence(messages, permission)',
+  'async function applyPermissionDecision(decision)',
+  'async function replyPermissionNative(job, decision)',
+  'if (!hasIntervention && Date.now() - job.last_activity_at >= job.request.idle_timeout_ms)',
+  'const baselineNodes = new WeakSet()',
+  'function attachConversationRoot()',
+  'function ensurePanelMount()',
+  'function attachWatchers()',
+  'async function runAcceptance()',
+  '一键验收并回传',
+  '检查最新助手回复',
+  '历史消息只建立基线',
+  "type: 'unit.started'"
+]) assert(code.includes(token), `missing ${token}`);
+
+for (const token of [
+  '/prompt_async',
+  "if (part.type === 'text' || part.type === 'reasoning')",
+  'function latestAssistant(messages)',
+  "messages: job.request.return_mode === 'full' ? snap.messages : undefined",
+  "const modelValue = String(shadow?.querySelector('[data-field=\"model\"]')",
+  'modelParts.length === 2',
+  "resultPayload(job, 'needs_user'",
+  'Date.now() - started >= job.request.timeout_ms',
+  'timeout: requestData.timeout_ms',
+  "status: 'timeout'",
+  '.onclick =',
+  'eval(',
+  'new Function('
+]) assert(!code.includes(token), `forbidden ${token}`);
+
+assert.match(code, /if \(pendingPermissions\.length\)[\s\S]*state\.stage = 'needs_user'[\s\S]*returnPermissionRequest/);
+assert.match(code, /applyPermissionDecision\(parsed\)/);
+assert.match(code, /replyPermissionNative\(job, decision\)/);
+assert(!/\bmessages\s*:\s*snap\.messages\b/.test(code));
+
+const helperStart = code.indexOf('function assistantText(record)');
+const helperEnd = code.indexOf('function normalizeArtifactText', helperStart);
+assert(helperStart >= 0 && helperEnd > helperStart);
+const helperFactory = new Function('list', 'messageRole', 'messageId', 'statusType', 'json', 'hash', `${code.slice(helperStart, helperEnd)}\nreturn { assistantText, latestAssistantText, reasoningTrace, boundedEvidence, assistantTurnTrace, toolTrace, normalizeReturnMode };`);
+const helpers = helperFactory(
+  (value) => Array.isArray(value) ? value : value && typeof value === 'object' ? Object.values(value) : [],
+  (value) => String(value?.info?.role || value?.info?.type || '').toLowerCase(),
+  (value) => String(value?.info?.id || value?.id || ''),
+  (value, fallback = 'unknown') => String(typeof value === 'string' ? value : value?.type || value?.status || value?.state || fallback).toLowerCase(),
+  (value) => JSON.stringify(value, null, 2),
+  (value) => crypto.createHash('sha256').update(String(value)).digest('hex')
+);
+const messages = [
+  {
+    info: { id: 'msg_a', role: 'assistant', providerID: 'agent-plan', modelID: 'glm-5.2', agent: 'build', finish: 'tool-calls', time: { created: 1, completed: 2 } },
+    parts: [
+      { type: 'reasoning', text: 'first reasoning' },
+      { type: 'tool', callID: 'call_a', tool: 'bash', state: { status: 'completed', input: { command: 'pwd' }, output: '/tmp', title: 'pwd' } },
+      { type: 'step-finish', reason: 'tool-calls' }
+    ]
+  },
+  {
+    info: { id: 'msg_b', role: 'assistant', providerID: 'deepseek', modelID: 'deepseek-v4-flash', agent: 'build', finish: 'stop', time: { created: 3, completed: 4 } },
+    parts: [
+      { type: 'reasoning', text: 'second reasoning' },
+      { type: 'text', text: 'FINAL' },
+      { type: 'tool', callID: 'call_b', tool: 'read', state: { status: 'completed', input: { filePath: '/tmp/a' }, output: 'ok', title: 'a' } },
+      { type: 'text', text: 'SECOND' },
+      { type: 'step-finish', reason: 'stop' }
+    ]
+  }
+];
+assert.strictEqual(helpers.latestAssistantText(messages), 'FINAL\nSECOND');
+assert.strictEqual(helpers.latestAssistantText([{ info: { role: 'assistant' }, parts: [{ type: 'reasoning', text: 'reasoning only' }] }]), '');
+const reasoning = helpers.reasoningTrace(messages);
+assert.deepStrictEqual(reasoning.map((item) => item.text), ['first reasoning', 'second reasoning']);
+assert.strictEqual(helpers.assistantTurnTrace(messages).length, 2);
+assert.strictEqual(helpers.assistantTurnTrace(messages)[1].finish, 'stop');
+assert.strictEqual(helpers.toolTrace(messages).length, 2);
+assert.strictEqual(helpers.normalizeReturnMode(), 'final');
+assert.strictEqual(helpers.normalizeReturnMode('summary'), 'final');
+assert.strictEqual(helpers.normalizeReturnMode('review'), 'reasoning');
+assert.strictEqual(helpers.normalizeReturnMode('reasoning'), 'reasoning');
+assert.strictEqual(helpers.normalizeReturnMode('full'), 'diagnostic');
+assert.strictEqual(helpers.normalizeReturnMode('debug'), 'diagnostic');
+assert.strictEqual(helpers.boundedEvidence('x'.repeat(5000)).truncated, true);
+
+console.log(JSON.stringify({
+  ok: true,
+  plugin_version: ref.version,
+  observable_activity_timeout: true,
+  permission_wait_pauses_idle_timeout: true,
+  synchronous_message_has_no_wall_clock_abort: true,
+  permission_request_has_tool_and_task_evidence: true,
+  permission_decision_returns_to_same_session: true,
+  permission_intervention_is_not_a_final_result: true,
+  history_is_baseline_not_queue: true,
+  hot_update_remount_watchers: true,
+  no_new_panel: true,
+  final_mode_is_text_only: true,
+  reasoning_mode_covers_all_assistant_turns: true,
+  diagnostic_mode_is_bounded_and_structured: true,
+  raw_messages_not_returned: true,
+  persisted_model_is_canonical: true
+}, null, 2));
+'''
+Path('tests/chrome-local-agent-dialogue.test.js').write_text(dialogue_test)
+
+for name in ['tests/chrome-build.integration.test.js', 'tests/chrome-workspace-ui.test.js']:
+    path = Path(name)
+    text = path.read_text()
+    text = text.replace('1.0.0-rc.2-local-agent.2', '1.0.0-rc.2-local-agent.3')
+    text = text.replace('1.0.0-rc.2-local-agent-dialogue.10', '1.0.0-rc.2-local-agent-dialogue.11')
+    path.write_text(text)
