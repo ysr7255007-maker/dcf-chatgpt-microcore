@@ -28,6 +28,7 @@ jobs:
           python3 .github/scripts/patch-dialogue-profiles.py
           python3 .github/scripts/patch-local-agent-tests.py
           python3 .github/scripts/patch-local-agent-docs.py
+          sed -i "s/^\\\\'use strict\\\\';/'use strict';/" tests/chrome-local-agent-status.test.js tests/chrome-local-agent-dialogue.test.js
       - name: Verify repository
         run: |
           npm ci
