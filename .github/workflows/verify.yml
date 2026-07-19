@@ -31,6 +31,7 @@ jobs:
       - name: Commit verified implementation
         shell: bash
         run: |
+          exec > >(tee commit.log) 2>&1
           set -euxo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
@@ -42,6 +43,13 @@ jobs:
           git diff --cached --check
           git commit -m 'fix: retain pending permission identity across polling gaps'
           git push origin HEAD:${{ github.head_ref }}
+      - name: Upload commit-step evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dialogue-permission-race-commit-${{ github.run_id }}
+          path: commit.log
+          if-no-files-found: warn
 
   verify:
     if: github.event_name != 'pull_request' || github.head_ref != 'work/dialogue-permission-awaiting-race-20260719'
