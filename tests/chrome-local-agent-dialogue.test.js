@@ -12,7 +12,7 @@ const code = fs.readFileSync(path.join(root, 'chrome-extension/code-units/local-
 assert(ref);
 assert(index.defaults.includes(ref.id));
 assert.strictEqual(index.units.length, 10);
-assert.strictEqual(ref.version, '1.0.0-rc.2-local-agent-dialogue.13');
+assert.strictEqual(ref.version, '1.0.0-rc.2-local-agent-dialogue.14');
 assert.strictEqual(ref.phase, 57);
 assert.strictEqual(ref.world_id, 'dcf-firstparty-local-agent-dialogue');
 assert.doesNotThrow(() => new Function(code));
@@ -84,7 +84,33 @@ for (const token of [
   "ensureRuntimeAlive('focus')",
   'watchdogTimer',
   'visibilityListener',
-  'focusListener'
+  'focusListener',
+  '<<<DCF_LOCAL_AGENT_PROGRESS>>>',
+  '<<<DCF_LOCAL_AGENT_CONTROL>>>',
+  'dcf.local-agent.progress.v1',
+  'dcf.local-agent.control.v1',
+  'HEARTBEAT_INTERVAL_MS',
+  'STUCK_THRESHOLD_MS',
+  'function progressState()',
+  'function progressPayload(job, snap)',
+  'async function emitProgress(job, snap, force = false)',
+  'function controlAck(job, command, status, detail)',
+  'async function executeControl(parsed)',
+  'async function recoverPoll(job)',
+  '[DCF steer]',
+  '/abort',
+  'active_task',
+  'control_plane',
+  'ctl-status',
+  'ctl-steer',
+  'ctl-cancel',
+  'ctl-cancel-cp',
+  '疑似卡住',
+  '活动任务',
+  '查看进展',
+  '补充指令',
+  '中止任务',
+  '保存检查点后中止'
 ]) assert(code.includes(token), `missing ${token}`);
 
 for (const token of [
