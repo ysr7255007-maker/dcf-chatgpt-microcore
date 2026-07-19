@@ -9,7 +9,8 @@
     "dcf.firstparty.local-agent-dialogue",
     "dcf.firstparty.backup",
     "dcf.firstparty.plugin-manager",
-    "dcf.firstparty.diagnostics"
+    "dcf.firstparty.diagnostics",
+    "dcf.firstparty.page-diagnostics"
   ],
   "schema": "dcf.plugin_index.v1",
   "units": [
@@ -125,7 +126,7 @@
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/local-agent-dialogue/main.js",
       "default_enabled": true,
       "description": "将严格的对话委派工件交给本机 OpenCode，并把结构化结果自动送回当前对话。",
-      "hash": "b2ab1691833ab1c4ea69508569b00485c2fbe42299a12083ad5d111ea5d0deb2",
+      "hash": "41e35c1b0b2fdf1fa356e38f9b960dcf4c68ca92bd41256f9f3bea895edc6d40",
       "host_api": "2",
       "id": "dcf.firstparty.local-agent-dialogue",
       "matches": [
@@ -136,7 +137,7 @@
       "required": true,
       "run_at": "document_idle",
       "title": "本机对话闭环",
-      "version": "1.0.0-rc.2-local-agent-dialogue.14",
+      "version": "1.0.0-rc.2-local-agent-dialogue.15",
       "world_id": "dcf-firstparty-local-agent-dialogue"
     },
     {
@@ -192,6 +193,24 @@
       "title": "诊断",
       "version": "1.0.0-rc.2-diagnostics.1",
       "world_id": "dcf-firstparty-diagnostics"
+    },
+    {
+      "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/page-diagnostics/main.js",
+      "default_enabled": true,
+      "description": "默认关闭的页面生命周期与流式渲染诊断，固定环形缓冲区，不记录对话正文。",
+      "hash": "0935a582fea67868e2e9c0b870fb10edf20314373eee34a176343554bda8f04b",
+      "host_api": "2",
+      "id": "dcf.firstparty.page-diagnostics",
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "phase": 95,
+      "required": true,
+      "run_at": "document_idle",
+      "title": "页面诊断",
+      "version": "1.0.0-rc.2-page-diagnostics.1",
+      "world_id": "dcf-firstparty-page-diagnostics"
     }
   ],
   "version": "1.0.0-rc.2"
