@@ -64,6 +64,7 @@ Updated: 2026-07-19
 - OpenCode permission events are enriched with the associated `messageID/callID` tool input, original task, recent Assistant output, Todo and Diff, then returned as `dcf.local-agent.permission-request.v1`;
 - a matching `dcf.local-agent.permission-decision.v1` is validated against the active request/session/permission, translated to OpenCode `once / always / reject`, and sent back to the same session;
 - permission requests are intermediate events and do not create a second final result;
+- dialogue `.12` retains the notified permission identity across transient snapshots that omit the permission; only a successful native permission reply or job teardown clears it, preventing valid conversation decisions from being rejected as request/session mismatches;
 - question transfer, saved-Always management, permission revocation, blocking and expiry are intentionally not implemented in `.9`;
 - diagnostics reads the latest dialogue request/session identifiers, performs loopback GET-only evidence recovery and returns one `dcf.local-agent.diagnostic.v1` artifact automatically when a persisted recent session exists;
 - automatic Local Agent diagnostics excludes message/task text, credentials, Provider private options and raw OpenCode configuration;

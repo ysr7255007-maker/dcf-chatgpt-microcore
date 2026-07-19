@@ -105,3 +105,7 @@ DCF 回传的权限包完整包含：
 ## 后续
 
 下一阶段先使用已经打通的本机 AI 查询当前 OpenCode 版本的真实权限保存、枚举、撤销和拒绝接口，再单独设计完整权限管理。不得根据最新源码或假设直接实现 Always 撤销与封锁。
+
+## Permission-wait identity retention correction
+
+A returned permission request remains the active permission identity until its native reply succeeds or the delegated job ends. A polling snapshot that temporarily omits the permission must not clear `awaiting_permission_id`. The permission request path refreshes that identity before duplicate-return suppression, so the same OpenCode permission is not resent to ChatGPT but remains eligible to receive the matching decision. This prevents a transient permission-endpoint gap from turning a valid decision into a request/session/permission mismatch.

@@ -12,7 +12,7 @@ const code = fs.readFileSync(path.join(root, 'chrome-extension/code-units/local-
 assert(ref);
 assert(index.defaults.includes(ref.id));
 assert.strictEqual(index.units.length, 10);
-assert.strictEqual(ref.version, '1.0.0-rc.2-local-agent-dialogue.11');
+assert.strictEqual(ref.version, '1.0.0-rc.2-local-agent-dialogue.12');
 assert.strictEqual(ref.phase, 57);
 assert.strictEqual(ref.world_id, 'dcf-firstparty-local-agent-dialogue');
 assert.doesNotThrow(() => new Function(code));
@@ -93,6 +93,8 @@ for (const token of [
 assert.match(code, /if \(pendingPermissions\.length\)[\s\S]*state\.stage = 'needs_user'[\s\S]*returnPermissionRequest/);
 assert.match(code, /applyPermissionDecision\(parsed\)/);
 assert.match(code, /replyPermissionNative\(job, decision\)/);
+assert.match(code, /const id = permissionId\(permission\);[\s\S]*job\.awaiting_permission_id = id;[\s\S]*if \(job\.notified_permissions\.has\(id\)\) return;/);
+assert(!code.includes("if (job.awaiting_permission_id) job.awaiting_permission_id = '';"));
 assert(!/payload\.messages\s*=/.test(code));
 
 const helperStart = code.indexOf('function assistantText(record)');
@@ -150,6 +152,7 @@ console.log(JSON.stringify({
   synchronous_message_has_no_wall_clock_abort: true,
   permission_request_has_tool_and_task_evidence: true,
   permission_decision_returns_to_same_session: true,
+  permission_wait_survives_transient_missing_snapshot: true,
   permission_intervention_is_not_a_final_result: true,
   history_is_baseline_not_queue: true,
   hot_update_remount_watchers: true,
