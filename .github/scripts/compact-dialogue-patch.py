@@ -106,6 +106,14 @@ if summary_needle not in test:
 test = test.replace(summary_needle, summary_insert, 1)
 test_path.write_text(test)
 
+build_test_path = Path('tests/chrome-build.integration.test.js')
+build_test = build_test_path.read_text()
+old_build_version = "assert.strictEqual(dialogue.version, '1.0.0-rc.2-local-agent-dialogue.9');"
+new_build_version = "assert.strictEqual(dialogue.version, '1.0.0-rc.2-local-agent-dialogue.10');"
+if old_build_version not in build_test:
+    raise SystemExit('Chrome build dialogue version baseline not found')
+build_test_path.write_text(build_test.replace(old_build_version, new_build_version, 1))
+
 Path('docs/adr/2026-07-19-dcf-dialogue-compact-result-boundary.md').write_text('''# DCF dialogue compact result boundary
 
 Date: 2026-07-19
