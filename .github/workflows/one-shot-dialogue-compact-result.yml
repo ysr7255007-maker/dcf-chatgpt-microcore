@@ -1,0 +1,222 @@
+name: One-shot compact dialogue result
+
+on:
+  push:
+    branches:
+      - work/dialogue-compact-result-action-20260719
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout work branch
+        uses: actions/checkout@v4
+        with:
+          ref: work/dialogue-compact-result-action-20260719
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Patch dialogue result boundary and ADR
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          source_path = Path('chrome-extension/code-units/local-agent-dialogue/main.js')
+          source = source_path.read_text()
+          if "const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.9';" not in source:
+              raise SystemExit('unexpected dialogue version')
+
+          old_extract = '''  function partText(part) {
+            if (!part || typeof part !== 'object') return '';
+            if (part.type === 'text' || part.type === 'reasoning') return String(part.text || '');
+            if (part.type === 'tool') {
+              const title = part.state?.title || part.state?.error || '';
+              return `[${part.tool || part.name || 'tool'} · ${statusType(part.state)}${title ? ` · ${title}` : ''}]`;
+            }
+            if (part.type === 'step-finish' && part.reason) return `[步骤结束 · ${part.reason}]`;
+            return '';
+          }
+
+          const messageText = (record) => list(record?.parts).map(partText).filter(Boolean).join('\\n').trim();
+          function latestAssistant(messages) {
+            for (let index = messages.length - 1; index >= 0; index -= 1) {
+              if (messageRole(messages[index]).includes('assistant')) {
+                const text = messageText(messages[index]);
+                if (text) return text;
+              }
+            }
+            return '';
+          }
+'''
+          new_extract = '''  function assistantText(record) {
+            if (!messageRole(record).includes('assistant')) return '';
+            const texts = [];
+            for (const part of list(record?.parts)) {
+              if (part?.type !== 'text') continue;
+              const text = String(part.text || '').trim();
+              if (text) texts.push(text);
+            }
+            return texts.join('\\n').trim();
+          }
+
+          function latestAssistantText(messages) {
+            for (let index = messages.length - 1; index >= 0; index -= 1) {
+              const text = assistantText(messages[index]);
+              if (text) return text;
+            }
+            return '';
+          }
+'''
+          if old_extract not in source:
+              raise SystemExit('assistant extraction block not found')
+          source = source.replace(old_extract, new_extract, 1)
+          source = source.replace('latestAssistant(', 'latestAssistantText(')
+          raw_messages = "      messages: job.request.return_mode === 'full' ? snap.messages : undefined,\n"
+          if raw_messages not in source:
+              raise SystemExit('raw messages result field not found')
+          source = source.replace(raw_messages, '', 1)
+          source = source.replace(
+              "const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.9';",
+              "const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.10';",
+              1,
+          )
+          source_path.write_text(source)
+
+          test_path = Path('tests/chrome-local-agent-dialogue.test.js')
+          test = test_path.read_text()
+          test = test.replace(
+              "assert.strictEqual(ref.version, '1.0.0-rc.2-local-agent-dialogue.9');",
+              "assert.strictEqual(ref.version, '1.0.0-rc.2-local-agent-dialogue.10');",
+              1,
+          )
+          token_needle = "  'function activityFingerprint(snap, job)',\n"
+          token_insert = "  'function assistantText(record)',\n  'function latestAssistantText(messages)',\n  \"part?.type !== 'text'\",\n  'assistant_result: latestAssistantText(snap.messages)',\n  'function activityFingerprint(snap, job)',\n"
+          if token_needle not in test:
+              raise SystemExit('test token insertion point not found')
+          test = test.replace(token_needle, token_insert, 1)
+          forbidden_needle = "  '/prompt_async',\n"
+          forbidden_insert = "  '/prompt_async',\n  \"if (part.type === 'text' || part.type === 'reasoning')\",\n  'function latestAssistant(messages)',\n  \"messages: job.request.return_mode === 'full' ? snap.messages : undefined\",\n"
+          if forbidden_needle not in test:
+              raise SystemExit('test forbidden insertion point not found')
+          test = test.replace(forbidden_needle, forbidden_insert, 1)
+          behavior_test = r'''
+          const helperStart = code.indexOf('function assistantText(record)');
+          const helperEnd = code.indexOf('function normalizeArtifactText', helperStart);
+          assert(helperStart >= 0 && helperEnd > helperStart);
+          const helperFactory = new Function('list', 'messageRole', `${code.slice(helperStart, helperEnd)}\nreturn { assistantText, latestAssistantText };`);
+          const helpers = helperFactory(
+            (value) => Array.isArray(value) ? value : value && typeof value === 'object' ? Object.values(value) : [],
+            (value) => String(value?.info?.role || value?.info?.type || '').toLowerCase()
+          );
+          const noisyMessages = [
+            { info: { role: 'assistant' }, parts: [{ type: 'reasoning', text: 'private reasoning' }, { type: 'tool', tool: 'bash' }, { type: 'step-finish', reason: 'tool-calls' }] },
+            { info: { role: 'assistant' }, parts: [{ type: 'reasoning', text: 'ignore me' }, { type: 'text', text: 'FINAL' }, { type: 'tool', tool: 'read' }, { type: 'text', text: 'SECOND' }, { type: 'step-finish', reason: 'stop' }] }
+          ];
+          assert.strictEqual(helpers.latestAssistantText(noisyMessages), 'FINAL\nSECOND');
+          assert.strictEqual(helpers.latestAssistantText([{ info: { role: 'assistant' }, parts: [{ type: 'reasoning', text: 'reasoning only' }] }]), '');
+          assert(!/messages:\s*job\.request\.return_mode/.test(code));
+          '''
+          console_needle = "console.log(JSON.stringify({\n"
+          if console_needle not in test:
+              raise SystemExit('behavior test insertion point not found')
+          test = test.replace(console_needle, behavior_test + "\n" + console_needle, 1)
+          summary_needle = "  no_new_panel: true\n"
+          summary_insert = "  no_new_panel: true,\n  compact_final_text_only: true,\n  raw_messages_not_returned: true\n"
+          if summary_needle not in test:
+              raise SystemExit('test summary insertion point not found')
+          test = test.replace(summary_needle, summary_insert, 1)
+          test_path.write_text(test)
+
+          adr_path = Path('docs/adr/2026-07-19-dcf-dialogue-compact-result-boundary.md')
+          adr_path.write_text('''# DCF dialogue compact result boundary
+
+Date: 2026-07-19
+
+Status: accepted; implementation and automated verification complete; live browser acceptance pending
+
+## Context
+
+The dialogue adapter observes the full OpenCode session so it can detect activity, permissions, questions, Todo and Diff. That internal evidence was also copied into `dcf.local-agent.result.v1` whenever a request used `return_mode: full`. The returned artifact therefore included every Assistant reasoning part, tool call, step marker and prior message. A few normal exchanges could consume a large portion of the ChatGPT conversation context even though the user only needed the final answer.
+
+The same broad extractor treated reasoning, tools and `step-finish` markers as an Assistant result. This allowed a reasoning-only or truncated turn to look like a formal result and could mark an idle session completed without a final text response.
+
+## Decision
+
+1. Automatic `dcf.local-agent.result.v1` artifacts never contain the raw `messages` collection.
+2. `assistant_result` is the text from the latest Assistant message that contains one or more `type: "text"` parts. Reasoning, tools, patches and step markers are excluded.
+3. A session reaches the normal `completed` result path only when formal Assistant text exists.
+4. Permission-request `recent_assistant_output` and the visible progress preview use the same formal-text extractor.
+5. Raw messages remain available inside the plugin for activity fingerprints, permissions, questions, diagnostics and manual evidence recovery; they are not transported into the normal conversation result.
+6. `return_mode` remains accepted for request compatibility, but `full` no longer expands the automatic result artifact.
+
+## Consequences
+
+- Normal dialogue results remain bounded by the final answer plus structured Todo, Diff, permissions, questions and execution metadata.
+- Internal observability is preserved without turning the ChatGPT conversation into an execution log archive.
+- Users needing raw messages must use an explicit diagnostic or manual evidence surface rather than the automatic final result.
+- Live browser acceptance must confirm that a request carrying `return_mode: full` still returns no `messages` field and that `assistant_result` contains only the final formal text.
+
+## Reconsideration conditions
+
+Reconsider only if a separately named diagnostic protocol is introduced with explicit user intent, size limits and privacy boundaries. Raw session history must not be restored to the normal result schema merely for convenience.
+''')
+
+          status_path = Path('docs/adr/status-index.md')
+          status = status_path.read_text()
+          status_needle = '## Current\n\n'
+          status_line = '- `2026-07-19-dcf-dialogue-compact-result-boundary.md` — **accepted; implementation and automated verification complete; live browser acceptance pending**; automatic dialogue results contain only the latest formal Assistant text and never return raw OpenCode message history\n'
+          if status_line not in status:
+              status = status.replace(status_needle, status_needle + status_line, 1)
+          status_path.write_text(status)
+
+          current_path = Path('docs/current-state.md')
+          current = current_path.read_text()
+          adapter_line = '- the dialogue adapter accepts exact `dcf.local-agent.request.v1` artifacts, creates an independent session, and returns one final `dcf.local-agent.result.v1` to the same conversation;\n'
+          compact_line = '- dialogue `.10` keeps raw OpenCode messages internal and returns only the latest Assistant `type: "text"` content as `assistant_result`; automatic result artifacts never include the `messages` collection, including for legacy `return_mode: full`;\n'
+          if compact_line not in current:
+              current = current.replace(adapter_line, adapter_line + compact_line, 1)
+          evidence_line = '- activity fingerprinting, two-snapshot inactivity confirmation, permission evidence enrichment and same-session permission reply paths exist;\n'
+          compact_evidence = '- compact-result tests execute the formal-text extractor against mixed reasoning/tool/text messages and prove raw `messages` are absent from the result payload;\n'
+          if compact_evidence not in current:
+              current = current.replace(evidence_line, evidence_line + compact_evidence, 1)
+          live_line = '- runtime acceptance for dialogue `.8`, minimal read-only execution and dialogue `.9` permission delegation are complete;\n'
+          compact_live = '- dialogue `.10` compact-result behavior has automated verification; real-browser acceptance of a `return_mode: full` request remains pending;\n'
+          if compact_live not in current:
+              current = current.replace(live_line, live_line + compact_live, 1)
+          current_path.write_text(current)
+          PY
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify compact result implementation
+        run: |
+          node --check chrome-extension/code-units/local-agent-dialogue/main.js
+          node tests/chrome-local-agent-dialogue.test.js
+          npm run verify:chrome
+
+      - name: Commit verified result
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/one-shot-dialogue-compact-result.yml
+          git add chrome-extension/code-units/local-agent-dialogue/main.js \
+            tests/chrome-local-agent-dialogue.test.js \
+            releases/chrome/official-index.json \
+            docs/adr/2026-07-19-dcf-dialogue-compact-result-boundary.md \
+            docs/adr/status-index.md \
+            docs/current-state.md
+          git diff --cached --check
+          git commit -m 'fix: keep dialogue results compact'
+          git push origin HEAD:work/dialogue-compact-result-action-20260719
