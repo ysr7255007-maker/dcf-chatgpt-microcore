@@ -10,7 +10,8 @@
     "dcf.firstparty.backup",
     "dcf.firstparty.plugin-manager",
     "dcf.firstparty.diagnostics",
-    "dcf.firstparty.page-diagnostics"
+    "dcf.firstparty.page-diagnostics",
+    "dcf.firstparty.runtime-evidence"
   ],
   "schema": "dcf.plugin_index.v1",
   "units": [
@@ -108,7 +109,7 @@
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/local-agent/main.js",
       "default_enabled": true,
       "description": "纯插件直连 OpenCode，管理会话、任务、权限、结果与文件差异。",
-      "hash": "0795a95a5857051756f3112babc20e56345345de095518d66acd764e045c8c50",
+      "hash": "59c6faf39d13f8cd654717d69b69d82a63d72f4ad2c52f7f3579a939b5774e4a",
       "host_api": "2",
       "id": "dcf.firstparty.local-agent",
       "matches": [
@@ -126,7 +127,7 @@
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/local-agent-dialogue/main.js",
       "default_enabled": true,
       "description": "将严格的对话委派工件交给本机 OpenCode，并把结构化结果自动送回当前对话。",
-      "hash": "41e35c1b0b2fdf1fa356e38f9b960dcf4c68ca92bd41256f9f3bea895edc6d40",
+      "hash": "927d6dd961cb23076a2c82d66b31eb6286b3d98868c235f8f5030b87d031f02a",
       "host_api": "2",
       "id": "dcf.firstparty.local-agent-dialogue",
       "matches": [
@@ -162,7 +163,7 @@
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/plugin-manager/main.js",
       "default_enabled": true,
       "description": "低频功能启停与统一 DCF 更新入口。",
-      "hash": "d561e4289b05d3545d73e4f3093d2fb6fe0785651c97f75dd243fb2e67969b9c",
+      "hash": "f76d98a30869a41948635ac148e37f9e68bb1457170267bc37aa9d9b910c1c86",
       "host_api": "2",
       "id": "dcf.firstparty.plugin-manager",
       "matches": [
@@ -198,7 +199,7 @@
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/page-diagnostics/main.js",
       "default_enabled": true,
       "description": "默认关闭的页面生命周期与流式渲染诊断，固定环形缓冲区，不记录对话正文。",
-      "hash": "0935a582fea67868e2e9c0b870fb10edf20314373eee34a176343554bda8f04b",
+      "hash": "91bbb5f8b3dc39b489d18793377098b47ec7543f9a131b8fbec960f807955a4a",
       "host_api": "2",
       "id": "dcf.firstparty.page-diagnostics",
       "matches": [
@@ -211,6 +212,24 @@
       "title": "页面诊断",
       "version": "1.0.0-rc.2-page-diagnostics.1",
       "world_id": "dcf-firstparty-page-diagnostics"
+    },
+    {
+      "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/runtime-evidence/main.js",
+      "default_enabled": true,
+      "description": "默认关闭的本机 loopback 运行态证据桥，不发送对话正文或凭据。",
+      "hash": "ccb3f9ff2a726d25cee0e29505d3fee297d310de7867990bfaafe387c5a71195",
+      "host_api": "2",
+      "id": "dcf.firstparty.runtime-evidence",
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "phase": 97,
+      "required": true,
+      "run_at": "document_idle",
+      "title": "运行证据",
+      "version": "1.0.0-rc.2-runtime-evidence.1",
+      "world_id": "dcf-firstparty-runtime-evidence"
     }
   ],
   "version": "1.0.0-rc.2"

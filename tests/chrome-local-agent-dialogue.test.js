@@ -11,7 +11,7 @@ const code = fs.readFileSync(path.join(root, 'chrome-extension/code-units/local-
 
 assert(ref);
 assert(index.defaults.includes(ref.id));
-assert.strictEqual(index.units.length, 11);
+assert.strictEqual(index.units.length, 12);
 assert.strictEqual(ref.version, '1.0.0-rc.2-local-agent-dialogue.15');
 assert.strictEqual(ref.phase, 57);
 assert.strictEqual(ref.world_id, 'dcf-firstparty-local-agent-dialogue');

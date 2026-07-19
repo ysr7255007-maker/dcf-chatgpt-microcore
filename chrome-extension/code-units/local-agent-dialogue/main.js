@@ -1475,11 +1475,27 @@
   let visibilityListener = null;
   let focusListener = null;
 
+  function readRuntimeEvidence() {
+    const job = activeJob;
+    return {
+      queue_length: queue.length,
+      active_request_id: job?.request?.id || null,
+      active_session_id: job?.session_id || null,
+      stage: state.stage || null,
+      status: state.status || null,
+      waiting_permission: Boolean(job?.notified_permission_id),
+      active_last_activity_at: job?.last_activity_at || null,
+      outbox_pending_count: outbox.items.length,
+      outbox_states: outbox.items.map((item) => ({ schema: String(item.id || '').split(':')[0] || null, state: item.state || null, attempts: Number(item.attempts || 0), last_error: item.error ? String(item.error).slice(0, 240) : null }))
+    };
+  }
+
   globalThis[GLOBAL_KEY] = {
     version: UNIT_VERSION,
     destroy,
     ensureRuntimeAlive,
     diagnostics,
+    readRuntimeEvidence,
     intake_model: 'new-assistant-event-stream',
     request_markers: { start: MARKERS.request[0], end: MARKERS.request[1] },
     result_markers: { start: MARKERS.result[0], end: MARKERS.result[1] },

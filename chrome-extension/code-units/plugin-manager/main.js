@@ -15,7 +15,8 @@
     'dcf.firstparty.local-agent': { panel_id: 'local-agent', title: '本机 Agent' },
     'dcf.firstparty.backup': { panel_id: 'backup', title: '备份恢复' },
     'dcf.firstparty.plugin-manager': { panel_id: 'plugins', title: '功能' },
-    'dcf.firstparty.diagnostics': { panel_id: 'diagnostics', title: '诊断' }
+    'dcf.firstparty.diagnostics': { panel_id: 'diagnostics', title: '诊断' },
+    'dcf.firstparty.runtime-evidence': { panel_id: 'runtime-evidence', title: 'Evidence' }
   };
 
   const send = (message) => chrome.runtime.sendMessage(message).then((result) => {
@@ -92,7 +93,8 @@
       'dcf.firstparty.local-agent': '连接本机 OpenCode，管理会话、任务和结果。',
       'dcf.firstparty.backup': '导出与恢复各插件数据。',
       'dcf.firstparty.plugin-manager': '功能启停、更新与标签固定入口。',
-      'dcf.firstparty.diagnostics': '查看和复制隐私受限诊断。'
+      'dcf.firstparty.diagnostics': '查看和复制隐私受限诊断。',
+      'dcf.firstparty.runtime-evidence': '向本机 loopback 提供受白名单限制的只读运行证据。'
     };
     return descriptions[id] || '';
   }
