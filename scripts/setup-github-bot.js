@@ -19,7 +19,6 @@ const PENDING_INSTALL_FILENAME = 'pending-install.json';
 const CANDIDATE_REF = 'refs/heads/rebuild/chrome-native-host-v2';
 const REQUIRED_CHECKS = ['verify', 'verify-and-package'];
 const EXPECTED_PERMISSIONS = { contents: 'write', pull_requests: 'write', actions: 'read', checks: 'read', statuses: 'read' };
-const DANGEROUS_PERMISSIONS = ['workflows', 'administration'];
 const MAX_RESPONSE_BYTES = 1024 * 1024;
 const REQUEST_TIMEOUT_MS = 15_000;
 
@@ -81,10 +80,21 @@ function verifyPermissions(p) {
   for (const [key, val] of Object.entries(EXPECTED_PERMISSIONS)) {
     if (p[key] !== val) missing.push({ key, expected: val, actual: p[key] || undefined });
   }
-  for (const key of DANGEROUS_PERMISSIONS) {
-    if (key in p && p[key] !== 'none' && p[key] !== undefined) dangerous.push({ key, actual: p[key] });
+  for (const [key, val] of Object.entries(p)) {
+    if (!(key in EXPECTED_PERMISSIONS) && val !== 'none' && val !== undefined) dangerous.push({ key, actual: val });
   }
   return { all_verified: missing.length === 0 && dangerous.length === 0, missing, dangerous };
+}
+function validateInstallUrl(urlString, slug) {
+  try {
+    const u = new URL(urlString);
+    if (u.origin !== 'https://github.com') return false;
+    if (u.username || u.password) return false;
+    if (u.port) return false;
+    if (u.search || u.hash) return false;
+    const expected = '/apps/' + encodeURIComponent(slug) + '/installations/new';
+    return u.pathname === expected;
+  } catch { return false; }
 }
 function savePendingInstall(installationId) {
   const existing = loadPendingInstall();
@@ -224,7 +234,11 @@ function handleStatus(res) {
     return serveJSON(res, 200, { step, html: renderCompleteHTML(config, creds), branch_gate: serverState.branchGate, permission_verified: !!p.all_verified });
   }
   if (serverState.currentStep === 'error') return serveJSON(res, 200, { step: 'error', message: serverState.error });
-  if (creds) return serveJSON(res, 200, { step: 'creds-exist', app_slug: creds.app_slug, app_id: creds.app_id });
+  if (creds) {
+    const pending = loadPendingInstall();
+    const install_url = `https://github.com/apps/${encodeURIComponent(creds.app_slug)}/installations/new`;
+    return serveJSON(res, 200, { step: 'creds-exist', app_slug: creds.app_slug, app_id: creds.app_id, install_url, has_pending: !!pending });
+  }
   serveJSON(res, 200, { step: serverState.currentStep });
 }
 function handleComplete(res) { const c = loadCredentials(), b = loadBotConfig(); if (!c || !b) return reject(res, 400, '凭据或配置不完整'); serveJSON(res, 200, { html: renderCompleteHTML(b, c) }); }
@@ -279,8 +293,9 @@ async function handleRetryVerification(res) {
     if (!pending) {
       const jwt = generateJWT(creds.app_id, readSecureFile(creds.private_key_path));
       const allInstalls = await getInstallations(jwt);
-      const installs = Array.isArray(allInstalls) ? allInstalls : (allInstalls && allInstalls.installations ? allInstalls.installations : []);
-      const match = installs.find(i => i.account && i.account.login === OWNER && i.repository_selection === 'selected');
+      if (!Array.isArray(allInstalls)) return reject(res, 500, 'GitHub API 返回格式不正确。');
+      if (allInstalls.length === 0) return reject(res, 400, '当前账号下未发现已安装的 Bot。请返回安装页面重新安装后重试。');
+      const match = allInstalls.find(i => i.account && i.account.login === OWNER && i.repository_selection === 'selected');
       if (!match) return reject(res, 400, '没有待恢复的安装，且在目标账号上未发现匹配的 Installation。请重新运行向导。');
       pending = savePendingInstall(match.id);
     }
@@ -305,11 +320,6 @@ function renderPermissionRows(p) {
     const ok = p[key] === val;
     html2 += `<li><code>${html(key)}</code>: ${ok ? html(actual) : '<span style="color:#d00">' + html(actual || 'missing') + '</span>'} <small>期望: ${html(val)}</small></li>`;
   }
-  for (const key of DANGEROUS_PERMISSIONS) {
-    if (key in p && p[key] !== 'none' && p[key] !== undefined) {
-      html2 += `<li><code>${html(key)}</code>: <span style="color:#d00">${html(p[key])}</span> <small>危险权限</small></li>`;
-    }
-  }
   if (p.missing && p.missing.length > 0) {
     for (const m of p.missing) {
       html2 += `<li><code>${html(m.key)}</code>: <span style="color:#d00">缺失 (期望 ${html(m.expected)}, 实际 ${html(m.actual || 'none')})</span></li>`;
@@ -317,12 +327,12 @@ function renderPermissionRows(p) {
   }
   if (p.dangerous && p.dangerous.length > 0) {
     for (const d of p.dangerous) {
-      html2 += `<li><code>${html(d.key)}</code>: <span style="color:#d00">危险权限: ${html(d.actual)}</span></li>`;
+      html2 += `<li><code>${html(d.key)}</code>: <span style="color:#d00">意外/危险权限: ${html(d.actual)}</span></li>`;
     }
   }
   return html2;
 }
-function renderCompleteHTML(config, creds) { const p = config.permission_verification || {}; const appBadge = badge('success', '已安装'); const permBadge = badge(p.all_verified ? 'success' : 'warn', p.all_verified ? '已验证' : '需检查'); const gateStatus = serverState.branchGate === 'configured' ? badge('success', '已配置') : serverState.branchGate === 'unavailable' ? badge('warn', '不可用') : badge('', '未配置'); const configureDisabled = serverState.branchGate === 'configured' ? 'disabled' : ''; const skipDisabled = serverState.branchGate === 'configured' ? 'disabled' : ''; const gateErrorHtml = serverState.branchGateError ? '<p style="color:#d00">配置失败：' + html(serverState.branchGateError) + '。可重试或跳过。</p>' : ''; return `<section><h2>App 安装${appBadge}</h2><p><strong>Bot：</strong>${html(config.app_slug || creds.app_slug)}</p><p>App ID：${html(config.app_id)}；Installation ID：${html(config.installation_id)}</p><p>仓库：<code>${html(config.repository)}</code></p><p>本地凭据目录：<code>${html(configDir())}</code></p></section><section><h2>权限验证${permBadge}</h2><ul>${renderPermissionRows(p)}</ul></section><section><h2>分支门禁${gateStatus}</h2><p>候选分支 <code>${html(CANDIDATE_REF)}</code> 保护规则将要求：</p><ul><li>严格状态检查：<code>${REQUIRED_CHECKS.map(c => html(c)).join('</code>, <code>')}</code></li><li>必需 <strong>1</strong> 个审查 + 过期 dismiss + 最后推送审查</li><li>管理员同样受保护、对话必须解决</li><li>禁止 force-push、禁止删除</li></ul><p>此操作使用本机 <code>gh</code> 用户的管理身份，Bot 本人不会获得 administration 权限。</p>${gateErrorHtml}<p><button id="btn-configure-gate" ${configureDisabled}>配置门禁</button> <button id="btn-skip-gate" ${skipDisabled}>跳过</button></p></section><p>后续 Local Agent 可创建分支、提交和 PR；用户账号负责审查、Approve 和 Merge。</p>`; }
+function renderCompleteHTML(config, creds) { const p = config.permission_verification || {}; const appBadge = badge('success', '已安装'); const permBadge = badge(p.all_verified ? 'success' : 'warn', p.all_verified ? '已验证' : '需检查'); const gateStatus = serverState.branchGate === 'configured' ? badge('success', '已配置') : serverState.branchGate === 'unavailable' ? badge('warn', '不可用') : badge('', '未配置'); const gateErrorHtml = serverState.branchGateError ? '<p style="color:#d00">配置失败：' + html(serverState.branchGateError) + '。可重试或跳过。</p>' : ''; const skipLabel = serverState.branchGate === 'configured' ? '跳过并完成' : '跳过'; const configureLabel = serverState.branchGate === 'unavailable' ? '重试配置' : '配置门禁'; const gateButtons = serverState.branchGate === 'configured' ? '' : `<p><button id="btn-configure-gate">${html(configureLabel)}</button> <button id="btn-skip-gate">${html(skipLabel)}</button></p>`; const doneHtml = serverState.branchGate === 'configured' ? '<p><button id="btn-done-close">完成并关闭</button></p>' : ''; return `<section><h2>App 安装${appBadge}</h2><p><strong>Bot：</strong>${html(config.app_slug || creds.app_slug)}</p><p>App ID：${html(config.app_id)}；Installation ID：${html(config.installation_id)}</p><p>仓库：<code>${html(config.repository)}</code></p><p>本地凭据目录：<code>${html(configDir())}</code></p></section><section><h2>权限验证${permBadge}</h2><ul>${renderPermissionRows(p)}</ul></section><section><h2>分支门禁${gateStatus}</h2><p>候选分支 <code>${html(CANDIDATE_REF)}</code> 保护规则将要求：</p><ul><li>严格状态检查：<code>${REQUIRED_CHECKS.map(c => html(c)).join('</code>, <code>')}</code></li><li>必需 <strong>1</strong> 个审查 + 过期 dismiss + 最后推送审查</li><li>管理员同样受保护、对话必须解决</li><li>禁止 force-push、禁止删除</li></ul><p>此操作使用本机 <code>gh</code> 用户的管理身份，Bot 本人不会获得 administration 权限。</p>${gateErrorHtml}${gateButtons}${doneHtml}</section><p>后续 Local Agent 可创建分支、提交和 PR；用户账号负责审查、Approve 和 Merge。</p>`; }
 function mainPageHTML() { return `<!doctype html><meta charset="utf-8"><title>DCF GitHub App Bot 初始化</title><style>body{font:16px system-ui;max-width:720px;margin:40px auto;padding:0 16px}button{padding:9px 14px;margin:4px;cursor:pointer}.card{border:1px solid #ccc;padding:16px;border-radius:8px}</style><div class="card" id="view"><p>加载中...</p></div><script>
 const csrf=${JSON.stringify(html(serverState.pageCsrf))};
 function txt(id, s){var e=document.getElementById(id);if(e)e.textContent=s;}
@@ -332,11 +342,12 @@ function showPending(appSlug,installUrl,hasPending){
   var v=document.getElementById('view');if(!v)return;
   var c=document.createElement('div');
   var t=document.createElement('h2');t.textContent='等待安装验证';c.appendChild(t);
-  var p=document.createElement('p');p.innerHTML='App <strong id="pslug"></strong> 已创建。';c.appendChild(p);txt('pslug',appSlug||'');
+  var strong=document.createElement('strong');strong.textContent=appSlug||'';
+  var p=document.createElement('p');p.appendChild(document.createTextNode('App '));p.appendChild(strong);p.appendChild(document.createTextNode(' 已创建。'));c.appendChild(p);
   if(installUrl){
     try{
-      var u=new URL(installUrl);var ep='/apps/'+encodeURIComponent(appSlug||'')+'/installations/new';
-      if(u.protocol==='https:'&&u.hostname==='github.com'&&u.pathname===ep){
+      var u=new URL(installUrl);
+      if(u.origin==='https://github.com'&&!u.username&&!u.password&&!u.port&&!u.search&&!u.hash&&u.pathname==='/apps/'+encodeURIComponent(appSlug||'')+'/installations/new'){
         var a=document.createElement('a');a.id='install-link';a.href=u.href;a.textContent='打开 GitHub 安装页面';c.appendChild(a);
       }else{var w=document.createElement('p');w.style.color='#d00';w.textContent='安装链接无效';c.appendChild(w);}
     }catch(e){var w2=document.createElement('p');w2.style.color='#d00';w2.textContent='安装链接无效';c.appendChild(w2);}
@@ -347,7 +358,7 @@ function showPending(appSlug,installUrl,hasPending){
 }
 async function poll(){try{var s=await(await fetch('/api/status')).json();var v=document.getElementById('view');if(s.html){v.innerHTML=s.html;attachGateHandlers();return}
 if(s.step==='error'){showError(s.message||'');return}
-if(s.step==='creds-exist'||s.step==='pending-install'||s.step==='creds-done'){showPending(s.app_slug,s.install_url,false);return}
+if(s.step==='creds-exist'||s.step==='pending-install'||s.step==='creds-done'){showPending(s.app_slug,s.install_url,s.has_pending);return}
 if(s.step==='cancelled'){setViewHTML('<p>向导已取消。<button onclick="location.reload()">重新开始</button></p>');return}
 setViewHTML('<p>此向导只绑定 127.0.0.1。若名称冲突，请在 GitHub 创建页改为唯一名称。</p><button id="start">创建 DCF Local Agent Bot</button><button onclick="cancel()">取消</button>');document.getElementById('start').onclick=start
 }catch(e){showError('状态查询失败。')}}
@@ -356,14 +367,15 @@ var f=document.createElement('form');f.method='POST';f.action=r.github_url;var i
 }catch(e){showError(e.message||'启动失败')}}
 function attachGateHandlers(){
   var bc=document.getElementById('btn-configure-gate');if(bc)bc.onclick=configureGate;
-  var bs=document.getElementById('btn-skip-gate');if(bs)bs.onclick=skipGate;
+  var bs=document.getElementById('btn-skip-gate');if(bs)bs.onclick=skipAndDone;
+  var dc=document.getElementById('btn-done-close');if(dc)dc.onclick=doneAndClose;
 }
 async function configureGate(){try{var r=await(await fetch('/api/branch-protection',{method:'POST',headers:{'X-DCF-Wizard-CSRF':csrf}})).json();if(r.error)throw Error(r.error);}catch(e){}location.reload()}
-async function skipGate(){setViewHTML('<p>已跳过门禁配置。<button onclick="done()">完成</button></p>')}
-async function done(){await fetch('/api/done',{method:'POST',headers:{'X-DCF-Wizard-CSRF':csrf}})}
+async function skipAndDone(){await fetch('/api/done',{method:'POST',headers:{'X-DCF-Wizard-CSRF':csrf}});setViewHTML('<p>已完成。</p>')}
+async function doneAndClose(){var r=await(await fetch('/api/done',{method:'POST',headers:{'X-DCF-Wizard-CSRF':csrf}})).json();setViewHTML('<p>已完成。服务器将关闭。</p>')}
 async function retry(){setViewHTML('<p>验证中...</p>');try{var r=await(await fetch('/api/retry-verification',{method:'POST',headers:{'X-DCF-Wizard-CSRF':csrf}})).json();if(r.html){setViewHTML(r.html);attachGateHandlers();return}
-showError(r.error||'验证失败')
-}catch(e){showError('重试验证失败')}}
+poll()
+}catch(e){poll()}}
 async function cancel(){await fetch('/api/cancel',{method:'POST',headers:{'X-DCF-Wizard-CSRF':csrf}});location.reload()}
 poll();</script>`; }
 function openBrowser(url) { try { const command = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open'; return spawn(command, [url], { shell: command === 'start', stdio: 'ignore' }); } catch (_) { return null; } }
@@ -371,5 +383,5 @@ async function main() { try { await startServer(); const child = openBrowser(exp
 function shutdown() { clearSensitiveMemory(); if (serverState.server) serverState.server.close(() => process.exit(0)); else process.exit(0); }
 process.on('SIGINT', shutdown); process.on('SIGTERM', shutdown);
 function setGetUserGitHubToken(fn) { getUserGitHubToken = fn; }
-module.exports = { OWNER, REPO, REPOSITORY, APP_SUGGESTED_NAME, LOOPBACK, CANDIDATE_REF, REQUIRED_CHECKS, EXPECTED_PERMISSIONS, DANGEROUS_PERMISSIONS, CREDENTIAL_FILENAME, PRIVATE_KEY_FILENAME, CONFIG_FILENAME, PENDING_INSTALL_FILENAME, configDir, secureDirectory, writeSecureFile, atomicWriteSecure, readSecureFile, generateCSRFState, createManifest, generateJWT, httpsRequest, exchangeCode, createInstallationToken, getRepositoryInfo, listInstallationRepositories, getAppWithJwt, getInstallations, getInstallation, getCandidateRef, branchProtectionPayload, saveCredentials, loadCredentials, saveBotConfig, loadBotConfig, savePendingInstall, loadPendingInstall, clearPendingInstall, serverState, startServer, handleRequest, handleStatus, handleCancel, handleSetup, handleRetryVerification, clearSensitiveMemory, isExpired, claimSetupCallback, html, renderCompleteHTML, mainPageHTML, verifyPermissions, main, getUserGitHubToken, setGetUserGitHubToken };
+module.exports = { OWNER, REPO, REPOSITORY, APP_SUGGESTED_NAME, LOOPBACK, CANDIDATE_REF, REQUIRED_CHECKS, EXPECTED_PERMISSIONS, CREDENTIAL_FILENAME, PRIVATE_KEY_FILENAME, CONFIG_FILENAME, PENDING_INSTALL_FILENAME, configDir, secureDirectory, writeSecureFile, atomicWriteSecure, readSecureFile, generateCSRFState, createManifest, generateJWT, httpsRequest, exchangeCode, createInstallationToken, getRepositoryInfo, listInstallationRepositories, getAppWithJwt, getInstallations, getInstallation, getCandidateRef, branchProtectionPayload, saveCredentials, loadCredentials, saveBotConfig, loadBotConfig, savePendingInstall, loadPendingInstall, clearPendingInstall, serverState, startServer, handleRequest, handleStatus, handleCancel, handleSetup, handleRetryVerification, clearSensitiveMemory, isExpired, claimSetupCallback, html, renderCompleteHTML, mainPageHTML, verifyPermissions, validateInstallUrl, main, getUserGitHubToken, setGetUserGitHubToken };
 if (require.main === module) main().catch(error => { console.error(`初始化失败：${error.message}`); shutdown(); });

@@ -16,5 +16,7 @@
     "setup:github-bot": "node scripts/setup-github-bot.js",
     "publish:chrome": "node scripts/publish-chrome-web-store.js"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "jsdom": "^29.1.1"
+  }
 }

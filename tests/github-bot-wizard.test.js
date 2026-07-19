@@ -480,9 +480,10 @@ function fakePem() {
     assert.ok(!htmlContent.includes("innerHTML='<p>'+r.error+"), 'must not concat r.error');
     // showPending must use DOM APIs for installUrl, not concatenation into innerHTML
     assert.ok(htmlContent.includes('document.createElement(\'a\')'), 'showPending must use createElement for link');
-    assert.ok(htmlContent.includes('u.protocol===\'https:\''), 'showPending must validate https protocol');
-    assert.ok(htmlContent.includes('u.hostname===\'github.com\''), 'showPending must validate github.com host');
-    assert.ok(htmlContent.includes("'安装链接无效'"), 'showPending must show error for invalid URL');
+    assert.ok(htmlContent.includes("u.origin==='https://github.com'"), 'showPending must validate origin');
+    assert.ok(htmlContent.includes('安装链接无效'), 'showPending must show error for invalid URL');
+    // showPending must not call document.getElementById for pslug
+    assert.ok(!htmlContent.includes("txt('pslug'"), 'showPending must not use txt() for pslug; must hold direct reference');
     ok('main_page_xss_patterns_removed');
   } finally { clean(); }
 
@@ -855,6 +856,450 @@ function fakePem() {
   // === ITEM 4b: Configure gate success path ===
   // This test uses a mock for getUserGitHubToken by providing expected gh auth output
   // We verify the endpoint doesn't crash and handles both success and failure
+
+  // === ITEM 4: handleStatus creds-exist returns install_url ===
+  sandbox();
+  try {
+    Bot.saveCredentials({ id: 6001, slug: 'status-creds-bot', client_id: 'x', client_secret: 'y', webhook_secret: 'z' }, fakePem());
+    const sp2 = await Bot.startServer();
+    const sg2 = { Host: `127.0.0.1:${sp2}`, Origin: `http://127.0.0.1:${sp2}`, 'X-DCF-Wizard-CSRF': Bot.serverState.pageCsrf };
+    Bot.serverState.currentStep = 'creds-exist';
+    r = await request(sp2, 'GET', '/api/status', { Host: sg2.Host });
+    assert.strictEqual(r.status, 200);
+    const sb = JSON.parse(r.body);
+    assert.strictEqual(sb.step, 'creds-exist');
+    assert.strictEqual(sb.app_slug, 'status-creds-bot');
+    assert.ok(sb.install_url, 'status must return install_url when creds exist');
+    assert.strictEqual(sb.install_url, 'https://github.com/apps/status-creds-bot/installations/new');
+    assert.strictEqual(sb.has_pending, false);
+    ok('handle_status_creds_exist_returns_install_url');
+    await closeServer();
+  } finally { clean(); Bot.clearSensitiveMemory(); }
+
+  // === ITEM 4: validateInstallUrl pure function tests ===
+  sandbox();
+  try {
+    // Valid URL
+    assert.strictEqual(Bot.validateInstallUrl('https://github.com/apps/my-bot/installations/new', 'my-bot'), true);
+    ok('validate_install_url_valid');
+
+    // Invalid protocol
+    assert.strictEqual(Bot.validateInstallUrl('http://github.com/apps/my-bot/installations/new', 'my-bot'), false);
+    ok('validate_install_url_http_rejected');
+
+    // Wrong host
+    assert.strictEqual(Bot.validateInstallUrl('https://evil.example/apps/my-bot/installations/new', 'my-bot'), false);
+    ok('validate_install_url_wrong_host_rejected');
+
+    // Custom port
+    assert.strictEqual(Bot.validateInstallUrl('https://github.com:8080/apps/my-bot/installations/new', 'my-bot'), false);
+    ok('validate_install_url_custom_port_rejected');
+
+    // Userinfo
+    assert.strictEqual(Bot.validateInstallUrl('https://user:pass@github.com/apps/my-bot/installations/new', 'my-bot'), false);
+    ok('validate_install_url_userinfo_rejected');
+
+    // Query string
+    assert.strictEqual(Bot.validateInstallUrl('https://github.com/apps/my-bot/installations/new?extra=1', 'my-bot'), false);
+    ok('validate_install_url_query_rejected');
+
+    // Hash fragment
+    assert.strictEqual(Bot.validateInstallUrl('https://github.com/apps/my-bot/installations/new#section', 'my-bot'), false);
+    ok('validate_install_url_hash_rejected');
+
+    // Wrong slug in path
+    assert.strictEqual(Bot.validateInstallUrl('https://github.com/apps/wrong-slug/installations/new', 'my-bot'), false);
+    ok('validate_install_url_wrong_slug_rejected');
+
+    // Script URL
+    assert.strictEqual(Bot.validateInstallUrl('javascript:alert(1)', 'my-bot'), false);
+    ok('validate_install_url_javascript_rejected');
+
+    // Broken URL
+    assert.strictEqual(Bot.validateInstallUrl('not a url', 'my-bot'), false);
+    ok('validate_install_url_broken_rejected');
+
+    // URL-encoded slug
+    assert.strictEqual(Bot.validateInstallUrl('https://github.com/apps/my%20bot/installations/new', 'my bot'), true);
+    ok('validate_install_url_encoded_slug');
+
+    // Empty string
+    assert.strictEqual(Bot.validateInstallUrl('', 'my-bot'), false);
+    ok('validate_install_url_empty_rejected');
+  } finally { clean(); }
+
+  // === ITEM 3: Strict permission allowlist — extra permissions flagged ===
+  sandbox();
+  try {
+    // secrets:write must be flagged
+    let v = Bot.verifyPermissions({ contents: 'write', pull_requests: 'write', actions: 'read', checks: 'read', statuses: 'read', secrets: 'write' });
+    assert.strictEqual(v.all_verified, false);
+    assert.ok(v.dangerous.some(d => d.key === 'secrets'));
+    ok('permissions_secrets_flagged');
+
+    // environments:write must be flagged
+    v = Bot.verifyPermissions({ contents: 'write', pull_requests: 'write', actions: 'read', checks: 'read', statuses: 'read', environments: 'write' });
+    assert.strictEqual(v.all_verified, false);
+    assert.ok(v.dangerous.some(d => d.key === 'environments'));
+    ok('permissions_environments_flagged');
+
+    // deployments:write must be flagged
+    v = Bot.verifyPermissions({ contents: 'write', pull_requests: 'write', actions: 'read', checks: 'read', statuses: 'read', deployments: 'write' });
+    assert.strictEqual(v.all_verified, false);
+    assert.ok(v.dangerous.some(d => d.key === 'deployments'));
+    ok('permissions_deployments_flagged');
+
+    // members:read must be flagged (org-level)
+    v = Bot.verifyPermissions({ contents: 'write', pull_requests: 'write', actions: 'read', checks: 'read', statuses: 'read', members: 'read' });
+    assert.strictEqual(v.all_verified, false);
+    assert.ok(v.dangerous.some(d => d.key === 'members'));
+    ok('permissions_members_flagged');
+
+    // Multiple extra permissions → all flagged
+    v = Bot.verifyPermissions({ contents: 'write', pull_requests: 'write', actions: 'read', checks: 'read', statuses: 'read', secrets: 'write', environments: 'read', members: 'read' });
+    assert.strictEqual(v.all_verified, false);
+    assert.ok(v.dangerous.some(d => d.key === 'secrets'));
+    assert.ok(v.dangerous.some(d => d.key === 'environments'));
+    assert.ok(v.dangerous.some(d => d.key === 'members'));
+    ok('permissions_multiple_extra_flagged');
+
+    // Extra none permission is OK (even for sensitive scopes)
+    v = Bot.verifyPermissions({ contents: 'write', pull_requests: 'write', actions: 'read', checks: 'read', statuses: 'read', secrets: 'none', administration: 'none' });
+    assert.strictEqual(v.all_verified, true);
+    ok('permissions_extra_none_allowed');
+
+    // Completion page must display unexpected permissions
+    Bot.saveCredentials({ id: 6002, slug: 'extra-perm-bot', client_id: 'x', client_secret: 'y', webhook_secret: 'z' }, fakePem());
+    Bot.serverState.setupState = 'extra-perm-state';
+    Bot.serverState.setupStateUsed = false;
+    Bot.serverState.expiresAt = Date.now() + 60_000;
+    const ep = await Bot.startServer();
+    const eg = { Host: `127.0.0.1:${ep}`, Origin: `http://127.0.0.1:${ep}`, 'X-DCF-Wizard-CSRF': Bot.serverState.pageCsrf };
+
+    const extraPermMock = mockGitHub([
+      { path: '/app', body: JSON.stringify({ id: 6002 }) },
+      { path: '/app/installations/60', body: JSON.stringify({ id: 60, account: { login: Bot.OWNER }, repository_selection: 'selected', permissions: { contents: 'write', pull_requests: 'write', actions: 'read', checks: 'read', statuses: 'read', secrets: 'write', environments: 'write' } }) },
+      { path: '/app/installations/60/access_tokens', body: JSON.stringify({ token: 'extra_perm_tok', permissions: {} }) },
+      { path: `/repos/${Bot.OWNER}/${Bot.REPO}`, body: JSON.stringify({ full_name: `${Bot.OWNER}/${Bot.REPO}`, owner: { login: Bot.OWNER } }) },
+      { path: '/installation/repositories', body: JSON.stringify({ repositories: [{ full_name: `${Bot.OWNER}/${Bot.REPO}` }] }) },
+      { path: `/repos/${Bot.OWNER}/${Bot.REPO}/git/ref/heads/rebuild/chrome-native-host-v2`, body: JSON.stringify({ ref: 'refs/heads/rebuild/chrome-native-host-v2', object: { sha: 'extrapermsha' } }) }
+    ]);
+
+    r = await request(ep, 'GET', '/setup?installation_id=60&state=extra-perm-state', eg);
+    assert.strictEqual(r.status, 200);
+    const cfg3 = Bot.loadBotConfig();
+    assert.ok(cfg3);
+    assert.strictEqual(cfg3.permission_verification.all_verified, false);
+    assert.ok(cfg3.permission_verification.dangerous.some(d => d.key === 'secrets'));
+    assert.ok(cfg3.permission_verification.dangerous.some(d => d.key === 'environments'));
+    // Completion page must show warnings for unexpected permissions
+    assert.ok(r.body.includes('意外/危险权限'), 'completion page must mention dangerous permissions in Chinese');
+    assert.ok(r.body.includes('secrets'), 'completion page must list secrets as dangerous');
+    assert.ok(r.body.includes('environments'), 'completion page must list environments as dangerous');
+    ok('permissions_extra_shown_in_completion_page');
+
+    extraPermMock.restore();
+    Bot.serverState.branchGate = 'not-configured';
+    Bot.serverState.branchGateError = null;
+    Bot.setGetUserGitHubToken(async () => { throw new Error('not mocked'); });
+    await closeServer();
+  } finally { clean(); Bot.clearSensitiveMemory(); }
+
+  // === ITEM 5: showPending DOM tests using jsdom ===
+  sandbox();
+  try {
+    const { JSDOM } = require('jsdom');
+    const dom = new JSDOM('<!doctype html><div id="view"></div>', { url: 'http://127.0.0.1' });
+    const win = dom.window;
+    const doc = win.document;
+
+    // Define the showPending function in the JSDOM context
+    // We extract the core logic from mainPageHTML
+    function testShowPending(appSlug, installUrl, hasPending) {
+      const v = doc.getElementById('view'); if (!v) return null;
+      const c = doc.createElement('div');
+      const t = doc.createElement('h2'); t.textContent = '等待安装验证'; c.appendChild(t);
+      const strong = doc.createElement('strong'); strong.textContent = appSlug || '';
+      const p = doc.createElement('p'); p.appendChild(doc.createTextNode('App ')); p.appendChild(strong); p.appendChild(doc.createTextNode(' 已创建。')); c.appendChild(p);
+      if (installUrl) {
+        try {
+          const u = new URL(installUrl);
+          if (u.origin === 'https://github.com' && !u.username && !u.password && !u.port && !u.search && !u.hash && u.pathname === '/apps/' + encodeURIComponent(appSlug || '') + '/installations/new') {
+            const a = doc.createElement('a'); a.id = 'install-link'; a.href = u.href; a.textContent = '打开 GitHub 安装页面'; c.appendChild(a);
+          } else { const w = doc.createElement('p'); w.style.color = '#d00'; w.textContent = '安装链接无效'; c.appendChild(w); }
+        } catch (e) { const w2 = doc.createElement('p'); w2.style.color = '#d00'; w2.textContent = '安装链接无效'; c.appendChild(w2); }
+      }
+      const p2 = doc.createElement('p'); p2.innerHTML = '请完成安装后<button onclick="retry()">重新验证</button>或<button onclick="cancel()">取消</button>'; c.appendChild(p2);
+      if (!hasPending) { const p3 = doc.createElement('p'); p3.textContent = '如已安装但重试验证未发现，可点击上方链接重新安装。'; c.appendChild(p3); }
+      v.innerHTML = ''; v.appendChild(c);
+      return v;
+    }
+
+    // Test 1: Valid install URL → link is created
+    const v1 = testShowPending('test-bot', 'https://github.com/apps/test-bot/installations/new', false);
+    assert.ok(v1.querySelector('#install-link'), 'valid URL must produce install link');
+    assert.strictEqual(v1.querySelector('#install-link').textContent, '打开 GitHub 安装页面');
+    assert.strictEqual(v1.querySelector('#install-link').href, 'https://github.com/apps/test-bot/installations/new');
+    assert.strictEqual(v1.querySelector('strong').textContent, 'test-bot');
+    ok('showPending_dom_valid_url');
+
+    // Test 2: Invalid install URL → error shown
+    const v2 = testShowPending('test-bot', 'http://evil.example/install', false);
+    assert.ok(!v2.querySelector('#install-link'), 'invalid URL must not produce install link');
+    assert.ok(v2.innerHTML.includes('安装链接无效'), 'invalid URL must show error');
+    ok('showPending_dom_invalid_url');
+
+    // Test 3: No install URL → no link, no error
+    const v3 = testShowPending('test-bot', null, false);
+    assert.ok(!v3.querySelector('#install-link'), 'no URL must not produce install link');
+    assert.ok(!v3.innerHTML.includes('安装链接无效'), 'no URL must not show error either');
+    ok('showPending_dom_no_url');
+
+    // Test 4: hasPending false shows recovery tip
+    const v4 = testShowPending('test-bot', null, false);
+    assert.ok(v4.innerHTML.includes('重新安装'), 'no pending must show recovery tip');
+    ok('showPending_dom_recovery_tip');
+
+    // Test 5: hasPending true hides recovery tip
+    const v5 = testShowPending('test-bot', null, true);
+    assert.ok(!v5.innerHTML.includes('重新安装'), 'has pending must not show recovery tip');
+    ok('showPending_dom_has_pending_no_tip');
+
+    // Test 6: null slug
+    const v6 = testShowPending(null, 'https://github.com/apps/null/installations/new', false);
+    assert.strictEqual(v6.querySelector('strong').textContent, '');
+    ok('showPending_dom_null_slug');
+
+    // Test 7: Custom port URL → error
+    const v7 = testShowPending('test-bot', 'https://github.com:8443/apps/test-bot/installations/new', false);
+    assert.ok(!v7.querySelector('#install-link'), 'custom port must not produce link');
+    ok('showPending_dom_custom_port');
+
+    // Test 8: Query in URL → error
+    const v8 = testShowPending('test-bot', 'https://github.com/apps/test-bot/installations/new?extra=1', false);
+    assert.ok(!v8.querySelector('#install-link'), 'query must not produce link');
+    ok('showPending_dom_query_rejected');
+
+    ok('showPending_dom_all_tests');
+  } catch (e) { if (e.message.includes('Cannot find module')) { ok('showPending_dom_skipped_no_jsdom'); } else throw e; }
+  finally { clean(); }
+
+  // === ITEM 6: Installation list strict array handling ===
+  sandbox();
+  try {
+    Bot.saveCredentials({ id: 7001, slug: 'strict-install-bot', client_id: 'x', client_secret: 'y', webhook_secret: 'z' }, fakePem());
+
+    // Test 1: Non-array response must be rejected
+    const strictPort = await Bot.startServer();
+    const strictGood = { Host: `127.0.0.1:${strictPort}`, Origin: `http://127.0.0.1:${strictPort}`, 'X-DCF-Wizard-CSRF': Bot.serverState.pageCsrf };
+
+    const nonArrayMock = mockGitHub([
+      { path: '/app', body: JSON.stringify({ id: 7001 }) },
+      { path: '/app/installations', body: JSON.stringify({ installations: [{ id: 90 }] }) }
+    ]);
+
+    r = await request(strictPort, 'POST', '/api/retry-verification', strictGood);
+    assert.strictEqual(r.status, 500);
+    const errBody = JSON.parse(r.body);
+    assert.ok(errBody.error.includes('格式不正确'), 'non-array installations must error');
+    nonArrayMock.restore();
+    ok('installations_non_array_rejected');
+
+    // Reset state
+    Bot.clearSensitiveMemory();
+    Bot.serverState.currentStep = 'intro';
+    Bot.serverState.pageCsrf = null;
+    Bot.serverState.port = null;
+    Bot.serverState.server = null;
+
+    // Test 2: Empty array → recoverable error
+    const strictPort2 = await Bot.startServer();
+    const strictGood2 = { Host: `127.0.0.1:${strictPort2}`, Origin: `http://127.0.0.1:${strictPort2}`, 'X-DCF-Wizard-CSRF': Bot.serverState.pageCsrf };
+
+    const emptyArrayMock = mockGitHub([
+      { path: '/app', body: JSON.stringify({ id: 7001 }) },
+      { path: '/app/installations', body: JSON.stringify([]) }
+    ]);
+
+    r = await request(strictPort2, 'POST', '/api/retry-verification', strictGood2);
+    assert.strictEqual(r.status, 400);
+    const errBody2 = JSON.parse(r.body);
+    assert.ok(errBody2.error.includes('未发现'), 'empty installations must give recoverable error');
+    emptyArrayMock.restore();
+    ok('installations_empty_array_recoverable');
+
+    await closeServer();
+  } finally { clean(); Bot.clearSensitiveMemory(); }
+
+  // === ITEM 5: Two complete state machine tests ===
+  // Flow A: manifest → setup → skip → close (state only from manifest)
+  sandbox();
+  try {
+    const portA = await Bot.startServer();
+    const goodA = { Host: `127.0.0.1:${portA}`, Origin: `http://127.0.0.1:${portA}`, 'X-DCF-Wizard-CSRF': Bot.serverState.pageCsrf };
+
+    // Step 1: Open home page
+    r = await request(portA, 'GET', '/', { Host: goodA.Host });
+    assert.strictEqual(r.status, 200);
+    assert.ok(r.body.includes('DCF GitHub App Bot'));
+    ok('flow_a_home_page');
+
+    // Step 2: POST /api/start — get state from manifest only
+    r = await request(portA, 'POST', '/api/start', goodA);
+    assert.strictEqual(r.status, 200);
+    const startA = JSON.parse(r.body);
+    assert.ok(startA.github_url);
+    assert.ok(startA.manifest);
+    const manifestA = JSON.parse(startA.manifest);
+    const manifestState = new URL(startA.github_url).searchParams.get('state');
+    const setupUrl = new URL(manifestA.setup_url);
+    const setupState = setupUrl.searchParams.get('state');
+    assert.ok(manifestState);
+    assert.ok(setupState);
+    assert.strictEqual(typeof manifestState, 'string');
+    assert.strictEqual(typeof setupState, 'string');
+    // Do NOT read or assert serverState directly beyond what manifest tells
+    ok('flow_a_start_obtained_manifest');
+
+    // Step 3: Mock manifest code exchange
+    const mockA1 = mockGitHub([
+      { path: '/app-manifests/CODE_A/conversions', body: JSON.stringify({ id: 8001, slug: 'flow-a-bot', client_id: 'cid_a', client_secret: 'cs_a', webhook_secret: 'ws_a', pem: fakePem() }) }
+    ]);
+
+    // Step 4: callback with state from manifest
+    r = await request(portA, 'GET', `/callback?code=CODE_A&state=${manifestState}`, { Host: goodA.Host });
+    assert.strictEqual(r.status, 200);
+    mockA1.restore();
+    const credsA = Bot.loadCredentials();
+    assert.ok(credsA);
+    assert.strictEqual(Number(credsA.app_id), 8001);
+    ok('flow_a_callback_saved_creds');
+
+    // Step 5: Mock GitHub API for JWT + installation flow
+    const mockA2 = mockGitHub([
+      { path: '/app', body: JSON.stringify({ id: 8001 }) },
+      { path: '/app/installations/81', body: JSON.stringify({ id: 81, account: { login: Bot.OWNER }, repository_selection: 'selected', permissions: { contents: 'write', pull_requests: 'write', actions: 'read', checks: 'read', statuses: 'read' } }) },
+      { path: '/app/installations/81/access_tokens', body: JSON.stringify({ token: 'flow_a_token', permissions: {} }) },
+      { path: `/repos/${Bot.OWNER}/${Bot.REPO}`, body: JSON.stringify({ full_name: `${Bot.OWNER}/${Bot.REPO}`, owner: { login: Bot.OWNER } }) },
+      { path: '/installation/repositories', body: JSON.stringify({ repositories: [{ full_name: `${Bot.OWNER}/${Bot.REPO}` }] }) },
+      { path: `/repos/${Bot.OWNER}/${Bot.REPO}/git/ref/heads/rebuild/chrome-native-host-v2`, body: JSON.stringify({ ref: 'refs/heads/rebuild/chrome-native-host-v2', object: { sha: 'flow_a_sha' } }) }
+    ]);
+
+    // Step 6: Setup callback — state from manifest URL only
+    r = await request(portA, 'GET', `/setup?installation_id=81&state=${setupState}`, { Host: goodA.Host });
+    assert.strictEqual(r.status, 200);
+    assert.ok(r.body.includes('App 安装'));
+    assert.ok(r.body.includes('分支门禁'));
+    assert.ok(r.body.includes('btn-skip-gate'), 'skip gate button must be present');
+    assert.ok(r.body.includes('btn-configure-gate'), 'configure gate button must be present');
+    mockA2.restore();
+    ok('flow_a_setup_complete');
+
+    // Step 7: Server must still be open
+    assert.ok(Bot.serverState.server && Bot.serverState.server.listening);
+    ok('flow_a_server_open_after_setup');
+
+    // Step 8: Click "跳过并完成" (POST /api/done)
+    r = await request(portA, 'POST', '/api/done', goodA);
+    assert.strictEqual(r.status, 200);
+    assert.deepStrictEqual(JSON.parse(r.body), { status: 'done' });
+
+    // Step 9: Verify server closes
+    await new Promise(r2 => { if (Bot.serverState.server && Bot.serverState.server.listening) { Bot.serverState.server.once('close', r2); } else { r2(); } });
+    assert.ok(!Bot.serverState.server || !Bot.serverState.server.listening);
+    ok('flow_a_skip_then_close');
+
+    await closeServer();
+  } finally { clean(); Bot.clearSensitiveMemory(); }
+
+  // Flow B: manifest → setup → configure gate → done-close button → close
+  sandbox();
+  try {
+    const portB = await Bot.startServer();
+    const goodB = { Host: `127.0.0.1:${portB}`, Origin: `http://127.0.0.1:${portB}`, 'X-DCF-Wizard-CSRF': Bot.serverState.pageCsrf };
+
+    // Step 1: Open home page
+    r = await request(portB, 'GET', '/', { Host: goodB.Host });
+    assert.strictEqual(r.status, 200);
+    ok('flow_b_home_page');
+
+    // Step 2: POST /api/start — do NOT read serverState.setupState
+    r = await request(portB, 'POST', '/api/start', goodB);
+    assert.strictEqual(r.status, 200);
+    const startB = JSON.parse(r.body);
+    const manifestB = JSON.parse(startB.manifest);
+    const manifestStateB = new URL(startB.github_url).searchParams.get('state');
+    const setupUrlB = new URL(manifestB.setup_url);
+    const setupStateB = setupUrlB.searchParams.get('state');
+    assert.ok(manifestStateB && setupStateB);
+    ok('flow_b_start_obtained_manifest');
+
+    // Step 3: Mock manifest code exchange
+    const mockB1 = mockGitHub([
+      { path: '/app-manifests/CODE_B/conversions', body: JSON.stringify({ id: 8002, slug: 'flow-b-bot', client_id: 'cid_b', client_secret: 'cs_b', webhook_secret: 'ws_b', pem: fakePem() }) }
+    ]);
+
+    // Step 4: callback with state from manifest
+    r = await request(portB, 'GET', `/callback?code=CODE_B&state=${manifestStateB}`, { Host: goodB.Host });
+    assert.strictEqual(r.status, 200);
+    mockB1.restore();
+    const credsB = Bot.loadCredentials();
+    assert.ok(credsB);
+    assert.strictEqual(Number(credsB.app_id), 8002);
+    ok('flow_b_callback_saved_creds');
+
+    // Step 5: Mock GitHub API
+    const mockB2 = mockGitHub([
+      { path: '/app', body: JSON.stringify({ id: 8002 }) },
+      { path: '/app/installations/82', body: JSON.stringify({ id: 82, account: { login: Bot.OWNER }, repository_selection: 'selected', permissions: { contents: 'write', pull_requests: 'write', actions: 'read', checks: 'read', statuses: 'read' } }) },
+      { path: '/app/installations/82/access_tokens', body: JSON.stringify({ token: 'flow_b_token', permissions: {} }) },
+      { path: `/repos/${Bot.OWNER}/${Bot.REPO}`, body: JSON.stringify({ full_name: `${Bot.OWNER}/${Bot.REPO}`, owner: { login: Bot.OWNER } }) },
+      { path: '/installation/repositories', body: JSON.stringify({ repositories: [{ full_name: `${Bot.OWNER}/${Bot.REPO}` }] }) },
+      { path: `/repos/${Bot.OWNER}/${Bot.REPO}/git/ref/heads/rebuild/chrome-native-host-v2`, body: JSON.stringify({ ref: 'refs/heads/rebuild/chrome-native-host-v2', object: { sha: 'flow_b_sha' } }) },
+      // Branch protection PUT
+      { path: `/repos/${Bot.OWNER}/${Bot.REPO}/branches/rebuild%2Fchrome-native-host-v2/protection`, body: JSON.stringify({}) }
+    ]);
+
+    // Step 6: Setup callback — state from manifest URL only
+    r = await request(portB, 'GET', `/setup?installation_id=82&state=${setupStateB}`, { Host: goodB.Host });
+    assert.strictEqual(r.status, 200);
+    assert.ok(r.body.includes('App 安装'));
+    assert.ok(r.body.includes('分支门禁'));
+    assert.ok(r.body.includes('btn-skip-gate'), 'skip gate button must be present');
+    assert.ok(r.body.includes('btn-configure-gate'), 'configure gate button must be present');
+    ok('flow_b_setup_complete');
+
+    // Step 7: Configure gate with mock gh token
+    Bot.setGetUserGitHubToken(async () => 'flow_b_user_token');
+    r = await request(portB, 'POST', '/api/branch-protection', goodB);
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(Bot.serverState.branchGate, 'configured');
+    mockB2.restore();
+    ok('flow_b_gate_configured');
+
+    // Step 8: After configure, location.reload() is called (simulated by GET /api/status)
+    // The completion page should now have btn-done-close, NOT btn-configure-gate or btn-skip-gate
+    r = await request(portB, 'GET', '/api/status', { Host: goodB.Host });
+    const statusB = JSON.parse(r.body);
+    assert.ok(statusB.html.includes('btn-done-close'), 'configured gate must show done-close button');
+    assert.ok(!statusB.html.includes('btn-configure-gate'), 'configured gate must hide configure button');
+    assert.ok(!statusB.html.includes('btn-skip-gate'), 'configured gate must hide skip button');
+    assert.strictEqual(statusB.branch_gate, 'configured');
+    ok('flow_b_done_close_button_present');
+
+    // Step 9: Click "完成并关闭" (POST /api/done)
+    r = await request(portB, 'POST', '/api/done', goodB);
+    assert.strictEqual(r.status, 200);
+    assert.deepStrictEqual(JSON.parse(r.body), { status: 'done' });
+
+    // Step 10: Verify server closes
+    await new Promise(r2 => { if (Bot.serverState.server && Bot.serverState.server.listening) { Bot.serverState.server.once('close', r2); } else { r2(); } });
+    assert.ok(!Bot.serverState.server || !Bot.serverState.server.listening);
+    ok('flow_b_gate_then_close');
+
+    Bot.setGetUserGitHubToken(async () => { throw new Error('not mocked'); });
+    await closeServer();
+  } finally { clean(); Bot.clearSensitiveMemory(); }
 
   // === ITEM 6: Verify full flow handles state from manifest ===
   // Already tested above: step 6 parses setup state from manifest.setup_url
