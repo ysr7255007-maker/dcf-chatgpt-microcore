@@ -12,7 +12,7 @@ const code = fs.readFileSync(path.join(root, 'chrome-extension/code-units/local-
 assert(ref);
 assert(index.defaults.includes(ref.id));
 assert.strictEqual(index.units.length, 10);
-assert.strictEqual(ref.version, '1.0.0-rc.2-local-agent-dialogue.10');
+assert.strictEqual(ref.version, '1.0.0-rc.2-local-agent-dialogue.11');
 assert.strictEqual(ref.phase, 57);
 assert.strictEqual(ref.world_id, 'dcf-firstparty-local-agent-dialogue');
 assert.doesNotThrow(() => new Function(code));
@@ -32,10 +32,24 @@ for (const token of [
   "timeout_basis: 'observable-idle-time'",
   'permission_wait_pauses_idle_timeout: true',
   'idle_timeout_ms',
+  'function normalizeStoredModel(value)',
+  'model: normalizeStoredModel(stored.model)',
   'function assistantText(record)',
   'function latestAssistantText(messages)',
-  "part?.type !== 'text'",
+  'function assistantReasoning(record)',
+  'function reasoningTrace(messages)',
+  'function boundedEvidence(value, limit = 4000)',
+  'function assistantTurnTrace(messages)',
+  'function toolTrace(messages)',
+  'function normalizeReturnMode(value)',
+  "return_mode: normalizeReturnMode(payload.return_mode)",
+  'function applyReturnProfile(payload, mode, snap, execution)',
+  "mode === 'reasoning' || mode === 'diagnostic'",
+  "mode === 'diagnostic'",
+  'payload.reasoning = reasoningTrace(snap.messages)',
+  'payload.diagnostic = {',
   'assistant_result: latestAssistantText(snap.messages)',
+  "return_modes: ['final', 'reasoning', 'diagnostic']",
   'function activityFingerprint(snap, job)',
   'function noteActivity(job, fingerprint)',
   'async function confirmInactive(job, fingerprint)',
@@ -48,11 +62,6 @@ for (const token of [
   'function findToolEvidence(messages, permission)',
   'async function applyPermissionDecision(decision)',
   'async function replyPermissionNative(job, decision)',
-  '/permission/${encodeURIComponent(decision.permission_id)}/reply',
-  '/api/session/${encodeURIComponent(job.session_id)}/permission/${encodeURIComponent(decision.permission_id)}/reply',
-  "['once', 'always', 'reject'].includes(decision.decision)",
-  "state.stage = 'permission_reply'",
-  "state.stage = job.response_state === 'rejected' ? 'detached' : 'running'",
   'if (!hasIntervention && Date.now() - job.last_activity_at >= job.request.idle_timeout_ms)',
   'const baselineNodes = new WeakSet()',
   'function attachConversationRoot()',
@@ -70,6 +79,8 @@ for (const token of [
   "if (part.type === 'text' || part.type === 'reasoning')",
   'function latestAssistant(messages)',
   "messages: job.request.return_mode === 'full' ? snap.messages : undefined",
+  "const modelValue = String(shadow?.querySelector('[data-field=\"model\"]')",
+  'modelParts.length === 2',
   "resultPayload(job, 'needs_user'",
   'Date.now() - started >= job.request.timeout_ms',
   'timeout: requestData.timeout_ms',
@@ -82,23 +93,54 @@ for (const token of [
 assert.match(code, /if \(pendingPermissions\.length\)[\s\S]*state\.stage = 'needs_user'[\s\S]*returnPermissionRequest/);
 assert.match(code, /applyPermissionDecision\(parsed\)/);
 assert.match(code, /replyPermissionNative\(job, decision\)/);
-
+assert(!/payload\.messages\s*=/.test(code));
 
 const helperStart = code.indexOf('function assistantText(record)');
 const helperEnd = code.indexOf('function normalizeArtifactText', helperStart);
 assert(helperStart >= 0 && helperEnd > helperStart);
-const helperFactory = new Function('list', 'messageRole', `${code.slice(helperStart, helperEnd)}\nreturn { assistantText, latestAssistantText };`);
+const helperFactory = new Function('list', 'messageRole', 'messageId', 'statusType', 'json', 'hash', `${code.slice(helperStart, helperEnd)}\nreturn { assistantText, latestAssistantText, reasoningTrace, boundedEvidence, assistantTurnTrace, toolTrace, normalizeReturnMode };`);
 const helpers = helperFactory(
   (value) => Array.isArray(value) ? value : value && typeof value === 'object' ? Object.values(value) : [],
-  (value) => String(value?.info?.role || value?.info?.type || '').toLowerCase()
+  (value) => String(value?.info?.role || value?.info?.type || '').toLowerCase(),
+  (value) => String(value?.info?.id || value?.id || ''),
+  (value, fallback = 'unknown') => String(typeof value === 'string' ? value : value?.type || value?.status || value?.state || fallback).toLowerCase(),
+  (value) => JSON.stringify(value, null, 2),
+  (value) => crypto.createHash('sha256').update(String(value)).digest('hex')
 );
-const noisyMessages = [
-  { info: { role: 'assistant' }, parts: [{ type: 'reasoning', text: 'private reasoning' }, { type: 'tool', tool: 'bash' }, { type: 'step-finish', reason: 'tool-calls' }] },
-  { info: { role: 'assistant' }, parts: [{ type: 'reasoning', text: 'ignore me' }, { type: 'text', text: 'FINAL' }, { type: 'tool', tool: 'read' }, { type: 'text', text: 'SECOND' }, { type: 'step-finish', reason: 'stop' }] }
+const messages = [
+  {
+    info: { id: 'msg_a', role: 'assistant', providerID: 'agent-plan', modelID: 'glm-5.2', agent: 'build', finish: 'tool-calls', time: { created: 1, completed: 2 } },
+    parts: [
+      { type: 'reasoning', text: 'first reasoning' },
+      { type: 'tool', callID: 'call_a', tool: 'bash', state: { status: 'completed', input: { command: 'pwd' }, output: '/tmp', title: 'pwd' } },
+      { type: 'step-finish', reason: 'tool-calls' }
+    ]
+  },
+  {
+    info: { id: 'msg_b', role: 'assistant', providerID: 'deepseek', modelID: 'deepseek-v4-flash', agent: 'build', finish: 'stop', time: { created: 3, completed: 4 } },
+    parts: [
+      { type: 'reasoning', text: 'second reasoning' },
+      { type: 'text', text: 'FINAL' },
+      { type: 'tool', callID: 'call_b', tool: 'read', state: { status: 'completed', input: { filePath: '/tmp/a' }, output: 'ok', title: 'a' } },
+      { type: 'text', text: 'SECOND' },
+      { type: 'step-finish', reason: 'stop' }
+    ]
+  }
 ];
-assert.strictEqual(helpers.latestAssistantText(noisyMessages), 'FINAL\nSECOND');
+assert.strictEqual(helpers.latestAssistantText(messages), 'FINAL\nSECOND');
 assert.strictEqual(helpers.latestAssistantText([{ info: { role: 'assistant' }, parts: [{ type: 'reasoning', text: 'reasoning only' }] }]), '');
-assert(!/messages:\s*job\.request\.return_mode/.test(code));
+const reasoning = helpers.reasoningTrace(messages);
+assert.deepStrictEqual(reasoning.map((item) => item.text), ['first reasoning', 'second reasoning']);
+assert.strictEqual(helpers.assistantTurnTrace(messages).length, 2);
+assert.strictEqual(helpers.assistantTurnTrace(messages)[1].finish, 'stop');
+assert.strictEqual(helpers.toolTrace(messages).length, 2);
+assert.strictEqual(helpers.normalizeReturnMode(), 'final');
+assert.strictEqual(helpers.normalizeReturnMode('summary'), 'final');
+assert.strictEqual(helpers.normalizeReturnMode('review'), 'reasoning');
+assert.strictEqual(helpers.normalizeReturnMode('reasoning'), 'reasoning');
+assert.strictEqual(helpers.normalizeReturnMode('full'), 'diagnostic');
+assert.strictEqual(helpers.normalizeReturnMode('debug'), 'diagnostic');
+assert.strictEqual(helpers.boundedEvidence('x'.repeat(5000)).truncated, true);
 
 console.log(JSON.stringify({
   ok: true,
@@ -112,6 +154,9 @@ console.log(JSON.stringify({
   history_is_baseline_not_queue: true,
   hot_update_remount_watchers: true,
   no_new_panel: true,
-  compact_final_text_only: true,
-  raw_messages_not_returned: true
+  final_mode_is_text_only: true,
+  reasoning_mode_covers_all_assistant_turns: true,
+  diagnostic_mode_is_bounded_and_structured: true,
+  raw_messages_not_returned: true,
+  persisted_model_is_canonical: true
 }, null, 2));

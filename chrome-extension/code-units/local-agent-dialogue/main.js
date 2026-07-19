@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.local-agent-dialogue';
-  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.10';
+  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.11';
   const LOCAL_AGENT_ID = 'dcf.firstparty.local-agent';
   const PANEL_ID = 'dcf-panel-local-agent';
   const SHELL_ID = 'dcf-chrome-shell-host';
@@ -121,19 +121,24 @@
   }
   function localAgentShadow() { return localAgentPanel()?.shadowRoot || null; }
 
+  function normalizeStoredModel(value) {
+    if (!value || typeof value !== 'object') return null;
+    const providerID = String(value.providerID || '').trim();
+    const modelID = String(value.modelID || '').trim();
+    return providerID && modelID ? { providerID, modelID } : null;
+  }
+
   async function connectionConfig() {
     const result = await host({ type: 'plugin.data.get', plugin_id: LOCAL_AGENT_ID });
     const data = result.data && typeof result.data === 'object' ? result.data : {};
     const stored = data.config && typeof data.config === 'object' ? data.config : {};
     const shadow = localAgentShadow();
-    const modelValue = String(shadow?.querySelector('[data-field="model"]')?.value || '');
-    const modelParts = modelValue ? modelValue.split('\u0000') : [];
     return {
       base_url: String(shadow?.querySelector('[data-field="base-url"]')?.value || stored.base_url || 'http://127.0.0.1:4096').trim(),
       username: String(shadow?.querySelector('[data-field="username"]')?.value || stored.username || 'opencode').trim() || 'opencode',
       password: String(shadow?.querySelector('[data-field="password"]')?.value || ''),
       agent: String(shadow?.querySelector('[data-field="agent"]')?.value || stored.agent || ''),
-      model: modelParts.length === 2 ? { providerID: modelParts[0], modelID: modelParts[1] } : stored.model || null
+      model: normalizeStoredModel(stored.model)
     };
   }
 
@@ -240,6 +245,78 @@
     return '';
   }
 
+  function assistantReasoning(record) {
+    if (!messageRole(record).includes('assistant')) return '';
+    return list(record?.parts)
+      .filter((part) => part?.type === 'reasoning')
+      .map((part) => String(part.text || '').trim())
+      .filter(Boolean)
+      .join('\n')
+      .trim();
+  }
+
+  function reasoningTrace(messages) {
+    return messages.map((record) => {
+      const reasoning = assistantReasoning(record);
+      if (!reasoning) return null;
+      return {
+        message_id: messageId(record),
+        created_at: record?.info?.time?.created ?? null,
+        completed_at: record?.info?.time?.completed ?? null,
+        text: reasoning
+      };
+    }).filter(Boolean);
+  }
+
+  function boundedEvidence(value, limit = 4000) {
+    if (value === undefined) return null;
+    const encoded = json(value);
+    if (encoded.length <= limit) return value;
+    return { truncated: true, preview: encoded.slice(0, limit), hash: hash(encoded), original_chars: encoded.length };
+  }
+
+  function assistantTurnTrace(messages) {
+    return messages.filter((record) => messageRole(record).includes('assistant')).map((record) => ({
+      message_id: messageId(record),
+      provider_id: String(record?.info?.providerID || ''),
+      model_id: String(record?.info?.modelID || ''),
+      agent: String(record?.info?.agent || record?.info?.mode || ''),
+      finish: String(record?.info?.finish || ''),
+      time: record?.info?.time || null,
+      tokens: record?.info?.tokens || null,
+      part_types: list(record?.parts).map((part) => String(part?.type || '')).filter(Boolean)
+    }));
+  }
+
+  function toolTrace(messages) {
+    const output = [];
+    for (const record of messages) {
+      if (!messageRole(record).includes('assistant')) continue;
+      for (const part of list(record?.parts)) {
+        if (part?.type !== 'tool') continue;
+        output.push({
+          message_id: messageId(record),
+          call_id: String(part.callID || part.callId || ''),
+          tool: String(part.tool || part.name || ''),
+          status: statusType(part.state, ''),
+          title: String(part.state?.title || ''),
+          error: String(part.state?.error || ''),
+          input: boundedEvidence(part.state?.input),
+          output: boundedEvidence(part.state?.output),
+          metadata: boundedEvidence(part.state?.metadata, 2000)
+        });
+      }
+    }
+    return output;
+  }
+
+  function normalizeReturnMode(value) {
+    const mode = String(value || '').trim().toLowerCase();
+    if (['reasoning', 'review', 'audit'].includes(mode)) return 'reasoning';
+    if (['diagnostic', 'debug', 'full'].includes(mode)) return 'diagnostic';
+    return 'final';
+  }
+
   function normalizeArtifactText(text) {
     return String(text || '').replace(/\u00a0/g, ' ').replace(/[\u200b-\u200d\u2060\ufeff]/g, '').trim();
   }
@@ -314,7 +391,7 @@
     return {
       kind: 'task', id, task,
       title: String(payload.title || `DCF · ${task.slice(0, 56)}`).slice(0, 240),
-      return_mode: payload.return_mode === 'full' ? 'full' : 'summary',
+      return_mode: normalizeReturnMode(payload.return_mode),
       idle_timeout_ms: Math.max(30000, Math.min(6 * 60 * 60 * 1000, requestedIdle))
     };
   }
@@ -669,27 +746,45 @@
     render();
   }
 
-  function resultPayload(job, status, snap) {
+  function executionEvidence(job, snap) {
     return {
+      elapsed_ms: Date.now() - job.started_at,
+      status_type: snap.status_type,
+      timeout_basis: 'observable-idle-time',
+      idle_timeout_ms: job.request.idle_timeout_ms,
+      last_activity_at: new Date(job.last_activity_at).toISOString(),
+      base_url: normalizeBaseUrl(job.config.base_url),
+      endpoint_errors: snap.endpoint_errors
+    };
+  }
+
+  function applyReturnProfile(payload, mode, snap, execution) {
+    if (mode === 'reasoning' || mode === 'diagnostic') payload.reasoning = reasoningTrace(snap.messages);
+    if (mode === 'diagnostic') {
+      payload.diagnostic = {
+        assistant_turns: assistantTurnTrace(snap.messages),
+        tool_calls: toolTrace(snap.messages),
+        todo: snap.todo,
+        diff: snap.diff,
+        permissions: snap.permissions,
+        questions: snap.questions,
+        execution
+      };
+    }
+    return payload;
+  }
+
+  function resultPayload(job, status, snap) {
+    const mode = job.request.return_mode;
+    const payload = {
       schema: 'dcf.local-agent.result.v1',
       request_id: job.request.id,
       status,
       session_id: job.session_id,
-      assistant_result: latestAssistantText(snap.messages),
-      todo: snap.todo,
-      diff: snap.diff,
-      permissions: snap.permissions,
-      questions: snap.questions,
-      execution: {
-        elapsed_ms: Date.now() - job.started_at,
-        status_type: snap.status_type,
-        timeout_basis: 'observable-idle-time',
-        idle_timeout_ms: job.request.idle_timeout_ms,
-        last_activity_at: new Date(job.last_activity_at).toISOString(),
-        base_url: normalizeBaseUrl(job.config.base_url),
-        endpoint_errors: snap.endpoint_errors
-      }
+      return_mode: mode,
+      assistant_result: latestAssistantText(snap.messages)
     };
+    return applyReturnProfile(payload, mode, snap, executionEvidence(job, snap));
   }
 
   async function poll(job) {
@@ -800,20 +895,22 @@
   async function returnFailure(error, requestData) {
     const job = activeJob;
     const snap = job?.last_snapshot || { messages: [], todo: [], diff: [], permissions: [], questions: [] };
-    const failure = {
+    const mode = requestData?.return_mode || job?.request.return_mode || 'final';
+    const execution = {
+      elapsed_ms: state.started_at ? Date.now() - state.started_at : 0,
+      status_type: 'bridge_error',
+      base_url: job ? normalizeBaseUrl(job.config.base_url) : '',
+      endpoint_errors: { bridge: String(error?.message || error), code: error?.code || '' }
+    };
+    const failure = applyReturnProfile({
       schema: 'dcf.local-agent.result.v1',
       request_id: requestData?.id || job?.request.id || 'unknown',
       status: 'bridge_error',
       session_id: job?.session_id || '',
+      return_mode: mode,
       assistant_result: latestAssistantText(snap.messages || []),
-      todo: snap.todo || [], diff: snap.diff || [], permissions: snap.permissions || [], questions: snap.questions || [],
-      execution: {
-        elapsed_ms: state.started_at ? Date.now() - state.started_at : 0,
-        status_type: 'bridge_error',
-        base_url: job ? normalizeBaseUrl(job.config.base_url) : '',
-        endpoint_errors: { bridge: String(error?.message || error), code: error?.code || '' }
-      }
-    };
+      error: String(error?.message || error)
+    }, mode, snap, execution);
     state.stage = 'failed';
     state.status = '委派失败，正在回传';
     state.error = String(error?.message || error);
@@ -849,7 +946,7 @@
     const report = {
       schema: 'dcf.local-agent-dialogue.acceptance.v1',
       generated_at: new Date().toISOString(),
-      plugin: { id: UNIT_ID, version: UNIT_VERSION, intake_model: 'new-assistant-event-stream' },
+      plugin: { id: UNIT_ID, version: UNIT_VERSION, intake_model: 'new-assistant-event-stream', return_modes: ['final', 'reasoning', 'diagnostic'] },
       lifecycle: { timeout_basis: 'observable-idle-time', permission_wait_pauses_idle_timeout: true },
       checks: {
         mounted: Boolean(mountHost?.isConnected && mountRoot),

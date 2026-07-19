@@ -4,7 +4,8 @@ Updated: 2026-07-19
 
 ## Current
 
-- `2026-07-19-dcf-dialogue-compact-result-boundary.md` — **accepted; implementation and automated verification complete; live browser acceptance pending**; automatic dialogue results contain only the latest formal Assistant text and never return raw OpenCode message history
+- `2026-07-19-dcf-local-agent-model-persistence.md` — **accepted; implementation and GitHub Action verification complete; live browser acceptance pending**; one persisted provider/model selection governs workbench, continued-session and dialogue delegation paths
+- `2026-07-19-dcf-dialogue-compact-result-boundary.md` — **accepted; implementation and GitHub Action verification complete; live browser acceptance pending**; final, all-session reasoning-review and bounded diagnostic profiles replace raw message-history return
 - `2026-07-19-dcf-dialogue-activity-timeout-permission-delegation.md` — **accepted; real-browser acceptance passed**; observable-idle timeout replaced total wall-clock timeout, permission waits pause inactivity, and a conversation-issued `once` decision returned to the same OpenCode session which completed with one final result
 - `2026-07-19-dcf-runtime-evidence-and-opencode-version-parity.md` — **accepted; live recovery and minimal dialogue acceptance passed**; runtime failures are diagnosed through selectable browser/extension/OpenCode evidence surfaces, and the future service launcher must verify the independently maintained standalone CLI before DCF uses it
 - `2026-07-18-dcf-local-agent-failure-evidence.md` — **accepted; implementation present, original automatic-report acceptance not exercised**; diagnostics `.1` started successfully but no report was generated because the persisted recent-session pointer was absent; the incident was closed through external runtime evidence and a fresh successful request

@@ -51,8 +51,9 @@ Updated: 2026-07-19
 - language ammo uses selectable cards, a scrollable list and one shared action dock;
 - Local Agent remains a pure plugin and directly uses the OpenCode HTTP API;
 - the manual workbench covers connection, agent/model, sessions, tasks, status, messages, todo, diff, abort, permissions, questions, result insertion and diagnostics;
+- Local Agent `.3` uses safe encoded model values, restores a persisted model even before the provider catalog is available, and clears it only after an explicit saved selection of `OpenCode 默认模型`;
 - the dialogue adapter accepts exact `dcf.local-agent.request.v1` artifacts, creates an independent session, and returns one final `dcf.local-agent.result.v1` to the same conversation;
-- dialogue `.10` keeps raw OpenCode messages internal and returns only the latest Assistant `type: "text"` content as `assistant_result`; automatic result artifacts never include the `messages` collection, including for legacy `return_mode: full`;
+- dialogue `.11` uses the persisted Local Agent model for automatic delegation and supports `final`, `reasoning` and `diagnostic` return profiles; reasoning covers all Assistant turns in the current delegated session, diagnostic evidence is bounded, and no profile returns raw messages;
 - existing assistant replies form an inert startup baseline; automatic intake consumes only assistant replies added after startup and manual recovery checks only the latest assistant reply;
 - dialogue controls bind to the actual mounted ShadowRoot identity rather than storing metadata on ShadowRoot;
 - `一键验收并回传` verifies mount, event binding, status semantics and the dialogue protocol, then returns one `dcf.local-agent-dialogue.acceptance.v1` artifact automatically;
@@ -85,13 +86,14 @@ Updated: 2026-07-19
 - exact request/result/permission-request/permission-decision/acceptance/diagnostic markers and schemas exist;
 - the old total-duration timeout, timeout-bound synchronous message request and `needs_user` final-result path are absent;
 - activity fingerprinting, two-snapshot inactivity confirmation, permission evidence enrichment and same-session permission reply paths exist;
-- compact-result tests execute the formal-text extractor against mixed reasoning/tool/text messages and prove raw `messages` are absent from the result payload;
+- return-profile tests prove final-text isolation, complete current-session reasoning extraction, bounded diagnostic evidence and absence of raw `messages`;
+- model-persistence tests prove safe model-value round trips, persisted fallback rendering and one canonical model for automatic delegation;
 - Local Agent failure diagnostics remains loopback-only, GET-only, one-report-per-session and excludes message text, credentials, Provider private options and raw configuration.
 
 ## Current live boundary
 
 - runtime acceptance for dialogue `.8`, minimal read-only execution and dialogue `.9` permission delegation are complete;
-- dialogue `.10` compact-result behavior has automated verification; real-browser acceptance of a `return_mode: full` request remains pending;
+- Local Agent `.3` model persistence and dialogue `.11` return profiles have automated verification; real-browser model-identity and three-profile acceptance remain pending;
 - the accepted minimal result is `DCF_READ_ONLY_SMOKE_OK` from session `ses_089953d95ffe3kyJBThTifGIoj`, with status `completed`, OpenCode status `idle` and every observation endpoint error field `null`;
 - dialogue `.9` observable-idle behavior is proven by session `ses_0893de5a4ffeI9S0El9NFh5YVY`: total runtime 238.059 seconds, 90-second test idle threshold, final `inactive_timeout`, status `busy`, and all observation endpoint errors `null`;
 - dialogue `.9` permission delegation is proven by session `ses_089396f11ffeNTMkgi4LPSIDKn`: exact permission/tool evidence reached the current conversation, `once` returned to the same session, and the task completed once with `DCF_PERMISSION_FLOW_OK NO_MATCH`;

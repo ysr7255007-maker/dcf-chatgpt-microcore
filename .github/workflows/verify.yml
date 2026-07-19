@@ -7,88 +7,10 @@ on:
       - main
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  patch-local-agent:
-    if: github.event_name == 'pull_request' && github.head_ref == 'work/local-agent-model-return-profiles-20260719'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref }}
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-      - name: Apply product and ADR patches
-        run: |
-          python3 .github/scripts/patch-local-agent-model.py
-          python3 .github/scripts/patch-dialogue-profiles.py
-          python3 .github/scripts/patch-local-agent-tests.py
-          python3 .github/scripts/patch-local-agent-docs.py
-          sed -i "s/^\\\\'use strict\\\\';/'use strict';/" tests/chrome-local-agent-status.test.js tests/chrome-local-agent-dialogue.test.js
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path('tests/chrome-local-agent-dialogue.test.js')
-          text = path.read_text()
-          old = "assert(!/\\bmessages\\s*:\\s*snap\\.messages\\b/.test(code));"
-          new = "assert(!/payload\\.messages\\s*=/.test(code));"
-          if old not in text:
-              raise SystemExit('broad raw-message assertion not found')
-          path.write_text(text.replace(old, new, 1))
-          PY
-      - name: Verify repository
-        shell: bash
-        run: |
-          npm ci --silent
-          set +e
-          npm run verify > verify.log 2>&1
-          status=$?
-          set -e
-          if [ "$status" -ne 0 ]; then
-            tail -120 verify.log > .github/patch-failure.log
-            cat .github/patch-failure.log
-            git config user.name 'github-actions[bot]'
-            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git add .github/patch-failure.log
-            git commit -m 'chore: record patch failure [skip ci]'
-            git push origin HEAD:${{ github.head_ref }}
-            exit "$status"
-          fi
-          tail -40 verify.log
-      - name: Commit verified implementation
-        shell: bash
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git fetch origin rebuild/chrome-native-host-v2
-          git checkout origin/rebuild/chrome-native-host-v2 -- .github/workflows/verify.yml
-          git rm .github/scripts/patch-local-agent-model.py
-          git rm .github/scripts/patch-dialogue-profiles.py
-          git rm .github/scripts/patch-local-agent-tests.py
-          git rm .github/scripts/patch-local-agent-docs.py
-          rm -f .github/patch-failure.log
-          git add -u .github/patch-failure.log || true
-          git add chrome-extension/code-units/local-agent/main.js
-          git add chrome-extension/code-units/local-agent-dialogue/main.js
-          git add tests/chrome-local-agent-status.test.js
-          git add tests/chrome-local-agent-dialogue.test.js
-          git add tests/chrome-build.integration.test.js
-          git add tests/chrome-workspace-ui.test.js
-          git add releases/chrome/official-index.json
-          git add docs/adr/2026-07-19-dcf-dialogue-compact-result-boundary.md
-          git add docs/adr/2026-07-19-dcf-local-agent-model-persistence.md
-          git add docs/adr/status-index.md
-          git add docs/current-state.md
-          git add .github/workflows/verify.yml
-          git diff --cached --check
-          git commit -m 'fix: persist model and add bounded dialogue profiles'
-          git push origin HEAD:${{ github.head_ref }}
-
   verify:
-    if: github.event_name != 'pull_request' || github.head_ref != 'work/local-agent-model-return-profiles-20260719'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
