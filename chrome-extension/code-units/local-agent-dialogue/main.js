@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.local-agent-dialogue';
-  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.9';
+  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.10';
   const LOCAL_AGENT_ID = 'dcf.firstparty.local-agent';
   const PANEL_ID = 'dcf-panel-local-agent';
   const SHELL_ID = 'dcf-chrome-shell-host';
@@ -121,19 +121,42 @@
   }
   function localAgentShadow() { return localAgentPanel()?.shadowRoot || null; }
 
+  function normalizeModel(value) {
+    if (!value || typeof value !== 'object') return null;
+    const providerID = String(value.providerID || '').trim();
+    const modelID = String(value.modelID || '').trim();
+    return providerID && modelID ? { providerID, modelID } : null;
+  }
+
+  function encodeModelValue(model) {
+    const normalized = normalizeModel(model);
+    if (!normalized) return '';
+    return JSON.stringify({ providerID: normalized.providerID, modelID: normalized.modelID });
+  }
+
+  function decodeModelValue(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      return normalizeModel(parsed && typeof parsed === 'object' ? { providerID: parsed.providerID, modelID: parsed.modelID } : null);
+    } catch (_) {
+      return null;
+    }
+  }
+
   async function connectionConfig() {
     const result = await host({ type: 'plugin.data.get', plugin_id: LOCAL_AGENT_ID });
     const data = result.data && typeof result.data === 'object' ? result.data : {};
     const stored = data.config && typeof data.config === 'object' ? data.config : {};
     const shadow = localAgentShadow();
     const modelValue = String(shadow?.querySelector('[data-field="model"]')?.value || '');
-    const modelParts = modelValue ? modelValue.split('\u0000') : [];
     return {
       base_url: String(shadow?.querySelector('[data-field="base-url"]')?.value || stored.base_url || 'http://127.0.0.1:4096').trim(),
       username: String(shadow?.querySelector('[data-field="username"]')?.value || stored.username || 'opencode').trim() || 'opencode',
       password: String(shadow?.querySelector('[data-field="password"]')?.value || ''),
       agent: String(shadow?.querySelector('[data-field="agent"]')?.value || stored.agent || ''),
-      model: modelParts.length === 2 ? { providerID: modelParts[0], modelID: modelParts[1] } : stored.model || null
+      model: decodeModelValue(modelValue) || normalizeModel(stored.model) || null
     };
   }
 

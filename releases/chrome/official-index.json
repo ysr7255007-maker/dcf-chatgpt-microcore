@@ -107,7 +107,7 @@
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/local-agent/main.js",
       "default_enabled": true,
       "description": "纯插件直连 OpenCode，管理会话、任务、权限、结果与文件差异。",
-      "hash": "31ea3b132730c597fc7426b854368f5cbea8bacf1a56e95fe201720a72b6cc28",
+      "hash": "55e69067ff465544950c2476058bf84b3580af97c71601e39787ca6f609d7a4b",
       "host_api": "2",
       "id": "dcf.firstparty.local-agent",
       "matches": [
@@ -118,14 +118,14 @@
       "required": true,
       "run_at": "document_idle",
       "title": "本机 Agent",
-      "version": "1.0.0-rc.2-local-agent.2",
+      "version": "1.0.0-rc.2-local-agent.3",
       "world_id": "dcf-firstparty-local-agent"
     },
     {
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/local-agent-dialogue/main.js",
       "default_enabled": true,
       "description": "将严格的对话委派工件交给本机 OpenCode，并把结构化结果与权限请求自动送回当前对话。",
-      "hash": "0091c6f6c414e9f2c00a89d65539303ecd5bcd08c303ce8f9e1c829eee897c3e",
+      "hash": "f257b4ac6c04a36299521515fdadeb68927e6617644b7f02c452047b292bda36",
       "host_api": "2",
       "id": "dcf.firstparty.local-agent-dialogue",
       "matches": [
@@ -136,7 +136,7 @@
       "required": true,
       "run_at": "document_idle",
       "title": "本机对话闭环",
-      "version": "1.0.0-rc.2-local-agent-dialogue.9",
+      "version": "1.0.0-rc.2-local-agent-dialogue.10",
       "world_id": "dcf-firstparty-local-agent-dialogue"
     },
     {

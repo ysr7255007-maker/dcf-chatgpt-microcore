@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.local-agent';
-  const UNIT_VERSION = '1.0.0-rc.2-local-agent.2';
+  const UNIT_VERSION = '1.0.0-rc.2-local-agent.3';
   const PANEL_ID = 'local-agent';
   const HOST_ID = 'dcf-panel-local-agent';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_LOCAL_AGENT__';
@@ -70,6 +70,23 @@
     const providerID = String(value.providerID || '').trim();
     const modelID = String(value.modelID || '').trim();
     return providerID && modelID ? { providerID, modelID } : null;
+  }
+
+  function encodeModelValue(model) {
+    const normalized = normalizeModel(model);
+    if (!normalized) return '';
+    return JSON.stringify({ providerID: normalized.providerID, modelID: normalized.modelID });
+  }
+
+  function decodeModelValue(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      return normalizeModel(parsed && typeof parsed === 'object' ? { providerID: parsed.providerID, modelID: parsed.modelID } : null);
+    } catch (_) {
+      return null;
+    }
   }
 
   function normalizeBaseUrl(raw) {
@@ -419,11 +436,7 @@
     const enteredPassword = root.querySelector('[data-field="password"]').value;
     const agent = root.querySelector('[data-field="agent"]').value;
     const modelValue = root.querySelector('[data-field="model"]').value;
-    let model = null;
-    if (modelValue) {
-      const [providerID, modelID] = modelValue.split('\u0000');
-      if (providerID && modelID) model = { providerID, modelID };
-    }
+    const model = decodeModelValue(modelValue);
     state.config = normalizeConfig({ ...state.config, base_url: baseUrl, username, agent, model });
     if (enteredPassword) memoryPassword = enteredPassword;
     await persistLocal();
@@ -659,7 +672,7 @@
     const project = projectSummary();
     const agents = agentOptions();
     const models = modelOptions();
-    const currentModel = state.config.model ? `${state.config.model.providerID}\u0000${state.config.model.modelID}` : '';
+    const currentModel = encodeModelValue(state.config.model);
     const selected = currentSession();
     const result = latestAssistantText();
     const status = currentStatusType();
@@ -674,7 +687,7 @@
           <label class="field"><span>用户名</span><input data-field="username" value="${escapeHtml(state.config.username)}"></label>
           <label class="field"><span>本页密码</span><input data-field="password" type="password" placeholder="${memoryPassword ? '本页已有密码，可留空' : 'OPENCODE_SERVER_PASSWORD，可留空'}"></label>
           <label class="field"><span>Agent</span><select data-field="agent"><option value="">默认 Agent</option>${agents.map((item) => `<option value="${escapeHtml(item.id)}" ${item.id === state.config.agent ? 'selected' : ''}>${escapeHtml(item.id)}${item.label && item.label !== item.id ? ` · ${escapeHtml(item.label)}` : ''}</option>`).join('')}</select></label>
-          <label class="field"><span>模型</span><select data-field="model"><option value="">OpenCode 默认模型</option>${models.map((item) => { const value = `${item.providerID}\u0000${item.modelID}`; return `<option value="${escapeHtml(value)}" ${value === currentModel ? 'selected' : ''}>${escapeHtml(item.label)}</option>`; }).join('')}</select></label>
+          <label class="field"><span>模型</span><select data-field="model"><option value="">OpenCode 默认模型</option>${models.map((item) => { const value = encodeModelValue(item); return `<option value="${escapeHtml(value)}" ${value === currentModel ? 'selected' : ''}>${escapeHtml(item.label)}</option>`; }).join('')}</select></label>
         </div>
         <div class="button-grid"><button class="primary" data-action="connect">保存并连接</button><button data-action="refresh-all">刷新全部</button><button data-action="clear-password">清除本页密码</button></div>
         <details><summary><b>OpenCode 启动方式</b></summary><pre class="command">${escapeHtml(startupCommand())}</pre><div class="button-grid two"><button data-action="copy-command">复制启动命令</button><button data-action="diagnostics">复制诊断</button></div></details>
