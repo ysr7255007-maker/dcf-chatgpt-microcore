@@ -38,7 +38,13 @@ jobs:
           status=$?
           set -e
           if [ "$status" -ne 0 ]; then
-            tail -120 verify.log
+            tail -120 verify.log > .github/patch-failure.log
+            cat .github/patch-failure.log
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add .github/patch-failure.log
+            git commit -m 'chore: record patch failure [skip ci]'
+            git push origin HEAD:${{ github.head_ref }}
             exit "$status"
           fi
           tail -40 verify.log
@@ -53,6 +59,8 @@ jobs:
           git rm .github/scripts/patch-dialogue-profiles.py
           git rm .github/scripts/patch-local-agent-tests.py
           git rm .github/scripts/patch-local-agent-docs.py
+          rm -f .github/patch-failure.log
+          git add -u .github/patch-failure.log || true
           git add chrome-extension/code-units/local-agent/main.js
           git add chrome-extension/code-units/local-agent-dialogue/main.js
           git add tests/chrome-local-agent-status.test.js
