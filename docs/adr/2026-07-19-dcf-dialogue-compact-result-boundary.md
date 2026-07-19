@@ -2,7 +2,7 @@
 
 Date: 2026-07-19
 
-Status: accepted; implementation and automated verification complete; live browser acceptance pending
+Status: accepted; implementation and GitHub Action verification complete; live browser acceptance pending
 
 ## Context
 
