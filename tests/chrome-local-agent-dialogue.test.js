@@ -93,7 +93,7 @@ for (const token of [
   'STUCK_THRESHOLD_MS',
   'function progressState()',
   'function progressPayload(job, snap)',
-  'async function emitProgress(job, snap, force = false)',
+  'function emitProgress(job, snap, force = false)',
   'function controlAck(job, command, status, detail)',
   'async function executeControl(parsed)',
   'async function recoverPoll(job)',
@@ -113,15 +113,21 @@ for (const token of [
   '保存检查点后中止',
   'async function confirmSessionStopped(job)',
   'abort_failed',
-  'abort_sent_but_session_still_busy',
+  'abort_unconfirmed',
   'last_terminal',
   'function outboxId(text)',
-  'async function confirmDelivery(text, id)',
+  'async function confirmDelivery(entry)',
   'outbox.items',
   'click_unconfirmed',
   'recoverable_failure',
   'composer_occupied',
-  'button_unavailable'
+  'button_unavailable',
+  'function scheduleOutboxPump()',
+  'async function outboxPump()',
+  'function countUserMessages()',
+  'function isCritical(entry)',
+  'cancel_confirmed',
+  'baseline_users'
 ]) assert(code.includes(token), `missing ${token}`);
 
 for (const token of [

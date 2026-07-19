@@ -120,8 +120,9 @@
     state.last_request_id = String(data.last_request_id || '');
     state.last_session_id = String(data.last_session_id || '');
     state.last_terminal = data.last_terminal && typeof data.last_terminal === 'object' ? data.last_terminal : null;
-    outbox.items = Array.isArray(data.outbox) ? data.outbox.filter((item) => item && item.text && item.state !== 'delivered').slice(-5) : [];
+    outbox.items = Array.isArray(data.outbox) ? data.outbox.filter((item) => item && item.text && item.state !== 'delivered').slice(-8) : [];
     outbox.status = outbox.items.length ? `恢复 ${outbox.items.length} 个待回传工件` : '';
+    if (outbox.items.length) scheduleOutboxPump();
     if (data.active_task && typeof data.active_task === 'object' && !activeJob) {
       const task = data.active_task;
       if (!['completed', 'failed', 'cancelled'].includes(task.state) && task.request_id && task.session_id) {
@@ -154,13 +155,15 @@
       const finalPayload = await poll(job);
       state.stage = finalPayload.status;
       state.status = finalPayload.status === 'completed' ? '本机任务完成，正在回传' : `本机任务结束 · ${finalPayload.status}`;
+      state.last_terminal = { request_id: job.request.id, session_id: job.session_id, status: finalPayload.status, at: new Date().toISOString() };
       render();
-      await sendArtifact(artifact(MARKERS.result, finalPayload));
+      sendArtifact(artifact(MARKERS.result, finalPayload));
     } catch (error) {
-      state.stage = 'detached'; state.status = `恢复失败：${String(error?.message || error)}`;
+      state.stage = 'detached'; state.status = `恢复失败，保留任务以便重试：${String(error?.message || error)}`;
       state.error = String(error?.message || error); render();
     } finally {
-      if (activeJob === job) { activeJob = null; persist().catch(() => {}); render(); }
+      if (activeJob === job && ['completed', 'failed', 'cancelled', 'inactive_timeout'].includes(state.stage)) { activeJob = null; persist().catch(() => {}); render(); }
+      else if (activeJob === job) { persist().catch(() => {}); }
     }
   }
 
@@ -221,19 +224,18 @@
       seq: cp.seq, timestamp: new Date(now).toISOString(), state: progressState(), stage: state.stage,
       summary: state.status.slice(0, 300), last_activity_at: new Date(job.last_activity_at).toISOString(),
       runtime_ms: now - job.started_at, idle_ms: now - job.last_activity_at,
-      workdir: cp.workdir, branch: cp.branch, head: cp.head, changed_files: cp.changed_files,
+      changed_files: cp.changed_files,
       diff_summary: snap && snap.diff ? snap.diff.slice(0, 5).map((f) => String(f.file || f.path || '')).filter(Boolean) : [],
-      test_status: cp.test_status, commit_status: cp.commit_status, push_status: cp.push_status,
       blocked_reason: cp.blocked_reason, permission_id: cp.permission_id
     };
   }
 
-  async function emitProgress(job, snap, force = false) {
+  function emitProgress(job, snap, force = false) {
     const now = Date.now();
     const stageChanged = state.stage !== state.control_plane.last_stage_sent;
     if (!force && !stageChanged && now - state.control_plane.last_progress_at < HEARTBEAT_INTERVAL_MS) return;
     const payload = progressPayload(job, snap);
-    await sendArtifact(artifact(MARKERS.progress, payload), false).catch(() => {});
+    sendArtifact(artifact(MARKERS.progress, payload), false);
   }
 
   function controlAck(job, command, status, detail) {
@@ -243,11 +245,8 @@
       summary: `ACK ${command}: ${status}${detail ? ' \u00b7 ' + detail : ''}`,
       last_activity_at: new Date(job.last_activity_at).toISOString(),
       runtime_ms: Date.now() - job.started_at, idle_ms: Date.now() - job.last_activity_at,
-      workdir: state.control_plane.workdir, branch: state.control_plane.branch, head: state.control_plane.head,
       changed_files: state.control_plane.changed_files, diff_summary: [],
-      test_status: state.control_plane.test_status, commit_status: state.control_plane.commit_status,
-      push_status: state.control_plane.push_status, blocked_reason: state.control_plane.blocked_reason,
-      permission_id: state.control_plane.permission_id,
+      blocked_reason: state.control_plane.blocked_reason, permission_id: state.control_plane.permission_id,
       ack: { command, status, detail: String(detail || '').slice(0, 500) }
     };
   }
@@ -309,17 +308,17 @@
       }
       const confirmed = await confirmSessionStopped(job);
       if (!confirmed) {
-        state.stage = 'running'; state.status = 'abort 已发送但 session 仍在运行，继续观察';
-        state.control_plane.blocked_reason = 'abort_sent_but_session_still_busy';
-        await sendArtifact(artifact(MARKERS.progress, controlAck(job, parsed.command, 'blocked', 'abort 已发送但 session 未停止，任务保留')), true).catch(() => {});
+        state.stage = 'running'; state.status = 'abort 已发送但 session 仍在运行或状态不可确认，继续观察';
+        state.control_plane.blocked_reason = 'abort_unconfirmed';
+        sendArtifact(artifact(MARKERS.progress, controlAck(job, parsed.command, 'blocked', 'abort 后无法确认 session 停止，任务保留')), true);
         render();
         return;
       }
       state.stage = 'cancelled'; state.status = '任务已中止';
+      job.cancel_confirmed = true;
       state.last_terminal = { request_id: job.request.id, session_id: job.session_id, status: 'cancelled', at: new Date().toISOString() };
-      await sendArtifact(artifact(MARKERS.progress, controlAck(job, parsed.command, 'ok', '执行器已中止并确认停止')), true).catch(() => {});
-      await sendArtifact(artifact(MARKERS.result, resultPayload(job, 'cancelled', job.last_snapshot || await snapshot(job))), true).catch(() => {});
-      activeJob = null; persist().catch(() => {}); render();
+      sendArtifact(artifact(MARKERS.progress, controlAck(job, parsed.command, 'ok', '执行器已中止并确认停止')), true);
+      render();
       return;
     }
     throw new Error(`未知控制命令：${parsed.command}`);
@@ -332,7 +331,7 @@
         const snap = await snapshot(job);
         job.last_snapshot = snap;
         if (!['busy', 'retry'].includes(snap.status_type)) return true;
-      } catch (_) { return true; }
+      } catch (_) { return false; }
     }
     return false;
   }
@@ -922,78 +921,124 @@
   }
 
   function outboxId(text) {
-    const reqMatch = text.match(/"request_id"\s*:\s*"([^"]+)"/);
-    const seqMatch = text.match(/"seq"\s*:\s*(\d+)/);
-    const schemaMatch = text.match(/"schema"\s*:\s*"([^"]+)"/);
-    return `${schemaMatch ? schemaMatch[1] : 'unknown'}:${reqMatch ? reqMatch[1] : hash(text)}:${seqMatch ? seqMatch[1] : '0'}`;
+    const get = (key) => { const m = text.match(new RegExp('"' + key + '"\\s*:\\s*"([^"]+)"')); return m ? m[1] : ''; };
+    const getNum = (key) => { const m = text.match(new RegExp('"' + key + '"\\s*:\\s*(\\d+)')); return m ? m[1] : ''; };
+    const schema = get('schema') || 'unknown';
+    const requestId = get('request_id') || hash(text);
+    const sessionId = get('session_id') || '';
+    const seq = getNum('seq');
+    const permId = get('permission_id');
+    const ackCmd = get('command');
+    if (schema.includes('permission-request') && permId) return `${schema}:${requestId}:${sessionId}:${permId}`;
+    if (seq) return `${schema}:${requestId}:${sessionId}:${seq}`;
+    if (ackCmd) return `${schema}:${requestId}:${sessionId}:ack:${ackCmd}:${hash(text).slice(0, 8)}`;
+    return `${schema}:${requestId}:${sessionId}:${hash(text).slice(0, 12)}`;
   }
 
-  async function sendArtifact(text, forceSend = false) {
+  function isCritical(entry) {
+    return entry.id.includes('result.v1') || entry.id.includes('permission-request') || entry.id.includes('ack:cancel');
+  }
+
+  function sendArtifact(text, forceSend = false) {
     const id = outboxId(text);
-    if (outbox.items.some((item) => item.id === id && item.state !== 'delivered')) return true;
-    const entry = { id, text, force_send: forceSend, state: 'waiting_idle', created_at: Date.now(), attempts: 0 };
-    outbox.items.push(entry);
-    outbox.items = outbox.items.slice(-5);
-    persist().catch(() => {});
-    const started = Date.now();
-    while (!destroyed && Date.now() - started < 120000) {
-      const target = composer();
-      if (!target) { entry.state = 'composer_unavailable'; await sleep(500); continue; }
-      if (composerValue(target).trim()) { entry.state = 'composer_occupied'; await sleep(500); continue; }
-      if (isStreaming()) { entry.state = 'page_streaming'; await sleep(500); continue; }
-      entry.state = 'filling';
-      fillComposer(text);
-      if (forceSend || state.settings.auto_send_results) {
-        const sendBtn = document.querySelector('[data-testid="send-button"]') || document.querySelector('button[aria-label*="Send"],button[aria-label*="\u53d1\u9001"]');
-        if (!sendBtn || sendBtn.disabled || sendBtn.getAttribute('aria-disabled') === 'true') { entry.state = 'button_unavailable'; await sleep(500); continue; }
-        entry.state = 'click_unconfirmed';
-        entry.attempts += 1;
-        await clickSend();
-        const confirmed = await confirmDelivery(text, id);
-        if (confirmed) {
-          entry.state = 'delivered';
-          outbox.items = outbox.items.filter((item) => item.id !== id);
-          persist().catch(() => {});
-          return true;
-        }
-        entry.state = 'click_unconfirmed';
-        await sleep(1000);
-        continue;
-      }
-      pendingArtifact = text;
-      pendingForceSend = forceSend;
-      entry.state = 'awaiting_manual_send';
-      persist().catch(() => {});
+    const existing = outbox.items.find((item) => item.id === id && item.state !== 'delivered');
+    if (existing) {
+      if (existing.id.includes('progress.v1') && !existing.id.includes('ack:')) { existing.text = text; existing.created_at = Date.now(); }
       return true;
     }
-    entry.state = 'recoverable_failure';
-    entry.error = '超时未发送';
-    outbox.status = '工件等待回传';
-    state.stage = 'return_wait';
-    state.status = '工件等待回传';
-    state.error = '当前对话尚未空闲，未覆盖输入框';
+    const entry = { id, text, force_send: forceSend, state: 'queued', created_at: Date.now(), attempts: 0, baseline_users: -1 };
+    if (isCritical(entry) && outbox.items.length >= 8) {
+      const replaceable = outbox.items.findIndex((item) => item.id.includes('progress.v1') && !isCritical(item));
+      if (replaceable >= 0) outbox.items.splice(replaceable, 1); else outbox.items.shift();
+    } else if (outbox.items.length >= 8) {
+      const replaceable = outbox.items.findIndex((item) => item.id.includes('progress.v1') && !isCritical(item));
+      if (replaceable >= 0) outbox.items.splice(replaceable, 1);
+      if (outbox.items.length >= 8) { entry.state = 'recoverable_failure'; entry.error = 'outbox_full'; }
+    }
+    outbox.items.push(entry);
     persist().catch(() => {});
-    render();
-    return false;
+    scheduleOutboxPump();
+    return true;
   }
 
-  async function confirmDelivery(text, id) {
-    const reqMatch = text.match(/"request_id"\s*:\s*"([^"]+)"/);
-    const requestId = reqMatch ? reqMatch[1] : '';
-    for (let attempt = 0; attempt < 20; attempt += 1) {
+  let outboxPumpTimer = null;
+  let outboxPumpBusy = false;
+
+  function scheduleOutboxPump() {
+    if (outboxPumpTimer || destroyed) return;
+    outboxPumpTimer = setTimeout(() => { outboxPumpTimer = null; outboxPump().catch(() => {}); }, 800);
+  }
+
+  async function outboxPump() {
+    if (outboxPumpBusy || destroyed) return;
+    outboxPumpBusy = true;
+    try {
+      for (const entry of outbox.items) {
+        if (destroyed) break;
+        if (entry.state === 'delivered' || entry.state === 'awaiting_manual_send') continue;
+        if (entry.state === 'recoverable_failure' && entry.attempts > 3) continue;
+        const target = composer();
+        if (!target) { entry.state = 'composer_unavailable'; continue; }
+        const currentVal = composerValue(target).trim();
+        if (currentVal && currentVal !== entry.text.slice(0, currentVal.length)) { entry.state = 'composer_occupied'; continue; }
+        if (isStreaming()) { entry.state = 'page_streaming'; continue; }
+        const sendBtn = document.querySelector('[data-testid="send-button"]') || document.querySelector('button[aria-label*="Send"],button[aria-label*="\u53d1\u9001"]');
+        if (!sendBtn || sendBtn.disabled || sendBtn.getAttribute('aria-disabled') === 'true') { entry.state = 'button_unavailable'; continue; }
+        if (!currentVal) fillComposer(entry.text);
+        if (entry.force_send || state.settings.auto_send_results) {
+          entry.baseline_users = countUserMessages();
+          entry.state = 'click_unconfirmed';
+          entry.attempts += 1;
+          await persist().catch(() => {});
+          await clickSend();
+          const confirmed = await confirmDelivery(entry);
+          if (confirmed) {
+            entry.state = 'delivered';
+            outbox.items = outbox.items.filter((item) => item.id !== entry.id);
+            await persist().catch(() => {});
+          } else {
+            entry.state = 'click_unconfirmed';
+          }
+        } else {
+          entry.state = 'awaiting_manual_send';
+          pendingArtifact = entry.text;
+          pendingForceSend = false;
+          await persist().catch(() => {});
+        }
+        break;
+      }
+    } finally {
+      outboxPumpBusy = false;
+      if (outbox.items.some((item) => item.state !== 'delivered' && item.state !== 'awaiting_manual_send')) scheduleOutboxPump();
+    }
+  }
+
+  function countUserMessages() {
+    const root = conversationRoot || pageConversationRoot();
+    return root ? root.querySelectorAll('[data-message-author-role="user"]').length : 0;
+  }
+
+  async function confirmDelivery(entry) {
+    const identity = entry.id;
+    const parts = identity.split(':');
+    const schema = parts[0] || '';
+    const requestId = parts[1] || '';
+    const sessionId = parts[2] || '';
+    const seqOrRest = parts.slice(3).join(':');
+    for (let attempt = 0; attempt < 30; attempt += 1) {
       await sleep(500);
+      if (destroyed) return false;
       const root = conversationRoot || pageConversationRoot();
       if (!root) continue;
       const userNodes = Array.from(root.querySelectorAll('[data-message-author-role="user"]'));
+      if (entry.baseline_users >= 0 && userNodes.length <= entry.baseline_users) continue;
       for (let i = userNodes.length - 1; i >= Math.max(0, userNodes.length - 3); i -= 1) {
         const nodeText = String(userNodes[i].innerText || userNodes[i].textContent || '');
-        if (requestId && nodeText.includes(requestId)) return true;
-        if (nodeText.includes('DCF_LOCAL_AGENT') && nodeText.includes(id.split(':')[0])) return true;
-      }
-      if (!composerValue(composer()).trim() && !isStreaming()) {
-        await sleep(1000);
-        const afterNodes = Array.from((conversationRoot || pageConversationRoot() || document).querySelectorAll('[data-message-author-role="user"]'));
-        if (afterNodes.length > userNodes.length) return true;
+        if (!nodeText.includes('DCF_LOCAL_AGENT')) continue;
+        if (requestId && !nodeText.includes(requestId)) continue;
+        if (seqOrRest && /^\d+$/.test(seqOrRest) && !nodeText.includes(`"seq": ${seqOrRest}`) && !nodeText.includes(`"seq":${seqOrRest}`)) continue;
+        if (sessionId && nodeText.includes('session_id') && !nodeText.includes(sessionId)) continue;
+        return true;
       }
     }
     return false;
@@ -1088,7 +1133,7 @@
 
   async function poll(job) {
     while (!destroyed && activeJob === job) {
-      if (state.stage === 'cancelled' || state.stage === 'cancelling') return resultPayload(job, 'cancelled', job.last_snapshot || { messages: [], todo: [], diff: [], permissions: [], questions: [] });
+      if (job.cancel_confirmed) return resultPayload(job, 'cancelled', job.last_snapshot || { messages: [], todo: [], diff: [], permissions: [], questions: [] });
       const snap = await snapshot(job);
       job.last_snapshot = snap;
       const fingerprint = activityFingerprint(snap, job);
@@ -1102,12 +1147,12 @@
         state.status = '检测到 OpenCode 权限请求；无活动超时已暂停';
         render();
         await returnPermissionRequest(job, pendingPermissions[0], snap);
-        await emitProgress(job, snap, true);
+        emitProgress(job, snap, true);
       } else if (snap.questions.length) {
         state.stage = 'needs_user';
         state.status = 'OpenCode 正在等待回答；当前阶段仅自动转交权限请求';
         render();
-        await emitProgress(job, snap);
+        emitProgress(job, snap);
       } else {
         const assistantResult = latestAssistantText(snap.messages);
         const terminalStatus = ['idle', 'completed'].includes(snap.status_type);
@@ -1121,7 +1166,7 @@
           ? '同步消息连接已断开，但 session 仍在观察'
           : `本机执行中 · ${snap.status_type}`;
         render();
-        await emitProgress(job, snap);
+        emitProgress(job, snap);
       }
 
       if (!hasIntervention && Date.now() - job.last_activity_at >= job.request.idle_timeout_ms) {
@@ -1192,8 +1237,9 @@
     const finalPayload = await poll(job);
     state.stage = finalPayload.status;
     state.status = finalPayload.status === 'completed' ? '本机任务完成，正在回传' : `本机任务结束 · ${finalPayload.status}`;
+    state.last_terminal = { request_id: job.request.id, session_id: job.session_id, status: finalPayload.status, at: new Date().toISOString() };
     render();
-    await sendArtifact(artifact(MARKERS.result, finalPayload));
+    sendArtifact(artifact(MARKERS.result, finalPayload));
   }
 
   async function returnFailure(error, requestData) {
@@ -1308,11 +1354,19 @@
     if (action !== 'return') return;
     const pending = outbox.items.find((item) => item.state === 'awaiting_manual_send' || item.state === 'click_unconfirmed' || item.state === 'recoverable_failure');
     if (!pending && !pendingArtifact) { state.status = '当前没有待回传工件'; render(); return; }
-    const text = pending ? pending.text : pendingArtifact;
+    const entry = pending || outbox.items.find((item) => item.text === pendingArtifact);
+    if (!entry) { state.status = '当前没有待回传工件'; render(); return; }
     if (composerValue(composer()).trim() || isStreaming()) throw new Error('当前对话尚未空闲');
-    fillComposer(text);
-    if (pending?.force_send || pendingForceSend || state.settings.auto_send_results) await clickSend();
-    if (pending) { pending.state = 'delivered'; outbox.items = outbox.items.filter((item) => item.id !== pending.id); persist().catch(() => {}); }
+    entry.baseline_users = countUserMessages();
+    fillComposer(entry.text);
+    if (entry.force_send || pendingForceSend || state.settings.auto_send_results) {
+      entry.state = 'click_unconfirmed'; entry.attempts += 1;
+      await persist().catch(() => {});
+      await clickSend();
+      const confirmed = await confirmDelivery(entry);
+      if (confirmed) { entry.state = 'delivered'; outbox.items = outbox.items.filter((item) => item.id !== entry.id); await persist().catch(() => {}); }
+      else { entry.state = 'click_unconfirmed'; state.status = '点击后未确认投递，保留工件'; }
+    } else { entry.state = 'awaiting_manual_send'; }
     pendingArtifact = '';
     pendingForceSend = false;
     render();

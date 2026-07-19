@@ -30,9 +30,11 @@
   let rafCount = 0;
   let rafLastReport = 0;
   let domObserver = null;
+  let domRoot = null;
   let lastDomGrowth = 0;
   let lastAssistantLength = 0;
   let startedAt = 0;
+  let domCheckTimer = null;
 
   function push(type, data) {
     ring.push({ t: Date.now() - startedAt, ts: new Date().toISOString(), type, ...data });
@@ -76,7 +78,10 @@
 
   function observeDom() {
     const root = document.querySelector('main') || document.querySelector('[role="main"]');
-    if (!root) return;
+    if (!root || root === domRoot) return;
+    domObserver?.disconnect();
+    domRoot = root;
+    push('dom_rebind', { reason: domRoot ? 'root_replaced' : 'initial' });
     domObserver = new MutationObserver((records) => {
       const now = Date.now();
       lastDomGrowth = now;
@@ -102,14 +107,15 @@
     const domGrowths = events.filter((e) => e.type === 'dom_growth');
     const dcfActivities = events.filter((e) => e.type === 'dcf_activity');
     const maxDrift = drifts.length ? Math.max(...drifts.map((d) => Math.abs(d.drift))) : 0;
-    const minRaf = rafRates.length ? Math.min(...rafRates.map((r) => r.fps)) : -1;
     const zeroRaf = rafRates.filter((r) => r.fps === 0).length;
     const lastDom = domGrowths.length ? domGrowths[domGrowths.length - 1] : null;
     const lastDcf = dcfActivities.length ? dcfActivities[dcfActivities.length - 1] : null;
     const hidden = lastVisibility && lastVisibility.state === 'hidden';
+    const recentDom = domGrowths.filter((e) => e.t > (events[events.length - 1]?.t || 0) - 30000);
+    const recentDcfStall = lastDcf && lastDcf.last_mutation_age > 15000;
 
-    if (domGrowths.length > 0 && dcfActivities.length > 0 && lastDcf && lastDcf.last_mutation_age > 15000 && lastDom) {
-      return { conclusion: 'DCF 自身暂停', detail: `DOM 持续增长但 DCF observer 停滞 ${Math.round(lastDcf.last_mutation_age / 1000)}s`, key_events: { last_dom_growth_t: lastDom.t, dcf_mutation_age: lastDcf.last_mutation_age } };
+    if (recentDom.length > 0 && recentDcfStall) {
+      return { conclusion: 'DCF 自身暂停', detail: `最近 30s 内 DOM 仍增长 ${recentDom.length} 次，但 DCF observer 停滞 ${Math.round(lastDcf.last_mutation_age / 1000)}s`, key_events: { last_dom_t: lastDom?.t, dcf_mutation_age: lastDcf.last_mutation_age } };
     }
     if (hidden && zeroRaf > 2 && maxDrift > 5000) {
       return { conclusion: '页面后台节流', detail: `visibility=hidden, rAF 停止 ${zeroRaf} 次, 最大 timer drift ${maxDrift}ms`, key_events: { hidden_at: lastVisibility.ts, max_drift: maxDrift } };
@@ -117,8 +123,8 @@
     if (!hidden && zeroRaf > 2 && maxDrift > 3000) {
       return { conclusion: 'macOS/Chrome occlusion 倾向', detail: `页面报告 visible 但 rAF 停止且 timer drift ${maxDrift}ms`, key_events: { max_drift: maxDrift, zero_raf_count: zeroRaf } };
     }
-    if (zeroRaf > 2 && domGrowths.length === 0 && maxDrift < 2000) {
-      return { conclusion: '仅停止绘制', detail: `rAF 停止但 DOM 与 timer 正常`, key_events: { zero_raf_count: zeroRaf } };
+    if (zeroRaf > 2 && recentDom.length === 0 && maxDrift < 2000) {
+      return { conclusion: '仅停止绘制', detail: `rAF 停止但 DOM 无增长且 timer 正常，可能是纯绘制暂停`, key_events: { zero_raf_count: zeroRaf } };
     }
     return { conclusion: '证据不足', detail: `drift=${maxDrift}ms, zeroRaf=${zeroRaf}, domEvents=${domGrowths.length}, dcfEvents=${dcfActivities.length}`, key_events: { max_drift: maxDrift, total_events: events.length } };
   }
@@ -159,6 +165,7 @@
     document.addEventListener('freeze', onFreeze);
     document.addEventListener('resume', onResume);
     timerHandle = setInterval(timerTick, TIMER_EXPECTED_MS);
+    domCheckTimer = setInterval(observeDom, 3000);
     rafHandle = requestAnimationFrame(rafLoop);
     observeDom();
     push('start', { visibility: document.visibilityState, hasFocus: document.hasFocus() });
@@ -178,6 +185,8 @@
     document.removeEventListener('resume', onResume);
     clearInterval(timerHandle);
     timerHandle = null;
+    clearInterval(domCheckTimer);
+    domCheckTimer = null;
     cancelAnimationFrame(rafHandle);
     rafHandle = null;
     domObserver?.disconnect();
