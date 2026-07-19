@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.plugin-manager';
-  const UNIT_VERSION = '1.0.0-rc.2-plugin-manager.2';
+  const UNIT_VERSION = '1.0.0-rc.2-plugin-manager.3';
   const PANEL_ID = 'plugins';
   const HOST_ID = 'dcf-panel-plugins';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_PLUGIN_MANAGER__';

@@ -162,7 +162,7 @@
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/plugin-manager/main.js",
       "default_enabled": true,
       "description": "低频功能启停与统一 DCF 更新入口。",
-      "hash": "ef098750c201b68bb0314e842a7aca21a7c43c1970576867a6e5d2b2308546c0",
+      "hash": "2cd146160002587a66f8643a4862947f780e030432f7acc8edb18cf62652bc1b",
       "host_api": "2",
       "id": "dcf.firstparty.plugin-manager",
       "matches": [
@@ -173,7 +173,7 @@
       "required": true,
       "run_at": "document_idle",
       "title": "功能管理",
-      "version": "1.0.0-rc.2-plugin-manager.2",
+      "version": "1.0.0-rc.2-plugin-manager.3",
       "world_id": "dcf-firstparty-plugin-manager"
     },
     {
@@ -198,7 +198,7 @@
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/page-diagnostics/main.js",
       "default_enabled": true,
       "description": "默认关闭的页面生命周期与流式渲染诊断，固定环形缓冲区，不记录对话正文。",
-      "hash": "fc4d9d1988ef10cd4a81ca6fe77e5ea56a48137569bfde2b3702a75acb205307",
+      "hash": "e08ba89769bc5b7ba6f498c1956cc8601d326316eb7af3d55721d6b6f0da5f3d",
       "host_api": "2",
       "id": "dcf.firstparty.page-diagnostics",
       "matches": [
@@ -209,7 +209,7 @@
       "required": true,
       "run_at": "document_idle",
       "title": "页面诊断",
-      "version": "1.0.0-rc.2-page-diagnostics.1",
+      "version": "1.0.0-rc.2-page-diagnostics.2",
       "world_id": "dcf-firstparty-page-diagnostics"
     }
   ],
