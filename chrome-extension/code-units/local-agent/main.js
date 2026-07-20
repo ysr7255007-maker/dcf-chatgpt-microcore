@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.local-agent';
-  const UNIT_VERSION = '1.0.0-rc.2-local-agent.5';
+  const UNIT_VERSION = '1.0.0-rc.2-local-agent.6';
   const PANEL_ID = 'local-agent';
   const HOST_ID = 'dcf-panel-local-agent';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_LOCAL_AGENT__';
@@ -434,6 +434,9 @@
     state.task_draft = String(data.task_draft || '');
     state.auto_poll = data.auto_poll !== false;
     render();
+    if (state.config.base_url) {
+      try { await refreshAll(false); } catch (_) { /* silent: user can manually connect */ }
+    }
   }
 
   async function saveAndConnect() {
