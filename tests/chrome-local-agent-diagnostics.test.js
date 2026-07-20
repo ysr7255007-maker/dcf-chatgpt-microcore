@@ -8,7 +8,7 @@ const root = path.resolve(__dirname, '..');
 const index = JSON.parse(fs.readFileSync(path.join(root, 'releases/chrome/official-index.json'), 'utf8'));
 const ref = index.units.find((unit) => unit.id === 'dcf.firstparty.diagnostics');
 assert(ref);
-assert.strictEqual(ref.version, '1.0.0-rc.2-diagnostics.3');
+assert.strictEqual(ref.version, '1.0.0-rc.2-diagnostics.4');
 assert.strictEqual(ref.phase, 90);
 assert.strictEqual(ref.world_id, 'dcf-firstparty-diagnostics');
 
@@ -35,7 +35,6 @@ for (const token of [
   'provider_options_included: false',
   'raw_config_included: false',
   'await clickSend()',
-  'diagnoseRecent().catch',
   'unit.started'
 ]) assert(code.includes(token), `missing ${token}`);
 

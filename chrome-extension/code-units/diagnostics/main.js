@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.diagnostics';
-  const UNIT_VERSION = '1.0.0-rc.2-diagnostics.3';
+  const UNIT_VERSION = '1.0.0-rc.2-diagnostics.4';
   const PANEL_ID = 'diagnostics';
   const HOST_ID = 'dcf-panel-diagnostics';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_DIAGNOSTICS__';
@@ -532,10 +532,6 @@
     create();
     refreshHost().then(async () => {
       await sendHost({ type: 'unit.started', unit_id: UNIT_ID, version: UNIT_VERSION });
-      diagnoseRecent().catch((error) => {
-        notice = `本机 Agent 自动诊断失败：${String(error?.message || error)}`;
-        render();
-      });
     }).catch((error) => sendHost({
       type: 'unit.failed', unit_id: UNIT_ID, version: UNIT_VERSION, error: String(error?.message || error)
     }).catch(() => {}));

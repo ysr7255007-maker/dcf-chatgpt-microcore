@@ -384,10 +384,10 @@
     });
     observer.observe(document.documentElement, { childList: true, subtree: true });
 
-    collapse.onclick = async () => {
+    collapse.onclick = () => {
       const collapsed = !shell.classList.contains('collapsed');
-      try { await saveShellState({ collapsed }); } catch (_) {}
       applyAppearance({ collapsed });
+      saveShellState({ collapsed }).catch(() => {});
     };
     recovery.onclick = () => send({ type: 'host.open_recovery' }).catch(() => undefined);
 
