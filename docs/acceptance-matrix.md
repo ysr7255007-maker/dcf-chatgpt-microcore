@@ -33,9 +33,9 @@ BrowserClaw run: `dcf-acc-20260721`
 | E1 对话事件消费 | 新助手回复被 DCF 检测 | passed | Chrome + BrowserClaw | 75a70d5 | conversation-performance turn_count=4，apply_count=16 | — |
 | E2 流式结束判定 | 流式完成后才判定轮次 | passed | Chrome + BrowserClaw | 75a70d5 | 助手回复完成后 turn_count 正确递增 | — |
 | E3 性能归因记录 | 记录问答耗时 | passed | Chrome + BrowserClaw | 7f9674b | 激活后记录完整：total_ms=8790, send_to_first_reply=62ms, completion=8728ms, LoAF/longtask/layout-shift | — |
-| F1 本地 Agent 连接 | 直连 OpenCode 127.0.0.1:4096 | blocked | — | — | OpenCode 服务未运行（fetch 失败） | 需启动 OpenCode 服务 |
-| F2 对话委派闭环 | 网页请求→本机执行→结果返回 | blocked | — | — | 依赖 F1 | Issue #54 仍开放 |
-| F3 控制面(status/steer/cancel) | 执行中可查状态/转向/取消 | blocked | — | — | 依赖 F1 | Issue #54 仍开放 |
+| F1 本地 Agent 连接 | 直连 OpenCode 127.0.0.1:4096 | passed | Chrome + BrowserClaw | 96b7cbf | 保存并连接→"已连接"，Agent列表(build/explore/general等)、模型列表(DeepSeek/Nvidia/Volcano等)完整 | 自动连接需 local-agent.6 且 messaging 可用 |
+| F2 对话委派闭环 | 网页请求→本机执行→结果自动回传对话 | environment_difference | Chrome + BrowserClaw | 96b7cbf | 检测→委派→执行成功（会话yBwLhcHP），但回传未发生：插件因messaging非确定性未持续运行，outbox泵无人驱动 | 回传依赖插件存活；sendMessage非确定性是根因 |
+| F3 控制面(status/steer/cancel) | 执行中可查状态/转向/取消 | passed | Chrome + BrowserClaw | 96b7cbf | 长任务执行中点击"终止任务"→任务中断停止，部分结果保留 | — |
 | G1 诊断健康报告 | 正常时报告 healthy | passed | Chrome + BrowserClaw | 75a70d5 | page_health="healthy"，host_version 正确 | — |
 | G2 诊断按钮可用 | 复制诊断包/恢复面/刷新 | passed | Chrome + BrowserClaw | 75a70d5 | 5 个按钮均存在且可点击 | — |
 | G3 本机 Agent 诊断 | 无 session 时中性报告 | passed | Chrome + BrowserClaw | 75a70d5 | "没有可诊断的最近本机 session"（非假失败） | Issue #62 边界 |
@@ -68,9 +68,8 @@ BrowserClaw run: `dcf-acc-20260721`
 
 ## 已知边界与未测项
 
-1. **F 域全部 blocked**：OpenCode 服务 `127.0.0.1:4096` 未运行，Issue #54 仍开放
-2. **H2 非确定性**：USER_SCRIPT world sendMessage 可用性随加载变化（Issue #69 已记录）
-3. **B4-B5 未测**：immutable 冲突/LKG 回滚需构造特定场景
+1. **H2 非确定性**：USER_SCRIPT world sendMessage 可用性随加载变化（Issue #69 已记录），影响所有插件初始化可靠性
+2. **B4-B5 未测**：immutable 冲突/LKG 回滚需构造特定场景
 4. **A6 扩展重载**：影响整个 Profile，需错峰协调
 5. **Issue #62**：诊断终态推断仍有已知缺陷
 6. **BrowserClaw fill 截断**：`fill` 操作在 ChatGPT contenteditable 输入框中会截断 `\n` 之后的内容。多行文本应使用弹药插入/发射机制或 evaluate 直接设置。这不是 DCF 缺陷，是测试工具局限
