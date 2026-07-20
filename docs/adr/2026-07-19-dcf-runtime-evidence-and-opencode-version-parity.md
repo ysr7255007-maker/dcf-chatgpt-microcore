@@ -75,45 +75,61 @@ Live recovery evidence:
 - elapsed time: 6.452 seconds;
 - endpoint errors: all `null`.
 
-## 2026-07-20 architecture clarification: product surface and runtime truth are different planes
+## 2026-07-20 architecture clarification: bootstrap one web–local pair, then grow a host-neutral DCF mesh
 
-The browser remains DCF's primary product surface. Its value is created inside the user's current ChatGPT conversation, so replacing the browser product with a desktop application would move the experience away from the place where language ammo, dialogue handoff and cognitive continuity are actually used.
+DCF is not fundamentally a ChatGPT browser extension with a local bridge. Its intended scope is to connect multiple remote AI web surfaces and multiple local AI surfaces to one continuous personal cognitive system.
 
-The browser must not, however, remain the only engineering and diagnostic surface. DCF now spans several independently failing truth planes:
+The browser implementation and the current local-agent path are the first two concrete surfaces because they already contain the strongest real requirements. They are not permanent architectural centres. The first strategic milestone is to make one web surface and one local surface communicate through a complete, trustworthy, inspectable round trip, then use that working pair to help build, diagnose and accept additional adapters.
 
-- repository and build truth;
-- Chrome page, extension, Service Worker, registration and storage truth;
-- each plugin's own business-state projection;
-- OpenCode service, session and process truth;
-- the user's irreducibly experiential judgment.
-
-No remote or local AI sees all of these by default. DCF must therefore construct a queryable evidence projection instead of expecting an AI to infer the whole system from source code or expecting the user to carry missing facts between tools.
-
-This produces the following maintenance architecture:
-
-1. **Plugin-owned evidence is the first line.** Each plugin exposes its own bounded state transitions, queue reasons, command consumption, side effects and delivery state because it understands its business semantics best.
-2. **An external local runtime observatory is the fallback and cross-layer view.** It attaches to the exact Chrome target and related local services, remains read-only by default, identifies the observed target precisely and exposes privacy-bounded snapshots and events from CDP, extension state and OpenCode.
-3. **Neither observer replaces the other.** A plugin cannot be the sole witness of its own initialization failure, while an external observer cannot infer business semantics that the plugin has not made explicit.
-4. **The remote conversational AI receives structured projections automatically.** The local AI may query deeper selectable surfaces directly. The user does not copy logs, session IDs, DOM state or service evidence between them.
-5. **CI loads the complete plugin where practical.** Extracted source fragments and token assertions may support a test, but they cannot stand in for full initialization, observer binding, side effects, queue transitions and teardown.
-6. **Real-browser acceptance remains the final runtime fact.** A controlled harness reduces uncertainty before publication; it does not replace one meaningful acceptance against the actual ChatGPT page.
-
-The corrected development sequence is therefore not “desktop first instead of web first.” It is:
+The architecture is hub-and-adapter rather than a growing set of direct pairwise integrations:
 
 ```text
-minimal browser vertical slice
-→ full-plugin deterministic harness
-→ local exact-target runtime observatory
-→ product-owned structured evidence
-→ feature expansion
-→ one real-browser acceptance
+AI web adapters ─────┐
+                     ├── DCF local core / protocol / durable state
+local AI adapters ───┘
 ```
 
-The rejected alternatives are:
+Each ChatGPT, Claude, Gemini or other web integration should eventually be a replaceable web adapter. Each ChatGPT/Codex desktop integration, OpenCode, Codex CLI or other local AI should be a replaceable local adapter. Business continuity, language ammunition, task identity, permissions, delivery state, runtime evidence and recovery must not be owned exclusively by any one host.
 
-- abandoning the browser product merely because browser debugging is difficult;
-- treating a native companion UI as the new primary DCF product;
-- granting a general-purpose remote browser-control channel before a bounded evidence model exists;
-- relying only on plugin self-report when the plugin itself may be broken;
-- relying only on CDP or external observation without plugin business-state evidence;
-- continuing feature growth while the maintenance AI sees only repository source and user descriptions.
+The initial web–local bootstrap pair must prove more than message forwarding. It must establish the reusable DCF connection contract:
+
+1. **Stable surface and conversation identity.** DCF knows which adapter, account, window, page, conversation and local task an event belongs to without asking the user to carry identifiers.
+2. **Bidirectional event transport.** A bounded event can travel web-to-local and a result, progress item, permission request, control acknowledgement or failure artifact can travel local-to-web.
+3. **Durable delivery semantics.** Events are idempotent, ordered where required, acknowledged explicitly, recoverable after refresh or process restart and distinguish execution from delivery.
+4. **Capability discovery.** Every adapter declares what it can observe, invoke, persist, render, control and verify instead of pretending that all AI hosts expose the same abilities.
+5. **Permission and responsibility boundary.** Observation is read-only by default; consequential side effects have explicit intent, evidence and revocation semantics.
+6. **Selectable runtime truth.** Plugin-owned business evidence and an external local observer remain complementary. No adapter is the sole witness of its own health.
+7. **Host-neutral core state.** Long-term DCF state can outlive the replacement, failure or removal of either member of the bootstrap pair.
+8. **Human experiential authority.** The system absorbs technical complexity, while the user retains the final judgment about whether the cross-surface experience is actually useful and trustworthy.
+
+The first pair is therefore a bootstrap environment, not the final product boundary. Once it works, the connected remote and local AIs can jointly inspect repository memory, runtime evidence and adapter contracts; implement a new adapter; run deterministic verification; and return one bounded acceptance request to the user. This is the intended meaning of DCF self-expansion. It does not mean granting an AI unrestricted recursive control over the machine or accepting an adapter because it generated its own success report.
+
+The development order becomes:
+
+```text
+extract the minimum host-neutral DCF connection contract
+→ connect one real AI web surface to one real local AI surface
+→ prove identity, bidirectional delivery, control, persistence and evidence
+→ let the working pair assist development of a second adapter
+→ connect a second web or local host to expose hidden host assumptions
+→ expand language ammunition and higher-level cognitive workflows on the stable mesh
+```
+
+The decisive early acceptance is not “all DCF features work in ChatGPT.” It is:
+
+```text
+one web adapter
+↔ one durable local DCF core
+↔ one local AI adapter
+```
+
+with an end-to-end event, local action, result return, status/control exchange, restart recovery and evidence package completed without the user copying logs, session IDs or protocol envelopes.
+
+Rejected framings:
+
+- treating the browser as DCF's permanent primary product and the local side as a subordinate service;
+- replacing browser-first thinking with desktop-first thinking while keeping the same host dependency;
+- implementing every pair of AI surfaces directly, creating an `N × N` integration problem;
+- moving all intelligence into the local core and reducing host AIs to passive terminals;
+- building many shallow adapters before one complete web–local round trip is trustworthy;
+- calling transport success “self-expansion” without deterministic evidence and external acceptance.
