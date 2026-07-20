@@ -1,9 +1,9 @@
 # DCF 真实能力矩阵
 
 Updated: 2026-07-21
-Source commit: `7f9674b` (latest verified)
+Source commit: `424e1ab` (latest verified)
 Branch: `rebuild/chrome-native-host-v2`
-Stable: `75a70d5` (same)
+Stable: `7f9674b`
 Extension: `1.0.0-rc.2` (ID: `nfcfjccjjigaidmakmajjgjmkepebbep`)
 Test session: `6a5e6a09-69b4-83e9-a55e-d06b1700c4e9` (ChatGPT)
 BrowserClaw run: `dcf-acc-20260721`
@@ -43,6 +43,17 @@ BrowserClaw run: `dcf-acc-20260721`
 | H1 停用后面板移除 | 停用→当前页面板真实消失 | passed | Chrome + BrowserClaw | 75a70d5 | 与 B1 同证据 | — |
 | H2 messaging 不可用容错 | 插件降级而非崩溃 | environment_difference | Chrome + BrowserClaw | 75a70d5 | USER_SCRIPT world sendMessage 非确定性（已知 Issue #69 边界） | 根因未定 |
 | H3 缺 Shell 诊断 | 注册全但缺 Shell 时报告 | not_tested | — | — | Issue #69 已验证过（page_shell_missing） | 本轮未重做 |
+| I1 备份下载 | 下载完整备份 JSON 文件 | passed | Chrome + BrowserClaw | 424e1ab | 点击"下载备份"→通知"备份文件已生成" | — |
+| I2 备份复制 | 复制完整备份到剪贴板 | not_tested | — | — | BrowserClaw 后台操作时 Document is not focused，剪贴板 API 拒绝写入 | 用户正常使用时页面聚焦，非 DCF 缺陷 |
+| I3 备份导入 | 导入 JSON 恢复插件数据 | not_tested | — | — | 需准备备份文件并通过文件选择器导入 | — |
+| J1 外观实时调节 | 拖动滑块 Shell 实时变形 | passed | Chrome + BrowserClaw | 424e1ab | 高度 900→500px 实时生效，宽度 340→500px 实时生效 | — |
+| J2 外观重置 | 恢复默认尺寸 | passed | Chrome + BrowserClaw | 424e1ab | 重置后恢复 380×680px 默认值 | — |
+| K1 减负阈值以下 | <24 轮不触发优化 | passed | Chrome + BrowserClaw | 424e1ab | 7 轮对话：safe/window 模式 optimized=0, hidden=0 | — |
+| K2 减负模式切换 | off/safe/window 切换生效 | passed | Chrome + BrowserClaw | 424e1ab | 切换后 last_reason="mode-change"，report 正确更新 | — |
+| K3 恢复全部并关闭 | 还原所有消息+模式归 off | passed | Chrome + BrowserClaw | 424e1ab | 模式→off，hidden=0 | — |
+| K4 减负阈值以上 | ≥24 轮实际包裹/隐藏 | not_tested | — | — | 当前测试对话仅 7 轮，需 24+ 轮长对话 | — |
+| L1 归因记录 | arm→问答→完整计时报告 | passed | Chrome + BrowserClaw | 7f9674b | total_ms=8790, send_to_first_reply=62ms, LoAF/longtask 数据 | — |
+| L2 归因 arm/clear | 按钮状态切换 | passed | Chrome + BrowserClaw | 424e1ab | arm 设置内部标记等待下轮，clear 重置状态 | 需完整问答轮验证 arm 触发 |
 
 ## 测试会话记录
 
