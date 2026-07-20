@@ -4,7 +4,7 @@ Updated: 2026-07-20
 
 ## Current
 
-- `2026-07-20-dcf-managed-web-surface-runtime.md` — **accepted vehicle for first implementation; DCF Work Browser spike and bootstrap acceptance pending**; the first managed web runtime is a visible real Chrome/Chromium process with a persistent non-default profile genuinely shared by the user and bounded DCF actions, while durable scheduling, permissions, recovery and evidence remain in the local core rather than page JavaScript
+- `2026-07-20-dcf-managed-web-surface-runtime.md` — **accepted direction; BrowserOS-first substrate spike and bootstrap acceptance pending**; the first managed web runtime is a real user-facing agent-adapted Chromium work browser, with BrowserOS as the lead substrate candidate and stock Chrome/Chromium as fallback, while durable scheduling, permissions, recovery and evidence remain in DCF Core rather than page JavaScript
 - `2026-07-20-dcf-dialogue-control-and-delivery-survivability.md` — **accepted architecture; implementation and live acceptance pending under Issue #54**; execution, control and delivery are separate survivability planes, normal transport waits are not failures, and the user must never become the control or evidence relay
 - `2026-07-19-dcf-local-agent-model-persistence.md` — **accepted; implementation and GitHub Action verification complete; live browser acceptance pending**; one persisted provider/model selection governs workbench, continued-session and dialogue delegation paths
 - `2026-07-19-dcf-dialogue-compact-result-boundary.md` — **accepted; implementation and GitHub Action verification complete; live browser acceptance pending**; final, all-session reasoning-review and bounded diagnostic profiles replace raw message-history return
