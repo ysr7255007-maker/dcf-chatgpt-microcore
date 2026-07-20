@@ -54,6 +54,7 @@ BrowserClaw run: `dcf-acc-20260721`
 | K4 减负阈值以上 | ≥24 轮实际包裹/隐藏 | not_tested | — | — | 当前测试对话仅 7 轮，需 24+ 轮长对话 | — |
 | L1 归因记录 | arm→问答→完整计时报告 | passed | Chrome + BrowserClaw | 7f9674b | total_ms=8790, send_to_first_reply=62ms, LoAF/longtask 数据 | — |
 | L2 归因 arm/clear | 按钮状态切换 | passed | Chrome + BrowserClaw | 424e1ab | arm 设置内部标记等待下轮，clear 重置状态 | 需完整问答轮验证 arm 触发 |
+| M1 防节流心跳 | 切屏后插件保持活跃 | passed | Chrome + BrowserClaw | 2d578fd | 用户切屏20分钟后：Shell存活、OpenCode已连接、新任务KEEPALIVE_OK执行成功 | SW alarm每30s发dcf:keepalive事件 |
 
 ## 测试会话记录
 
