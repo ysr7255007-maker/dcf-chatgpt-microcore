@@ -1,96 +1,99 @@
-# ADR: Run web AI adapters inside a DCF-managed agent-adapted Chromium work browser
+# ADR: Bootstrap DCF through BrowserClaw, a registered web surface and a local AI
 
 Date: 2026-07-20  
-Status: accepted direction; BrowserOS-first substrate spike and bootstrap acceptance pending
+Status: accepted direction; BrowserClaw-first bootstrap spike pending
 
 ## Context
 
-The first DCF web adapter currently runs inside a normal Chrome tab through an extension and injected scripts. This proved the product semantics, but it inherits lifecycle decisions that belong to a general-purpose browser rather than to DCF. A hidden, backgrounded, discarded, replaced or throttled page may delay timers, lose observers, defer rendering or terminate the exact script instance that DCF expected to continue a multi-turn workflow.
+The first DCF web adapter runs inside a normal Chrome tab through an extension and injected scripts. It proved the product semantics, but the remote web AI, the browser runtime and the local AI still see different partial realities. The remote web AI cannot directly call a loopback MCP endpoint, while the local AI can control a browser only if it knows which browser instance, tab and conversation belong to the DCF task.
 
-This failure class cannot be solved reliably by adding more polling to Tampermonkey or extension code. The page is not a durable scheduler, and neither a remote AI nor a local AI can reconstruct the exact runtime state from repository source and user descriptions after the fact.
+The BrowserOS repository now ships two browsers from one codebase:
 
-DCF is intended to connect multiple web AI surfaces and multiple local AI surfaces. Its first web–local bootstrap pair therefore needs a browser environment that is:
+- **BrowserOS** is a human-driven Chromium browser with its own built-in AI agent;
+- **BrowserClaw** is a Chromium browser specifically driven by external MCP-capable agents such as Codex, OpenCode, Claude Code and Cursor.
 
-- a real, visible and persistently used browser rather than a disposable automation session;
-- compatible with ordinary AI websites, logins, extensions, downloads and human interaction;
-- directly controllable and observable by local AI and DCF Core;
-- adjustable for long-running agent operation at browser-engine, browser-service and adapter levels;
-- capable of becoming part of the user's actual AI browsing life rather than living in a separate synthetic automation world.
+BrowserClaw is closer to DCF's first bootstrap need. It is a visible real browser with persistent logins and Chrome-compatible extensions. It exposes one local MCP endpoint, currently documented as `http://127.0.0.1:9200/mcp`, and supports one-click configuration for OpenCode and Codex. Agent runs receive their own grouped tabs, while user-opened tabs remain distinct and may be operated only when explicitly selected. BrowserClaw also persists local audit and replay evidence under `~/.browserclaw/`.
 
-Because this is a trusted personal project, DCF does not need to inherit the narrow permission model of a public multi-user automation product. The user may deliberately grant broad control over the dedicated DCF browser environment. Visibility, persistence and recovery are still required because models and software can be wrong, not because DCF must distrust its owner.
-
-A survey of current projects shows that DCF does not need to begin from stock Google Chrome:
-
-- **BrowserOS** is an open-source Chromium fork with Chromium patches, an in-browser agent extension, a local server exposing 53+ MCP tools, a CLI, an Agent SDK and CDP bindings. It supports importing Chrome data and extensions and can be controlled by Codex, Claude Code, Gemini CLI and other MCP clients.
-- **Agent Browser Protocol (ABP)** is a Chromium fork with MCP and REST embedded in the browser engine. Its engine-defined settled boundary, native input path, action event log, screenshots, history database and execution control are valuable technical references, although its default frozen step-machine model is more agent-exclusive than DCF's intended human–AI coexistence.
-- **OpenChrome** is not a browser fork, but it is a useful direct-CDP control and reliability harness for real Chrome with persistent profiles, structured page reading, outcome classification and MCP clients including Codex and OpenCode.
-- **Vessel** demonstrates persistent sessions, checkpoints, supervisory UI, activity tracing and external MCP control, but its Electron engine makes it a product and interaction reference rather than the preferred browser substrate.
-- Steel, browser-use, agent-browser and similar systems remain useful libraries or control layers, but their normal automation-session model is not itself the DCF Work Browser.
+This changes the first integration problem. DCF does not need to make a remote ChatGPT page into an MCP client. It needs to bind a remote web surface, a durable DCF task and a local MCP-capable AI to the same identity.
 
 ## Decision
 
 1. DCF will introduce a **managed web surface runtime** for web AI adapters.
-2. The runtime will be a **real user-facing Chromium-family work browser**, not necessarily the newest Google Chrome Stable and not necessarily an unmodified upstream binary.
-3. **BrowserOS is the lead substrate for the first spike.** DCF will first test whether its existing Chromium fork, extension compatibility, data import, local MCP server, CLI and SDK can carry the first web–local bootstrap pair without DCF maintaining its own Chromium fork.
-4. Stock Chrome/Chromium with a DCF-managed profile remains the fallback baseline if BrowserOS cannot reliably run the target AI providers or cannot expose the required control and evidence surfaces.
-5. DCF will not initially fork and compile Chromium merely to establish ownership. The first preference order is:
-   1. use BrowserOS as an installed browser and add DCF adapters around its public/local surfaces;
-   2. reuse or modify its agent/server layer while retaining its browser build;
-   3. carry a small explicit patch set on its Chromium fork only when a proven DCF requirement cannot be met above the engine;
-   4. fall back to managed stock Chrome/Chromium rather than owning a broad browser fork prematurely.
-6. The DCF Work Browser profile is persistent and genuinely inhabited by the user. It may import the user's chosen Chrome data and becomes the normal home for AI websites, conversations, extensions and related browsing activity. It is not a temporary test profile.
-7. The DCF local core remains the durable coordinator. It owns task identity, event persistence, permissions, control, retries, delivery, recovery and evidence indexing. Browser pages and browser-side agents are participants, not the durable workflow engine.
-8. Every web provider is connected through a replaceable DCF adapter. An adapter maps provider-specific page events and actions into the host-neutral DCF protocol; it does not directly integrate with every local AI.
-9. BrowserOS MCP/CLI, DCF provider adapters, extension APIs, CDP and the native local channel are complementary:
-   - BrowserOS or another browser substrate exposes generic tabs, windows, page actions and browser services;
-   - DCF provider adapters expose ChatGPT/Claude/Gemini-specific conversation semantics;
-   - CDP or engine-native evidence exposes exact targets, lifecycle, console, network and process facts;
-   - DCF Core unifies those facts with local-AI tasks and persistent state.
-10. Human and AI operation share the same browser. The user may browse normally, publish tasks, intervene, redirect or take over. DCF must preserve control ownership and unfinished actions explicitly so that simultaneous human and AI input does not corrupt a task.
-11. The host may be tuned for DCF operation, including lifecycle policy, persistent services, target discovery, extension survival, instrumentation and engine patches. The criterion is whether the change improves reliable human–AI cohabitation and observable execution.
-12. ABP's deterministic settled-step protocol, native input and event bundle will be studied as potential components or design influences. DCF will not adopt its default page-freezing model wholesale because a continuously used conversational AI page must also remain alive while the user and remote model act asynchronously.
-13. Electron and system WebView wrappers are deferred as primary substrates. They may still provide later control panels or packaging, but they do not block the real Chromium route.
-14. The existing ordinary-browser extension remains a migration adapter and semantic prototype. Its valuable provider-specific behavior should be extracted into the future ChatGPT adapter rather than discarded.
+2. **BrowserClaw is the lead substrate for the first web–local bootstrap spike.** BrowserOS remains a related upstream and a possible later human-first browser, but BrowserClaw is the product explicitly designed for external local agents.
+3. The remote web AI does not directly connect to BrowserClaw MCP. BrowserClaw MCP is a local control plane consumed by DCF Core and local AI clients.
+4. The first pairing is:
 
-## First substrate spike
+   ```text
+   ChatGPT web surface in BrowserClaw
+   → DCF ChatGPT adapter
+   → DCF Core task/event store
+   → OpenCode or Codex
+   → BrowserClaw MCP
+   → BrowserClaw tabs and page actions
+   ```
 
-The BrowserOS-first spike must answer with runtime evidence:
+5. BrowserClaw provides generic browser eyes and hands. DCF provides provider semantics, task identity, permissions, conversation continuity, result routing and recovery. BrowserClaw is not the DCF coordinator.
+6. The current DCF dialogue loop may be reused for the first spike. After BrowserClaw connects its MCP endpoint to the same OpenCode installation used by DCF, a DCF-delegated OpenCode session can call BrowserClaw tools without the web page becoming an MCP client.
+7. The first missing protocol is **DCF Surface Registration**, not a new general browser-control protocol. A registered surface must expose at least:
+   - `browser_instance_id`;
+   - browser tab/page ID as returned by the browser control plane;
+   - provider and account/profile hint;
+   - durable provider conversation key when available;
+   - ephemeral page-instance ID;
+   - DCF adapter ID and version;
+   - current URL/title and last consumed event cursor;
+   - current human/AI control owner.
+8. Browser tab IDs and page targets are ephemeral. DCF tasks bind durably to the provider conversation key and DCF surface identity; the adapter re-registers the current tab/target after reload or browser restart.
+9. The DCF browser extension/provider adapter is the authoritative source for ChatGPT-specific events such as assistant completion, streaming state, conversation attribution and composer delivery. BrowserClaw MCP is the authoritative generic action surface for listing pages, snapshots, clicks, input and browser-managed sessions.
+10. Result delivery should remain provider-semantic where possible: DCF Core sends the result to the ChatGPT adapter, which writes it into the correct composer and confirms delivery. BrowserClaw MCP is a fallback and maintenance path, not the default replacement for semantic adapters.
+11. The first DCF surface may be a user-opened ChatGPT tab that is explicitly enrolled, or a persistent DCF-owned ChatGPT tab. BrowserClaw's normal agent-session tabs are not assumed to be durable because they may close when the MCP session ends.
+12. DCF will eventually distinguish three tab roles even if BrowserClaw currently exposes two:
+   - personal user tab;
+   - ephemeral agent tab;
+   - persistent DCF cohabited surface, explicitly shared by user and DCF.
+13. BrowserClaw's local audit and replay are adopted as browser-action evidence, but they do not replace DCF task, permission, adapter and delivery evidence.
+14. Stock Chrome/Chromium with a DCF-managed profile remains the fallback if BrowserClaw cannot host the provider adapters or expose the required surface identity.
+15. DCF will consume BrowserClaw as an installed external runtime before considering changes to its agent/server layer or Chromium patches.
 
-1. Can ChatGPT and at least one second AI provider complete login, streaming replies, file upload/download and long conversations in BrowserOS?
-2. Can current DCF Chrome extensions or equivalent unpacked extensions run without semantic loss?
-3. Can Codex and OpenCode connect to the BrowserOS MCP endpoint and identify/control the exact same visible tabs the user is using?
-4. Can DCF add provider-aware events that BrowserOS's generic browser tools do not expose?
-5. Are page, extension, worker, console, network and lifecycle facts available directly, or must DCF add a CDP/runtime-evidence companion?
-6. Does switching applications or leaving the tab in the background stop only rendering, or does it lose adapter events and task continuity?
-7. Can the BrowserOS built-in agent loop be disabled, bypassed or subordinated so DCF Core remains the single durable coordinator?
-8. Can one persistent profile survive browser restart and browser upgrade without losing DCF task identity or adapter registration?
-9. What exact BrowserOS patches or services are indispensable, and which parts would DCF need to replace?
-10. Does its AGPL-3.0 licensing fit the repository and any future distribution path, or should DCF consume it as an external runtime rather than derive its own browser build?
+## Installation and pairing spike
 
-## Acceptance boundary for the first DCF Work Browser
+The first spike proceeds in this order:
 
-The first implementation is accepted only when:
+1. Install BrowserClaw on the user's machine and use it as a normal browser long enough to establish the required ChatGPT login and ordinary page behavior.
+2. Open a new BrowserClaw tab, select **MCP**, and use the one-click **Connect** action for OpenCode and/or Codex. BrowserClaw writes one MCP entry named `BrowserClaw` pointing to its loopback endpoint.
+3. Restart the selected local AI so it loads the new MCP configuration.
+4. Verify the local AI can list BrowserClaw pages, open an agent tab, navigate, take a snapshot and perform one harmless action.
+5. Install the current DCF Chrome extension in BrowserClaw and verify the Shell, plugin registry and ChatGPT provider behavior load.
+6. Restart the standalone OpenCode service used by DCF and verify that this exact service process sees the BrowserClaw MCP tools; a different desktop/TUI installation is not sufficient proof.
+7. Add the smallest possible surface-registration payload to the DCF ChatGPT adapter and persist the mapping in the local core or, for the initial spike, the existing dialogue bridge state.
+8. Delegate a DCF request from the ChatGPT page to OpenCode. The OpenCode session must use BrowserClaw MCP to identify and inspect the registered source page, then return a bounded result through the existing DCF return path.
+9. Refresh the ChatGPT page and prove that the provider conversation remains bound while the page-instance and target IDs are replaced.
+10. Focus another application for a meaningful interval and prove that the DCF task remains durable even if the page becomes delayed or temporarily unavailable.
 
-1. one real web AI and one real local AI participate in the same persisted DCF task;
-2. the user genuinely uses the same persistent browser profile before, during and after DCF actions;
-3. the user can focus another window for a meaningful interval without the task silently disappearing;
-4. the host distinguishes page hidden, throttled, disconnected, crashed, reloaded, adapter-lost and provider-side waiting states;
-5. closing and reopening the browser can recover the task without reusing stale page-instance assumptions;
-6. adapter version, exact page target, last consumed event, last performed action and last delivery state are queryable by the maintenance AI;
-7. a page, extension, browser service or provider-adapter failure does not erase the local task and permission history;
-8. human takeover and AI operation can alternate without racing on the same composer or losing queued actions;
-9. the user is not required to carry logs, target IDs, session IDs or intermediate results between the web AI and local AI;
-10. the same DCF Core can attach a second web adapter without changing the first local adapter contract.
+## Minimal bootstrap acceptance
+
+The BrowserClaw-first bootstrap is accepted only when:
+
+1. BrowserClaw runs the real ChatGPT website with the user's persistent login and the DCF extension loaded;
+2. the exact OpenCode or Codex instance used by DCF has BrowserClaw MCP tools;
+3. a page-originated DCF task reaches the local AI without the user copying an MCP URL, tab ID, session ID or task packet during the run;
+4. the local AI identifies the registered source surface rather than guessing from the active tab;
+5. the local AI can inspect the source surface and operate a separate BrowserClaw agent tab within the same task;
+6. the final result returns to the original ChatGPT conversation through the DCF semantic adapter;
+7. page reload replaces ephemeral target identity without losing durable task/conversation identity;
+8. browser-action evidence from BrowserClaw and task/delivery evidence from DCF can be correlated by one DCF task ID;
+9. the browser or adapter may disappear temporarily without erasing the OpenCode task, permission history or pending delivery;
+10. a second web provider can later register through the same surface contract without changing the OpenCode/BrowserClaw MCP contract.
 
 ## Consequences
 
-- DCF can reuse an existing agent-adapted Chromium project instead of reproducing browser maintenance and agent-control infrastructure from scratch.
-- BrowserOS becomes a concrete substrate candidate, not a new architectural centre; DCF Core and the adapter protocol remain host-neutral.
-- The user's normal AI browsing history and DCF operation can grow in the same browser environment.
-- DCF may eventually need a small browser patch set, but only after higher-level integration proves the missing capability.
-- Runtime compatibility, browser updates and upstream project changes become explicit dependencies that the substrate spike must measure.
-- BrowserOS's broad built-in agent product may overlap with DCF; integration must separate reusable browser infrastructure from DCF's own cognition, task and plugin semantics.
+- DCF can achieve its first self-observing web–local loop with much less browser infrastructure than a stock-Chrome-first design.
+- The remote ChatGPT page remains a participant rather than a privileged local process; its bridge to local execution is the DCF adapter and task protocol.
+- OpenCode gains direct access to the visible browser that contains the DCF page, allowing runtime investigation and repair from the same local task.
+- BrowserClaw's agent-tab isolation is useful for parallel work, but DCF still needs an explicit persistent shared-surface concept for ongoing conversations.
+- DCF must verify that its standalone OpenCode service loads the same MCP configuration as the interactive OpenCode client.
+- BrowserClaw is a substrate dependency, not the architectural centre. DCF Core and provider adapters remain replaceable and host-neutral.
 
 ## Reconsideration conditions
 
-Reconsider BrowserOS as the lead substrate if real AI providers fail materially, its built-in architecture cannot be subordinated to DCF Core, its release cadence or Chromium base becomes too stale, required runtime facts cannot be exposed, or maintaining a downstream patch set becomes harder than supervising stock Chrome. These conditions change the browser substrate, not the decision to keep durable coordination outside page JavaScript.
+Reconsider BrowserClaw as the lead substrate if it cannot run the real AI providers reliably, cannot load the DCF extension, cannot expose stable enough tab/page identity, does not make its MCP tools available to the exact OpenCode service used by DCF, or its agent-session lifecycle prevents persistent shared conversation surfaces. These conditions change the browser substrate, not the surface-registration and durable-core architecture.
