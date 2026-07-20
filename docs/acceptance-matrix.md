@@ -34,7 +34,7 @@ BrowserClaw run: `dcf-acc-20260721`
 | E2 流式结束判定 | 流式完成后才判定轮次 | passed | Chrome + BrowserClaw | 75a70d5 | 助手回复完成后 turn_count 正确递增 | — |
 | E3 性能归因记录 | 记录问答耗时 | passed | Chrome + BrowserClaw | 7f9674b | 激活后记录完整：total_ms=8790, send_to_first_reply=62ms, completion=8728ms, LoAF/longtask/layout-shift | — |
 | F1 本地 Agent 连接 | 直连 OpenCode 127.0.0.1:4096 | passed | Chrome + BrowserClaw | 96b7cbf | 保存并连接→"已连接"，Agent列表(build/explore/general等)、模型列表(DeepSeek/Nvidia/Volcano等)完整 | 自动连接需 local-agent.6 且 messaging 可用 |
-| F2 对话委派闭环 | 网页请求→本机执行→结果自动回传对话 | passed | Chrome + BrowserClaw | b01519b | 检测→委派→执行→回传完整链路：修复outbox泵顺序后，验收工件成功作为user消息发送到对话中（DCF_LOCAL_AGENT_DIALOGUE_ACCEPTANCE出现在用户消息中） | 根因：send按钮仅在输入框有内容时存在于DOM，泵先填内容再找按钮 |
+| F2 对话委派闭环 | 网页请求→本机执行→结果自动回传对话 | passed | Chrome + BrowserClaw | 5a49b5c | E2E完整链路：用户消息→助手输出标记→插件检测→委派OpenCode→执行DCF_E2E_FINAL_OK→3条PROGRESS+1条RESULT回传对话→outbox清空。confirmDelivery精确匹配修复后投递确认正确 | — |
 | F3 控制面(status/steer/cancel) | 执行中可查状态/转向/取消 | passed | Chrome + BrowserClaw | 96b7cbf | 长任务执行中点击"终止任务"→任务中断停止，部分结果保留 | — |
 | G1 诊断健康报告 | 正常时报告 healthy | passed | Chrome + BrowserClaw | 75a70d5 | page_health="healthy"，host_version 正确 | — |
 | G2 诊断按钮可用 | 复制诊断包/恢复面/刷新 | passed | Chrome + BrowserClaw | 75a70d5 | 5 个按钮均存在且可点击 | — |
