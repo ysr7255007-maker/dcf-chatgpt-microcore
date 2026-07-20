@@ -17,7 +17,7 @@ BrowserClaw run: `dcf-acc-20260721`
 | A3 SPA 会话切换 | 切换对话后 DCF 仍在 | passed | Chrome + BrowserClaw | 75a70d5 | 导航到新聊天再返回，Shell 存活 | — |
 | A4 Shell 收起/恢复 | 收起不丢失，可恢复 | passed | Chrome + BrowserClaw | 75a70d5 | 收起→offsetWidth=0→展开→完整恢复 | — |
 | A5 恢复页 | 底座独立恢复入口始终可用 | passed | Chrome + BrowserClaw | 75a70d5 | recovery.html 显示"DCF 正常"，11 插件列表完整 | — |
-| A6 扩展重载/Worker 重启 | 重载后状态恢复 | not_tested | — | — | 需错峰协调（影响整个 Profile） | 底座改动时测试 |
+| A6 扩展重载/Worker 重启 | 重载后状态恢复 | passed | Chrome + BrowserClaw | 6ebbfc9 | 重载扩展→刷新页面→9面板全部恢复，chrome.storage状态存活 | — |
 | B1 插件停用 | 停用后面板从当前页消失 | passed | Chrome + BrowserClaw | 75a70d5 | page-diagnostics 停用：9→8 面板，shadow+document 均移除 | — |
 | B2 插件启用 | 启用后面板恢复挂载 | passed | Chrome + BrowserClaw | 75a70d5 | page-diagnostics 启用：8→9 面板恢复 | — |
 | B3 热更新 | 插件独立更新不需重装扩展 | not_tested | — | — | 需触发 GitHub 索引版本变更 | 下轮版本更新时验证 |
