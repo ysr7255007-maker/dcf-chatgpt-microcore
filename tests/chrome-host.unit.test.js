@@ -35,7 +35,21 @@ const C = require('../chrome-extension/src/core');
   assert.strictEqual(C.registrationFor(unitA).world, 'USER_SCRIPT');
   assert.strictEqual(C.registrationFor(unitA).worldId, unitA.world_id);
   state.snapshots.current = snapshot; state.snapshots.last_known_good = snapshot;
-  assert.deepStrictEqual(C.diagnostics(state, snapshot.entries.map((entry) => ({ id: C.scriptId(entry.id) })), true).deviations, []);
-  assert.strictEqual(C.diagnostics(state, [], true).deviations[0].code, 'missing_registration');
-  console.log(JSON.stringify({ ok: true, rc1_absorption: true, pure_plugin_data: true, unique_worlds: true, immutable_units: true, exact_snapshots: true }, null, 2));
+  const scripts = snapshot.entries.map((entry) => ({ id: C.scriptId(entry.id) }));
+  const healthy = C.diagnostics(state, scripts, true, [{
+    reachable: true,
+    tab_id: 1,
+    url: 'https://chatgpt.com/c/test',
+    static_bridge_present: true,
+    shell_present: true,
+    shell_shadow_root_present: true,
+    mounted_panel_count: 2
+  }]);
+  assert.deepStrictEqual(healthy.deviations, []);
+  assert.strictEqual(healthy.health, 'healthy');
+  assert.strictEqual(C.diagnostics(state, [], true, []).deviations[0].code, 'missing_registration');
+  assert.strictEqual(C.diagnostics(state, scripts, true, [{ reachable: true, tab_id: 1, shell_present: false, static_bridge_present: true }]).deviations[0].code, 'page_shell_missing');
+  assert.strictEqual(C.diagnostics(state, scripts, true, [{ reachable: false, tab_id: 1, error: 'page_probe_timeout' }]).deviations[0].code, 'page_probe_unreachable');
+  assert.strictEqual(C.diagnostics(state, scripts, true, []).health, 'unknown');
+  console.log(JSON.stringify({ ok: true, rc1_absorption: true, pure_plugin_data: true, unique_worlds: true, immutable_units: true, exact_snapshots: true, page_truth_diagnostics: true }, null, 2));
 })().catch((error) => { console.error(error); process.exitCode = 1; });
