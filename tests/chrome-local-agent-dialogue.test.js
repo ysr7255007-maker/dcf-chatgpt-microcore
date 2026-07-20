@@ -12,7 +12,7 @@ const code = fs.readFileSync(path.join(root, 'chrome-extension/code-units/local-
 assert(ref);
 assert(index.defaults.includes(ref.id));
 assert.strictEqual(index.units.length, 11);
-assert.strictEqual(ref.version, '1.0.0-rc.2-local-agent-dialogue.17');
+assert.strictEqual(ref.version, '1.0.0-rc.2-local-agent-dialogue.18');
 assert.strictEqual(ref.phase, 57);
 assert.strictEqual(ref.world_id, 'dcf-firstparty-local-agent-dialogue');
 assert.doesNotThrow(() => new Function(code));
@@ -116,12 +116,12 @@ for (const token of [
   'abort_unconfirmed',
   'last_terminal',
   'function outboxId(text)',
-  'async function confirmDelivery(entry)',
+  'function deliveryConfirmed(entry)',
   'outbox.items',
-  'click_unconfirmed',
-  'recoverable_failure',
-  'composer_occupied',
-  'button_unavailable',
+  'awaiting_confirmation',
+  'retry_wait',
+  'waiting_composer_empty',
+  'waiting_send_button',
   'function scheduleOutboxPump()',
   'async function outboxPump()',
   'function countUserMessages()',

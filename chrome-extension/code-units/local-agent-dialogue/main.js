@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.local-agent-dialogue';
-  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.17';
+  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.18';
   const LOCAL_AGENT_ID = 'dcf.firstparty.local-agent';
   const PANEL_ID = 'dcf-panel-local-agent';
   const SHELL_ID = 'dcf-chrome-shell-host';
@@ -53,7 +53,7 @@
   let queueBusy = false;
   let pendingArtifact = '';
   let pendingForceSend = false;
-  const outbox = { items: [], status: '' };
+  const outbox = { items: [], status: '', sending: false };
   let conversationRoot = null;
   let currentCandidate = null;
   let conversationObserver = null;
@@ -91,10 +91,17 @@
     settings: { ...DEFAULTS },
     processed_ids: [],
     stage: 'idle',
-    status: '等待新的助手回复',
+    // These channels deliberately never share a writable status string.  A
+    // delayed delivery must not make a running task look failed (or vice versa).
+    execution_status: '等待新的助手回复',
+    control_status: '等待控制命令',
+    delivery_status: 'ready',
+    status: '等待新的助手回复', // retained only for backwards-compatible payload summaries
     error: '',
     delivery_state: 'healthy',
     failure_kind: '',
+    last_control_command_id: '', last_control_command: '', last_control_consumed_at: 0,
+    last_control_result: '', last_control_error: '',
     last_request_id: '',
     last_session_id: '',
     started_at: 0,
@@ -103,6 +110,9 @@
     last_terminal: null,
     completed_commands: []
   };
+  const DELIVERY_CONFIRM_MS = 15000;
+  const DELIVERY_DEGRADED_AFTER_MS = 60000;
+  const OUTBOX_TICK_MS = 250;
   const RESOLVE_REQUEST_ID_RE = /^[A-Za-z0-9._:-]{1,128}$/;
   const RESOLVE_SESSION_ID_RE = /^ses_[A-Za-z0-9_-]+$/;
 
@@ -125,7 +135,16 @@
     state.last_request_id = String(data.last_request_id || '');
     state.last_session_id = String(data.last_session_id || '');
     state.last_terminal = data.last_terminal && typeof data.last_terminal === 'object' ? data.last_terminal : null;
-    outbox.items = Array.isArray(data.outbox) ? data.outbox.filter((item) => item && item.text && item.state !== 'delivered').slice(-8) : [];
+    state.execution_status = String(data.execution_status || state.execution_status);
+    state.control_status = String(data.control_status || state.control_status);
+    state.delivery_status = String(data.delivery_status || state.delivery_status);
+    outbox.items = Array.isArray(data.outbox) ? data.outbox.filter((item) => item && item.text && item.state !== 'delivered').slice(-12) : [];
+    for (const entry of outbox.items) {
+      // A click cannot be proven across a reload.  Give it a fresh, bounded
+      // confirmation check instead of restoring a permanently locked entry.
+      if (entry.state === 'awaiting_confirmation') entry.confirmation_deadline = Date.now();
+      if (entry.state === 'click_pending') entry.state = 'queued';
+    }
     outbox.status = outbox.items.length ? `恢复 ${outbox.items.length} 个待回传工件` : '';
     if (outbox.items.length) scheduleOutboxPump();
     state.completed_commands = list(data.completed_commands).map(String).slice(-100);
@@ -183,8 +202,11 @@
         last_request_id: state.last_request_id,
         last_session_id: state.last_session_id,
         last_terminal: state.last_terminal,
+        execution_status: state.execution_status,
+        control_status: state.control_status,
+        delivery_status: state.delivery_status,
         completed_commands: state.completed_commands.slice(-100),
-        outbox: outbox.items.slice(-5),
+        outbox: outbox.items.slice(-12),
         active_task: activeJob ? {
           request_id: activeJob.request.id, session_id: activeJob.session_id,
           state: state.stage, seq: state.control_plane.seq,
@@ -743,12 +765,16 @@
       return;
     }
     if (parsed.kind === 'control') {
-      try { await executeControl(parsed); }
+      state.last_control_command_id = parsed.command_id || '';
+      state.last_control_command = parsed.command;
+      state.last_control_consumed_at = Date.now();
+      try { await executeControl(parsed); state.last_control_result = 'executed'; state.last_control_error = ''; setControlStatus(`已执行 ${parsed.command}`); }
       catch (error) {
         sendArtifact(artifact(MARKERS.progress, structuredErrorPayload('control_failed', String(error?.message || error), { command_id: parsed.command_id || '' })), true);
-        state.status = activeJob ? '控制命令失败，控制仍可用' : '控制命令失败';
+        state.last_control_result = 'failed'; state.last_control_error = String(error?.message || error); setControlStatus(`命令失败：${state.last_control_error}`);
         render();
       }
+      persist().catch(() => {}); render();
       return;
     }
     if (state.processed_ids.includes(parsed.id)) {
@@ -967,7 +993,17 @@
   const artifact = (markers, value) => `${markers[0]}\n${json(value)}\n${markers[1]}`;
   const composer = () => document.querySelector('#prompt-textarea') || document.querySelector('[data-testid="composer-text-input"]') || document.querySelector('form textarea') || document.querySelector('main [contenteditable="true"]');
   const composerValue = (target) => target ? String('value' in target ? target.value || '' : target.innerText || target.textContent || '') : '';
-  const isStreaming = () => Boolean(document.querySelector('[data-testid="stop-button"],button[aria-label*="Stop"],button[aria-label*="停止"]'));
+  function isVisibleInteractive(element) {
+    if (!element || element.hidden || element.getAttribute?.('aria-hidden') === 'true' || element.disabled || element.getAttribute?.('aria-disabled') === 'true') return false;
+    const rect = element.getBoundingClientRect?.();
+    if (!rect || rect.width <= 0 || rect.height <= 0) return false;
+    const style = globalThis.getComputedStyle?.(element);
+    return !style || (style.display !== 'none' && style.visibility !== 'hidden');
+  }
+  function composerArea(target = composer()) { return target?.closest?.('form,[data-testid="composer"],[data-testid="composer-container"]') || target?.parentElement || null; }
+  function sendButton(target = composer()) { const area = composerArea(target); return area?.querySelector?.('[data-testid="send-button"]') || area?.querySelector?.('button[aria-label="Send message"]') || null; }
+  // Only a visible, enabled stop control in this composer is a streaming signal.
+  function isStreaming(target = composer()) { const area = composerArea(target); return Boolean(area && Array.from(area.querySelectorAll?.('[data-testid="stop-button"]') || []).some(isVisibleInteractive)); }
 
   function fillComposer(text) {
     const target = composer();
@@ -992,14 +1028,7 @@
     catch (_) { target.dispatchEvent(new Event('input', { bubbles: true })); }
   }
 
-  async function clickSend() {
-    for (let attempt = 0; attempt < 200; attempt += 1) {
-      const button = document.querySelector('[data-testid="send-button"]') || document.querySelector('button[aria-label*="Send"],button[aria-label*="发送"]');
-      if (!isStreaming() && button && !button.disabled && button.getAttribute('aria-disabled') !== 'true') { button.click(); return; }
-      await sleep(50);
-    }
-    throw new Error('工件已写入输入框，但发送按钮暂不可用');
-  }
+  function clickSend(target = composer()) { const button = sendButton(target); if (!button || !isVisibleInteractive(button)) throw new Error('发送按钮暂不可用'); button.click(); }
 
   function outboxId(text) {
     const get = (key) => { const m = text.match(new RegExp('"' + key + '"\\s*:\\s*"([^"]+)"')); return m ? m[1] : ''; };
@@ -1011,14 +1040,20 @@
     const permId = get('permission_id');
     const ackCmd = get('command');
     if (schema.includes('permission-request') && permId) return `${schema}:${requestId}:${sessionId}:${permId}`;
-    if (seq) return `${schema}:${requestId}:${sessionId}:${seq}`;
     if (ackCmd) return `${schema}:${requestId}:${sessionId}:ack:${ackCmd}:${hash(text).slice(0, 8)}`;
+    if (seq) return `${schema}:${requestId}:${sessionId}:${seq}`;
     return `${schema}:${requestId}:${sessionId}:${hash(text).slice(0, 12)}`;
   }
 
-  function isCritical(entry) {
-    return entry.id.includes('result.v1') || entry.id.includes('permission-request') || entry.id.includes('ack:cancel');
+  function artifactPriority(entry) {
+    if (/ack:(cancel|cancel_after_checkpoint)/.test(entry.id)) return 1;
+    if (entry.id.includes('result.v1')) return 2;
+    if (entry.id.includes('permission-request')) return 3;
+    if (entry.id.includes('ack:steer')) return 4;
+    if (entry.id.includes('ack:status')) return 5;
+    return entry.id.includes('progress.v1') ? 6 : 6;
   }
+  function isCritical(entry) { return artifactPriority(entry) <= 5; }
 
   function sendArtifact(text, forceSend = false) {
     const id = outboxId(text);
@@ -1027,14 +1062,15 @@
       if (existing.id.includes('progress.v1') && !existing.id.includes('ack:')) { existing.text = text; existing.created_at = Date.now(); }
       return true;
     }
-    const entry = { id, text, force_send: forceSend, state: 'queued', created_at: Date.now(), attempts: 0, baseline_users: -1 };
+    const entry = { id, text, force_send: forceSend, state: 'queued', created_at: Date.now(), attempts: 0, baseline_users: -1, clicked_at: 0, confirmation_deadline: 0, next_retry_at: 0, last_attempt_at: 0, error: '' };
     if (isCritical(entry) && outbox.items.length >= 8) {
       const replaceable = outbox.items.findIndex((item) => item.id.includes('progress.v1') && !isCritical(item));
-      if (replaceable >= 0) outbox.items.splice(replaceable, 1); else outbox.items.shift();
+      if (replaceable >= 0) outbox.items.splice(replaceable, 1);
+      else { entry.state = 'degraded'; entry.error = 'outbox_full_critical'; markDeliveryDegraded(entry.error); }
     } else if (outbox.items.length >= 8) {
       const replaceable = outbox.items.findIndex((item) => item.id.includes('progress.v1') && !isCritical(item));
       if (replaceable >= 0) outbox.items.splice(replaceable, 1);
-      if (outbox.items.length >= 8) { entry.state = 'recoverable_failure'; entry.error = 'outbox_full'; markDeliveryDegraded('outbox_full'); }
+      if (outbox.items.length >= 8) return false;
     }
     outbox.items.push(entry);
     persist().catch(() => {});
@@ -1044,8 +1080,8 @@
 
   function markDeliveryDegraded(reason) {
     state.delivery_state = 'delivery_degraded';
+    state.delivery_status = 'degraded';
     outbox.status = String(reason || 'delivery_degraded').slice(0, 240);
-    if (activeJob) state.status = '回传暂时失败，控制仍可用';
     render();
   }
 
@@ -1054,50 +1090,38 @@
 
   function scheduleOutboxPump() {
     if (outboxPumpTimer || destroyed) return;
-    outboxPumpTimer = setTimeout(() => { outboxPumpTimer = null; outboxPump().catch(() => {}); }, 800);
+    outboxPumpTimer = setTimeout(() => { outboxPumpTimer = null; outboxPump().catch((error) => markDeliveryDegraded(error?.message || error)); }, OUTBOX_TICK_MS);
   }
 
   async function outboxPump() {
     if (outboxPumpBusy || destroyed) return;
     outboxPumpBusy = true;
     try {
-      for (const entry of outbox.items) {
-        if (destroyed) break;
-        if (entry.state === 'delivered' || entry.state === 'awaiting_manual_send') continue;
-        if (entry.state === 'recoverable_failure' && entry.attempts > 3) continue;
-        const target = composer();
-        if (!target) { entry.state = 'composer_unavailable'; markDeliveryDegraded('composer_unavailable'); continue; }
-        const currentVal = composerValue(target).trim();
-        if (currentVal && currentVal !== entry.text.slice(0, currentVal.length)) { entry.state = 'composer_occupied'; markDeliveryDegraded('composer_occupied'); continue; }
-        if (isStreaming()) { entry.state = 'page_streaming'; markDeliveryDegraded('page_streaming'); continue; }
-        const sendBtn = document.querySelector('[data-testid="send-button"]') || document.querySelector('button[aria-label*="Send"],button[aria-label*="\u53d1\u9001"]');
-        if (!sendBtn || sendBtn.disabled || sendBtn.getAttribute('aria-disabled') === 'true') { entry.state = 'button_unavailable'; markDeliveryDegraded('button_unavailable'); continue; }
-        if (!currentVal) fillComposer(entry.text);
-        if (entry.force_send || state.settings.auto_send_results) {
-          entry.baseline_users = countUserMessages();
-          entry.state = 'click_unconfirmed';
-          entry.attempts += 1;
-          await persist().catch(() => {});
-          await clickSend();
-          const confirmed = await confirmDelivery(entry);
-          if (confirmed) {
-            entry.state = 'delivered';
-            outbox.items = outbox.items.filter((item) => item.id !== entry.id);
-            await persist().catch(() => {});
-          } else {
-            entry.state = 'click_unconfirmed'; markDeliveryDegraded('click_unconfirmed');
-          }
-        } else {
-          entry.state = 'awaiting_manual_send';
-          pendingArtifact = entry.text;
-          pendingForceSend = false;
-          await persist().catch(() => {});
-        }
-        break;
-      }
+      const now = Date.now();
+      for (const entry of outbox.items.filter((item) => item.state === 'awaiting_confirmation')) checkConfirmation(entry, now);
+      const target = composer();
+      const entry = outbox.items.filter((item) => ['queued', 'retry_wait', 'waiting_page_idle', 'waiting_composer_empty', 'waiting_send_button'].includes(item.state) && (!item.next_retry_at || item.next_retry_at <= now)).sort((a, b) => artifactPriority(a) - artifactPriority(b) || a.created_at - b.created_at)[0];
+      if (!entry) return;
+      if (!target) return waitTransport(entry, 'waiting_page_idle', 'composer_missing', now);
+      if (isStreaming(target)) return waitTransport(entry, 'waiting_page_idle', 'page_generating', now);
+      const currentVal = composerValue(target).trim();
+      if (currentVal && currentVal !== entry.text.slice(0, currentVal.length)) return waitTransport(entry, 'waiting_composer_empty', 'composer_occupied', now);
+      if (!sendButton(target) || !isVisibleInteractive(sendButton(target))) return waitTransport(entry, 'waiting_send_button', 'send_button_unavailable', now);
+      if (!currentVal) fillComposer(entry.text);
+      if (!entry.force_send && !state.settings.auto_send_results) { pendingArtifact = entry.text; pendingForceSend = false; return; }
+      outbox.sending = true;
+      entry.state = 'click_pending'; entry.baseline_users = countUserMessages(); entry.attempts += 1; entry.last_attempt_at = now;
+      try {
+        clickSend(target);
+        entry.clicked_at = now; entry.confirmation_deadline = now + DELIVERY_CONFIRM_MS; entry.state = 'awaiting_confirmation'; entry.error = '';
+        state.delivery_state = 'healthy'; state.delivery_status = 'awaiting_confirmation'; outbox.status = '等待页面确认发送';
+      } catch (error) { scheduleRetry(entry, String(error?.message || error), now); }
+      finally { outbox.sending = false; }
+      await persist().catch(() => {});
+      render();
     } finally {
       outboxPumpBusy = false;
-      if (outbox.items.some((item) => item.state !== 'delivered' && item.state !== 'awaiting_manual_send')) scheduleOutboxPump();
+      if (outbox.items.some((item) => item.state !== 'delivered')) scheduleOutboxPump();
     }
   }
 
@@ -1106,20 +1130,18 @@
     return root ? root.querySelectorAll('[data-message-author-role="user"]').length : 0;
   }
 
-  async function confirmDelivery(entry) {
+  function deliveryConfirmed(entry) {
     const identity = entry.id;
     const parts = identity.split(':');
     const schema = parts[0] || '';
     const requestId = parts[1] || '';
     const sessionId = parts[2] || '';
     const seqOrRest = parts.slice(3).join(':');
-    for (let attempt = 0; attempt < 30; attempt += 1) {
-      await sleep(500);
-      if (destroyed) return false;
+    {
       const root = conversationRoot || pageConversationRoot();
-      if (!root) continue;
+      if (!root) return false;
       const userNodes = Array.from(root.querySelectorAll('[data-message-author-role="user"]'));
-      if (entry.baseline_users >= 0 && userNodes.length <= entry.baseline_users) continue;
+      if (entry.baseline_users >= 0 && userNodes.length <= entry.baseline_users) return false;
       for (let i = userNodes.length - 1; i >= Math.max(0, userNodes.length - 3); i -= 1) {
         const nodeText = String(userNodes[i].innerText || userNodes[i].textContent || '');
         if (!nodeText.includes('DCF_LOCAL_AGENT')) continue;
@@ -1130,6 +1152,27 @@
       }
     }
     return false;
+  }
+
+  function scheduleRetry(entry, reason, now = Date.now()) {
+    entry.state = 'retry_wait'; entry.error = String(reason || 'confirmation_timeout').slice(0, 240);
+    entry.next_retry_at = now + Math.min(30000, 800 * (2 ** Math.min(entry.attempts, 5)));
+    state.delivery_status = 'retry_wait'; outbox.status = entry.error;
+    if (now - entry.created_at >= DELIVERY_DEGRADED_AFTER_MS) markDeliveryDegraded(entry.error);
+  }
+  function waitTransport(entry, transportState, reason, now = Date.now()) {
+    entry.state = transportState; entry.error = reason; entry.next_retry_at = now + OUTBOX_TICK_MS;
+    state.delivery_state = 'healthy'; state.delivery_status = transportState; outbox.status = reason;
+    if (now - entry.created_at >= DELIVERY_DEGRADED_AFTER_MS) markDeliveryDegraded(reason);
+    render();
+  }
+  function checkConfirmation(entry, now = Date.now()) {
+    if (deliveryConfirmed(entry)) {
+      entry.state = 'delivered'; outbox.items = outbox.items.filter((item) => item.id !== entry.id);
+      state.delivery_state = 'healthy'; state.delivery_status = 'delivered'; outbox.status = '已确认发送';
+      persist().catch(() => {}); render(); return;
+    }
+    if (now >= entry.confirmation_deadline) scheduleRetry(entry, 'confirmation_timeout', now);
   }
 
   async function returnPermissionRequest(job, permission, snap) {
@@ -1250,9 +1293,9 @@
         }
         if (['failed', 'error'].includes(snap.status_type)) return resultPayload(job, 'failed', snap);
         state.stage = job.response_state === 'rejected' ? 'detached' : 'running';
-        state.status = job.response_state === 'rejected'
+        setExecutionStatus(job.response_state === 'rejected'
           ? '同步消息连接已断开，但 session 仍在观察'
-          : `本机执行中 · ${snap.status_type}`;
+          : `本机执行中 · ${snap.status_type}`);
         render();
         emitProgress(job, snap);
       }
@@ -1271,14 +1314,14 @@
     counters.tasks += 1;
     state.started_at = Date.now();
     state.stage = 'starting';
-    state.status = '正在检查 OpenCode 服务';
+    setExecutionStatus('正在检查 OpenCode 服务');
     state.error = '';
     state.control_plane = { seq: 0, last_progress_at: 0, last_stage_sent: '', workdir: '', branch: '', head: '', changed_files: 0, test_status: '', commit_status: '', push_status: '', blocked_reason: '', permission_id: '' };
     render();
     const config = await connectionConfig();
     await request('/global/health', { config, timeout: 8000 });
     state.stage = 'creating';
-    state.status = '服务已连接，正在创建会话';
+    setExecutionStatus('服务已连接，正在创建会话');
     render();
     const session = await request('/session', { config, method: 'POST', body: { title: requestData.title } });
     const session_id = sessionId(session);
@@ -1305,7 +1348,7 @@
     state.last_session_id = session_id;
     state.processed_ids = [...state.processed_ids.filter((id) => id !== requestData.id), requestData.id].slice(-80);
     state.stage = 'submitting';
-    state.status = '会话已创建，正在提交同步消息请求';
+    setExecutionStatus('会话已创建，正在提交同步消息请求');
     emitProgress(job, null, true);
     await persist();
     render();
@@ -1321,11 +1364,11 @@
       job.last_activity_at = Date.now();
     });
     state.stage = 'running';
-    state.status = '消息请求已提交，正在根据 session 活动持续观察';
+    setExecutionStatus('消息请求已提交，正在根据 session 活动持续观察');
     render();
     const finalPayload = await poll(job);
     state.stage = finalPayload.status;
-    state.status = finalPayload.status === 'completed' ? '本机任务完成，正在回传' : `本机任务结束 · ${finalPayload.status}`;
+    setExecutionStatus(finalPayload.status === 'completed' ? '本机任务完成，正在回传' : `本机任务结束 · ${finalPayload.status}`);
     state.last_terminal = { request_id: job.request.id, session_id: job.session_id, status: finalPayload.status, at: new Date().toISOString() };
     render();
     sendArtifact(artifact(MARKERS.result, finalPayload));
@@ -1352,7 +1395,7 @@
     }, mode, snap, execution);
     state.stage = 'failed';
     state.failure_kind = 'task_failed';
-    state.status = '本机任务失败，正在回传；控制仍可用';
+    setExecutionStatus('本机任务失败，正在回传；控制仍可用');
     state.error = String(error?.message || error);
     render();
     sendArtifact(artifact(MARKERS.result, failure));
@@ -1430,7 +1473,14 @@
     const stuck = active && activeJob && Date.now() - activeJob.last_activity_at > STUCK_THRESHOLD_MS;
     const elapsed = elapsedText();
     const idleSec = activeJob ? Math.floor((Date.now() - activeJob.last_activity_at) / 1000) : 0;
+    // The legacy template consumes status; keep it execution-only, then add
+    // independent diagnostics below so delivery never overwrites task state.
+    state.status = state.execution_status;
     mountRoot.innerHTML = `<style>${style()}</style><section class="card"><div class="head"><b>对话闭环</b><span class="status">${active ? '执行中' : state.settings.enabled ? '已开启' : '已关闭'}</span></div><div class="muted">历史消息只建立基线；长任务按最近活动判断；权限请求交由当前对话裁决。</div><div class="row"><label><input type="checkbox" data-field="enabled" ${state.settings.enabled ? 'checked' : ''}>自动委派</label><label><input type="checkbox" data-field="auto-send" ${state.settings.auto_send_results ? 'checked' : ''}>结果自动发送</label></div><div><b>${escapeHtml(state.status)}</b>${elapsed ? ` · ${elapsed}` : ''}<br><span class="muted">阶段：${escapeHtml(state.stage)}${activeJob ? ` · ${escapeHtml(activeJob.request.id)} · ${escapeHtml(activeJob.session_id)}` : ''}</span></div>${active && activeJob ? `<div class="task-card"><div class="head"><b>活动任务</b><span class="status ${stuck ? 'stuck' : ''}">${escapeHtml(progressState())}${stuck ? ' · 疑似卡住' : ''}</span></div><div class="grid"><div class="metric">状态<b>${escapeHtml(progress.status_type || '—')}</b></div><div class="metric">消息<b>${progress.messages}</b></div><div class="metric">Todo<b>${progress.todo}</b></div><div class="metric">Diff<b>${progress.diff}</b></div><div class="metric">权限<b>${progress.permissions}</b></div><div class="metric">无活动<b>${idleSec}秒</b></div></div>${cp.workdir || cp.branch || cp.head ? `<div class="muted">工作区：${escapeHtml(cp.workdir || '—')} · 分支：${escapeHtml(cp.branch || '—')} · HEAD：${escapeHtml(cp.head || '—')}</div>` : ''}${cp.changed_files ? `<div class="muted">变更文件：${cp.changed_files} 个</div>` : ''}${cp.permission_id ? `<div class="muted">等待权限：${escapeHtml(cp.permission_id)}</div>` : ''}${progress.preview ? `<div class="preview">${escapeHtml(progress.preview)}</div>` : ''}<div class="buttons"><button data-action="ctl-status">查看进展</button><button data-action="ctl-steer">补充指令</button><button class="danger" data-action="ctl-cancel">中止任务</button><button class="danger" data-action="ctl-cancel-cp">保存检查点后中止</button></div></div>` : `<div class="grid"><div class="metric">状态<b>${escapeHtml(progress.status_type || '—')}</b></div><div class="metric">消息<b>${progress.messages}</b></div><div class="metric">Todo<b>${progress.todo}</b></div><div class="metric">Diff<b>${progress.diff}</b></div><div class="metric">权限<b>${progress.permissions}</b></div><div class="metric">提问<b>${progress.questions}</b></div></div>${progress.preview ? `<div class="preview">${escapeHtml(progress.preview)}</div>` : ''}`}<div class="buttons"><button class="primary" data-action="acceptance">一键验收并回传</button><button data-action="latest">检查最新助手回复</button><button data-action="return">回传待发送工件</button><button data-action="clear">清除已处理记录</button></div>${state.error ? `<div class="error">${escapeHtml(state.error)}</div>` : ''}</section>`;
+    const oldest = outbox.items.length ? Math.max(0, Math.floor((Date.now() - Math.min(...outbox.items.map((item) => item.created_at || Date.now()))) / 1000)) : 0;
+    const currentEntry = outbox.items.find((item) => item.state === 'awaiting_confirmation') || outbox.items[0];
+    const nextRetry = outbox.items.filter((item) => item.next_retry_at).map((item) => item.next_retry_at);
+    mountRoot.querySelector('.card')?.insertAdjacentHTML('beforeend', `<div class="task-card"><b>控制与回传</b><div class="muted">控制：${escapeHtml(state.control_status)} · ${escapeHtml(state.last_control_command || '—')} ${escapeHtml(state.last_control_result || '')}${state.last_control_error ? ` · ${escapeHtml(state.last_control_error)}` : ''}</div><div class="muted">回传：${escapeHtml(state.delivery_status)} · 队列 ${outbox.items.length} · 当前 ${escapeHtml(currentEntry?.id || '—')} · 状态 ${escapeHtml(currentEntry?.state || '—')} · 最老 ${oldest}秒 · 最近尝试 ${escapeHtml(String(Math.max(...outbox.items.map((item) => item.last_attempt_at || 0), 0) || '—'))} · 下次重试 ${escapeHtml(String(nextRetry.length ? Math.min(...nextRetry) : '—'))} · ${escapeHtml(outbox.status || 'ready')}</div></div>`);
   }
 
   async function handleAction(action) {
@@ -1442,21 +1492,14 @@
     if (action === 'ctl-cancel' && activeJob) { await executeControl({ kind: 'control', command: 'cancel', command_id: `ctl-ui-${hash(activeJob.request.id)}-${Date.now()}`, request_id: activeJob.request.id, session_id: activeJob.session_id }); return; }
     if (action === 'ctl-cancel-cp' && activeJob) { await executeControl({ kind: 'control', command: 'cancel_after_checkpoint', command_id: `ctl-ui-${hash(activeJob.request.id)}-${Date.now()}`, request_id: activeJob.request.id, session_id: activeJob.session_id }); return; }
     if (action !== 'return') return;
-    const pending = outbox.items.find((item) => item.state === 'awaiting_manual_send' || item.state === 'click_unconfirmed' || item.state === 'recoverable_failure');
+    const pending = outbox.items.find((item) => item.state !== 'delivered');
     if (!pending && !pendingArtifact) { state.status = '当前没有待回传工件'; render(); return; }
     const entry = pending || outbox.items.find((item) => item.text === pendingArtifact);
     if (!entry) { state.status = '当前没有待回传工件'; render(); return; }
-    if (composerValue(composer()).trim() || isStreaming()) throw new Error('当前对话尚未空闲');
-    entry.baseline_users = countUserMessages();
-    fillComposer(entry.text);
-    if (entry.force_send || pendingForceSend || state.settings.auto_send_results) {
-      entry.state = 'click_unconfirmed'; entry.attempts += 1;
-      await persist().catch(() => {});
-      await clickSend();
-      const confirmed = await confirmDelivery(entry);
-      if (confirmed) { entry.state = 'delivered'; outbox.items = outbox.items.filter((item) => item.id !== entry.id); await persist().catch(() => {}); }
-      else { entry.state = 'click_unconfirmed'; state.status = '点击后未确认投递，保留工件'; }
-    } else { entry.state = 'awaiting_manual_send'; }
+    entry.force_send = entry.force_send || pendingForceSend;
+    entry.state = 'queued'; entry.next_retry_at = 0;
+    scheduleOutboxPump();
+    await persist().catch(() => {});
     pendingArtifact = '';
     pendingForceSend = false;
     render();
@@ -1660,3 +1703,5 @@
     host({ type: 'unit.failed', unit_id: UNIT_ID, version: UNIT_VERSION, error: String(error?.message || error) }).catch(() => {});
   }
 })();
+  function setExecutionStatus(value) { state.execution_status = String(value || ''); state.status = state.execution_status; }
+  function setControlStatus(value) { state.control_status = String(value || ''); }
