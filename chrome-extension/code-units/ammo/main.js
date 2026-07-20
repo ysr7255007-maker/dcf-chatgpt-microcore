@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.ammo';
-  const UNIT_VERSION = '1.0.0-rc.2-ammo.4';
+  const UNIT_VERSION = '1.0.0-rc.2-ammo.5';
   const PANEL_ID = 'ammo';
   const HOST_ID = 'dcf-panel-ammo';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_AMMO__';
@@ -31,7 +31,8 @@
     query: '',
     selected_id: '',
     draft: null,
-    notice: ''
+    notice: '',
+    confirm_delete: null
   };
 
   function destroy() {
@@ -349,6 +350,7 @@
           <button data-action="edit" ${selected ? '' : 'disabled'}>编辑</button>
           <button class="danger" data-action="delete" ${selected ? '' : 'disabled'}>删除</button>
         </div></div>
+        ${state.confirm_delete ? `<div class="confirm-bar"><span>确认删除"${escapeHtml((state.items[state.confirm_delete] || {}).title || state.confirm_delete)}"？</span><button class="danger" data-action="confirm_delete">确认删除</button><button data-action="cancel_delete">取消</button></div>` : ''}
       </section>`;
 
     const search = root.querySelector('[data-role="search"]');
@@ -422,10 +424,21 @@
             await sendPrompt(updatePrompt(item));
           } else if (action === 'edit' && item) {
             openEditor(item);
-          } else if (action === 'delete' && item && confirm(`删除“${item.title || item.id}”？`)) {
-            delete state.items[item.id];
+          } else if (action === 'delete' && item) {
+            state.confirm_delete = item.id;
+            render();
+          } else if (action === 'confirm_delete') {
+            const target = state.items[state.confirm_delete];
+            if (target) {
+              delete state.items[state.confirm_delete];
+              showNotice(`已删除"${target.title || target.id}"`);
+            }
+            state.confirm_delete = null;
             state.selected_id = '';
             await persist();
+            render();
+          } else if (action === 'cancel_delete') {
+            state.confirm_delete = null;
             render();
           }
         } catch (error) {
@@ -563,7 +576,7 @@
   }
 
   function style() {
-    return `:host{display:block;color:inherit;font:13px/1.5 system-ui;min-width:0}.content{display:grid;gap:9px;min-width:0}.notice{min-height:18px;color:#666;overflow-wrap:anywhere}.library-shell,.card,.control-dock{border:1px solid #ddd;border-radius:10px;padding:10px;background:#fff;min-width:0}.header-row{margin-bottom:8px}.row{display:flex;gap:7px;align-items:center;flex-wrap:wrap;min-width:0}.grow{flex:1;min-width:0;overflow-wrap:anywhere}.badge{font-size:11px;border:1px solid #ccc;border-radius:999px;padding:2px 7px}.search,input,textarea,button{box-sizing:border-box;max-width:100%;min-width:0;font:inherit;color:inherit;border:1px solid #bbb;background:#fff;border-radius:8px;padding:7px 9px}.search{width:100%;margin-bottom:8px}.ammo-list{display:grid;gap:7px;max-height:360px;overflow-y:auto;overflow-x:hidden;padding-right:2px;scrollbar-width:thin}.ammo-card{border:1px solid #ddd;border-radius:9px;padding:9px;cursor:pointer;outline:none;transition:border-color .14s ease,background .14s ease,transform .14s ease}.ammo-card:hover{background:#f7f7f7}.ammo-card:focus-visible{box-shadow:0 0 0 2px #7775}.ammo-card.selected{border-color:#202124;background:#f0f0f0;transform:translateX(1px)}.ammo-card p{margin:5px 0;color:#555;overflow-wrap:anywhere}.meta{font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:#777;overflow-wrap:anywhere}.control-dock{position:sticky;bottom:0;z-index:3;box-shadow:0 -8px 24px #0000000b;display:grid;gap:9px}.selection-summary{display:flex;align-items:center;gap:8px;min-width:0}.selection-summary span{font-size:11px;color:#666}.selection-summary b{overflow-wrap:anywhere}.action-group{display:grid;gap:5px}.action-group>span{font-size:11px;color:#666}.control-grid{display:grid;gap:6px}.library-actions{grid-template-columns:repeat(3,minmax(0,1fr))}.item-actions{grid-template-columns:repeat(3,minmax(0,1fr))}button{cursor:pointer}button:disabled{opacity:.45;cursor:default}.primary{background:#202124;color:#fff;border-color:#202124}.danger{color:#b42318}.editor{display:grid;gap:7px;margin-bottom:8px}.editor label{display:grid;gap:4px;font-size:12px}.editor textarea{width:100%;resize:vertical}.body-input{min-height:180px}.editor-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.empty{padding:24px;text-align:center;color:#777}@media(max-width:330px){.library-actions,.item-actions{grid-template-columns:repeat(2,minmax(0,1fr))}.ammo-list{max-height:320px}}@media(prefers-color-scheme:dark){.library-shell,.card,.control-dock{background:#222;border-color:#444}.notice,.selection-summary span,.action-group>span{color:#aaa}.ammo-card{border-color:#444}.ammo-card:hover{background:#292929}.ammo-card.selected{background:#303030;border-color:#f3f3f3}.ammo-card p,.meta{color:#aaa}.badge{border-color:#555}input,textarea,button{background:#292929;color:#f3f3f3;border-color:#555}.primary{background:#f3f3f3;color:#181818}.danger{color:#ff8b82}.empty{color:#aaa}}`;
+    return `:host{display:block;color:inherit;font:13px/1.5 system-ui;min-width:0}.content{display:grid;gap:9px;min-width:0}.notice{min-height:18px;color:#666;overflow-wrap:anywhere}.library-shell,.card,.control-dock{border:1px solid #ddd;border-radius:10px;padding:10px;background:#fff;min-width:0}.header-row{margin-bottom:8px}.row{display:flex;gap:7px;align-items:center;flex-wrap:wrap;min-width:0}.grow{flex:1;min-width:0;overflow-wrap:anywhere}.badge{font-size:11px;border:1px solid #ccc;border-radius:999px;padding:2px 7px}.search,input,textarea,button{box-sizing:border-box;max-width:100%;min-width:0;font:inherit;color:inherit;border:1px solid #bbb;background:#fff;border-radius:8px;padding:7px 9px}.search{width:100%;margin-bottom:8px}.ammo-list{display:grid;gap:7px;max-height:360px;overflow-y:auto;overflow-x:hidden;padding-right:2px;scrollbar-width:thin}.ammo-card{border:1px solid #ddd;border-radius:9px;padding:9px;cursor:pointer;outline:none;transition:border-color .14s ease,background .14s ease,transform .14s ease}.ammo-card:hover{background:#f7f7f7}.ammo-card:focus-visible{box-shadow:0 0 0 2px #7775}.ammo-card.selected{border-color:#202124;background:#f0f0f0;transform:translateX(1px)}.ammo-card p{margin:5px 0;color:#555;overflow-wrap:anywhere}.meta{font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:#777;overflow-wrap:anywhere}.control-dock{position:sticky;bottom:0;z-index:3;box-shadow:0 -8px 24px #0000000b;display:grid;gap:9px}.selection-summary{display:flex;align-items:center;gap:8px;min-width:0}.selection-summary span{font-size:11px;color:#666}.selection-summary b{overflow-wrap:anywhere}.action-group{display:grid;gap:5px}.action-group>span{font-size:11px;color:#666}.control-grid{display:grid;gap:6px}.library-actions{grid-template-columns:repeat(3,minmax(0,1fr))}.item-actions{grid-template-columns:repeat(3,minmax(0,1fr))}button{cursor:pointer}button:disabled{opacity:.45;cursor:default}.primary{background:#202124;color:#fff;border-color:#202124}.danger{color:#b42318}.confirm-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;border:1px solid #b42318;border-radius:8px;background:#fef3f2;font-size:12px}.confirm-bar span{flex:1;min-width:0;overflow-wrap:anywhere;color:#b42318}.editor{display:grid;gap:7px;margin-bottom:8px}.editor label{display:grid;gap:4px;font-size:12px}.editor textarea{width:100%;resize:vertical}.body-input{min-height:180px}.editor-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.empty{padding:24px;text-align:center;color:#777}@media(max-width:330px){.library-actions,.item-actions{grid-template-columns:repeat(2,minmax(0,1fr))}.ammo-list{max-height:320px}}@media(prefers-color-scheme:dark){.library-shell,.card,.control-dock{background:#222;border-color:#444}.notice,.selection-summary span,.action-group>span{color:#aaa}.ammo-card{border-color:#444}.ammo-card:hover{background:#292929}.ammo-card.selected{background:#303030;border-color:#f3f3f3}.ammo-card p,.meta{color:#aaa}.badge{border-color:#555}input,textarea,button{background:#292929;color:#f3f3f3;border-color:#555}.primary{background:#f3f3f3;color:#181818}.danger{color:#ff8b82}.confirm-bar{background:#3a2020;border-color:#ff8b82}.confirm-bar span{color:#ff8b82}.empty{color:#aaa}}`;
   }
 
   globalThis[GLOBAL_KEY] = { version: UNIT_VERSION, destroy };

@@ -31,7 +31,7 @@ assert(shell.includes('scroll-hint down'));
 assert(shell.includes('appearanceState = { ...appearanceState, ...patch }'));
 
 const ammo = fs.readFileSync(path.join(root, 'chrome-extension/code-units/ammo/main.js'), 'utf8');
-assert(ammo.includes("const UNIT_VERSION = '1.0.0-rc.2-ammo.4'"));
+assert(ammo.includes("const UNIT_VERSION = '1.0.0-rc.2-ammo.5'"));
 assert(ammo.includes('language-ammo-library/data/language-ammo/library.json'));
 assert(ammo.includes('selected_id'));
 assert(ammo.includes('aria-selected'));
@@ -61,7 +61,7 @@ assert(manager.includes("setTimeout(restoreRemembered, 220)"));
 
 const versions = Object.fromEntries(index.units.map((unit) => [unit.id, unit.version]));
 assert.strictEqual(versions['dcf.firstparty.shell'], '1.0.0-rc.2-shell.7');
-assert.strictEqual(versions['dcf.firstparty.ammo'], '1.0.0-rc.2-ammo.4');
+assert.strictEqual(versions['dcf.firstparty.ammo'], '1.0.0-rc.2-ammo.5');
 assert.strictEqual(versions['dcf.firstparty.plugin-manager'], '1.0.0-rc.2-plugin-manager.6');
 assert.strictEqual(versions['dcf.firstparty.local-agent'], '1.0.0-rc.2-local-agent.5');
 assert.strictEqual(versions['dcf.firstparty.local-agent-dialogue'], '1.0.0-rc.2-local-agent-dialogue.18');

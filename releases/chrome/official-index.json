@@ -36,7 +36,7 @@
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/ammo/main.js",
       "default_enabled": true,
       "description": "语言弹药工作台、自动装填、发射、更新与 GitHub 便携库。",
-      "hash": "e805b71adb6defc5ecd685ed56ae873d2db97440f61fe72308e9730727bc011a",
+      "hash": "325405d2e47096ef189fdeb7278789b2b3c330e62c8c6640f0b311232a235c6d",
       "host_api": "2",
       "id": "dcf.firstparty.ammo",
       "matches": [
@@ -47,7 +47,7 @@
       "required": true,
       "run_at": "document_idle",
       "title": "语言弹药",
-      "version": "1.0.0-rc.2-ammo.4",
+      "version": "1.0.0-rc.2-ammo.5",
       "world_id": "dcf-firstparty-ammo"
     },
     {
