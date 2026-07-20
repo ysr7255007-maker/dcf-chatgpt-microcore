@@ -3,7 +3,20 @@
   const H = root.DCFHost;
   const C = H.C;
   const CANDIDATE_TIMEOUT_MINUTES = 1;
+  H.RUNTIME_OPERATION_TIMEOUT_MS = H.RUNTIME_OPERATION_TIMEOUT_MS || 5000;
+  H.PAGE_ACTIVATION_TIMEOUT_MS = H.PAGE_ACTIVATION_TIMEOUT_MS || 2500;
+  H.PAGE_PROBE_TIMEOUT_MS = H.PAGE_PROBE_TIMEOUT_MS || 1500;
 
+  H.withTimeout = function withTimeout(promise, timeoutMs, label) {
+    const task = Promise.resolve(promise).then(
+      (value) => ({ ok: true, value }),
+      (error) => ({ ok: false, error: String(error && error.message || error) })
+    );
+    return Promise.race([
+      task,
+      new Promise((resolve) => setTimeout(() => resolve({ ok: false, timeout: true, error: `${label || 'operation'}_timeout` }), timeoutMs))
+    ]);
+  };
   H.userScriptsApi = function userScriptsApi() {
     if (!chrome.userScripts || typeof chrome.userScripts.getScripts !== 'function') throw new Error('USER_SCRIPTS_PERMISSION_REQUIRED');
     return chrome.userScripts;
@@ -42,8 +55,62 @@
     if (missing.length || extra.length) throw new Error(`registration mismatch missing=${missing.join(',')} extra=${extra.join(',')}`);
     return { snapshot: valid, registered: [...found].sort(), updated: updates.length, added: additions.length, removed: removals.length };
   };
+  H.reconcileUnitRegistration = async function reconcileUnitRegistration(state, ref) {
+    const api = H.userScriptsApi();
+    const unit = C.getUnit(state, ref.id, ref.version);
+    if (!unit) throw new Error(`unit_not_installed:${ref.id}`);
+    const id = C.scriptId(ref.id);
+    const actual = await H.actualDcfScripts();
+    const present = actual.some((item) => item.id === id);
+    let operation = 'unchanged';
+    if (ref.enabled !== false) {
+      await H.configureWorlds([unit]);
+      const desired = C.registrationFor(unit);
+      const settled = await H.withTimeout(
+        present ? api.update([desired]) : api.register([desired]),
+        H.RUNTIME_OPERATION_TIMEOUT_MS,
+        present ? 'user_script_update' : 'user_script_register'
+      );
+      if (!settled.ok) throw new Error(settled.error);
+      operation = present ? 'updated' : 'registered';
+    } else if (present) {
+      const settled = await H.withTimeout(api.unregister({ ids: [id] }), H.RUNTIME_OPERATION_TIMEOUT_MS, 'user_script_unregister');
+      if (!settled.ok) throw new Error(settled.error);
+      operation = 'unregistered';
+    }
+    const after = await H.actualDcfScripts();
+    const exists = after.some((item) => item.id === id);
+    if ((ref.enabled !== false) !== exists) throw new Error(`unit_registration_mismatch:${ref.id}`);
+    return { unit_id: ref.id, script_id: id, enabled: ref.enabled !== false, operation };
+  };
 
   H.chatGptTabs = function chatGptTabs() { return chrome.tabs.query({ url: ['https://chatgpt.com/*', 'https://chat.openai.com/*'] }); };
+  H.isChatGptUrl = function isChatGptUrl(value) {
+    try {
+      const url = new URL(String(value || ''));
+      return url.origin === 'https://chatgpt.com' || url.origin === 'https://chat.openai.com';
+    } catch (_) {
+      return false;
+    }
+  };
+  H.probeChatGptPages = async function probeChatGptPages() {
+    const tabs = await H.chatGptTabs();
+    const reports = [];
+    for (const tab of tabs) {
+      const base = { tab_id: tab.id || null, url: H.isChatGptUrl(tab.url) ? String(tab.url).split('#')[0] : null };
+      if (!tab.id || !chrome.tabs || typeof chrome.tabs.sendMessage !== 'function') {
+        reports.push({ ...base, reachable: false, error: 'page_probe_unavailable' });
+        continue;
+      }
+      const settled = await H.withTimeout(chrome.tabs.sendMessage(tab.id, { type: 'host.page_probe' }), H.PAGE_PROBE_TIMEOUT_MS, 'page_probe');
+      if (!settled.ok || !settled.value || settled.value.ok === false) {
+        reports.push({ ...base, reachable: false, error: settled.error || String(settled.value && settled.value.error || 'page_probe_failed') });
+        continue;
+      }
+      reports.push({ ...base, ...C.clone(settled.value), reachable: true });
+    }
+    return reports;
+  };
   H.executeCandidateInOpenTabs = async function executeCandidateInOpenTabs() {
     const state = await H.storageGet();
     const snapshot = state.snapshots.candidate;
@@ -154,18 +221,63 @@
       return C.clone(candidate);
     });
   };
-  H.setUnitEnabled = async function setUnitEnabled(id, enabled) {
+  H.activateUnitInTab = async function activateUnitInTab(state, ref, tabId) {
+    if (!tabId || !chrome.userScripts || typeof chrome.userScripts.execute !== 'function') return { status: 'reload_required', reason: 'user_script_execute_unavailable' };
+    const unit = C.getUnit(state, ref.id, ref.version);
+    if (!unit) return { status: 'reload_required', reason: `unit_not_installed:${ref.id}` };
+    const settled = await H.withTimeout(
+      chrome.userScripts.execute({ target: { tabId }, js: [{ code: unit.code }], world: 'USER_SCRIPT', worldId: unit.world_id }),
+      H.PAGE_ACTIVATION_TIMEOUT_MS,
+      'unit_page_activation'
+    );
+    if (!settled.ok) return { status: 'reload_required', reason: settled.error };
+    return { status: 'activated', tab_id: tabId };
+  };
+  H.setUnitEnabled = async function setUnitEnabled(id, enabled, sender) {
     const state = await H.storageGet();
     const base = state.snapshots.current || state.snapshots.last_known_good;
     if (!base) throw new Error('no_snapshot_to_edit');
-    const candidate = C.clone(base);
-    const ref = candidate.entries.find((entry) => entry.id === id);
+    if (state.snapshots.candidate) throw new Error('candidate_update_in_progress');
+    const nextSnapshot = C.clone(base);
+    const ref = nextSnapshot.entries.find((entry) => entry.id === id);
     if (!ref) throw new Error(`unit_not_installed:${id}`);
     ref.enabled = enabled !== false;
-    candidate.id = `snapshot-${Date.now().toString(36)}`;
-    candidate.created_at = C.nowIso();
-    candidate.reason = `${ref.enabled ? 'enable' : 'disable'}-unit:${id}`;
-    await H.mutate(async (next) => { next.snapshots.candidate = C.validateSnapshot(next, candidate); C.appendEvidence(next, { type: 'candidate.staged', reason: candidate.reason, snapshot_id: candidate.id }); });
-    return H.reconcileTarget(candidate.reason);
+    nextSnapshot.id = `snapshot-${Date.now().toString(36)}`;
+    nextSnapshot.created_at = C.nowIso();
+    nextSnapshot.reason = `${ref.enabled ? 'enable' : 'disable'}-unit:${id}`;
+
+    await H.mutate(async (next) => C.appendEvidence(next, {
+      type: 'unit.toggle.requested',
+      unit_id: id,
+      enabled: ref.enabled,
+      source_tab_id: sender && sender.tab && sender.tab.id || null
+    }));
+
+    const registration = await H.reconcileUnitRegistration(state, ref);
+    const committed = await H.mutate(async (next) => {
+      const latest = next.snapshots.current || next.snapshots.last_known_good;
+      if (!latest || latest.id !== base.id) throw new Error('snapshot_changed_during_toggle');
+      if (next.snapshots.current) next.snapshots.history.push(C.clone(next.snapshots.current));
+      next.snapshots.current = C.clone(nextSnapshot);
+      next.snapshots.last_known_good = C.clone(nextSnapshot);
+      next.snapshots.candidate = null;
+      next.snapshots.history = next.snapshots.history.slice(-12);
+      C.appendEvidence(next, { type: 'unit.toggle.committed', unit_id: id, enabled: ref.enabled, snapshot_id: nextSnapshot.id, registration });
+      return { snapshot_id: nextSnapshot.id };
+    });
+
+    const senderUrl = sender && (sender.url || sender.tab && sender.tab.url);
+    let page = { status: 'reload_required', reason: ref.enabled ? 'source_page_unavailable' : 'disable_requires_reload' };
+    if (ref.enabled && sender && sender.tab && sender.tab.id && H.isChatGptUrl(senderUrl)) {
+      page = await H.activateUnitInTab(state, ref, sender.tab.id);
+    }
+    await H.mutate(async (next) => C.appendEvidence(next, {
+      type: 'unit.toggle.page_result',
+      unit_id: id,
+      enabled: ref.enabled,
+      snapshot_id: nextSnapshot.id,
+      page
+    }));
+    return { ok: true, status: 'configuration_committed', enabled: ref.enabled, snapshot_id: committed.result.snapshot_id, registration, page };
   };
 })(self);
