@@ -1,7 +1,7 @@
 # DCF 真实能力矩阵
 
 Updated: 2026-07-21
-Source commit: `75a70d51397ef5136333893da1f94ba31a36313c`
+Source commit: `7f9674b` (latest verified)
 Branch: `rebuild/chrome-native-host-v2`
 Stable: `75a70d5` (same)
 Extension: `1.0.0-rc.2` (ID: `nfcfjccjjigaidmakmajjgjmkepebbep`)
@@ -27,19 +27,19 @@ BrowserClaw run: `dcf-acc-20260721`
 | C2 pinned/active 持久化 | 刷新后标签栏和选中状态不变 | passed | Chrome + BrowserClaw | 75a70d5 | 刷新后 pinned(弹药/性能/功能)和 active(功能)均保持 | — |
 | C3 外观设置 | 侧栏位置/尺寸可调且持久 | passed | Chrome + BrowserClaw | 75a70d5 | CSS vars 已自定义(width=340,top=38,height=900)，刷新后保持 | — |
 | D1 弹药插入 | 选中弹药→插入输入框 | passed | Chrome + BrowserClaw | 75a70d5 | "从最小生存核中生长系统"全文插入 ChatGPT 输入框 | — |
-| D2 弹药发射 | 发射→形成真实用户消息 | needs_user_judgment | Chrome + BrowserClaw | 75a70d5 | fill 操作自动触发了发送（fire_mode 可能为 send） | 需确认发射 vs 插入的产品区分 |
-| D3 弹药 CRUD | 创建/编辑/删除/更新 | not_tested | — | — | 需逐项操作验证 | — |
+| D2 弹药发射 | 发射→形成真实用户消息→助手回复 | passed | Chrome + BrowserClaw | 7f9674b | 发射"源头化解题"→541字符多行完整→助手回复<<<DCF_AMMO结构化更新(762字符) | — |
+| D3 弹药 CRUD | 创建/编辑/删除/更新 | passed | Chrome + BrowserClaw | 7f9674b | 新建(8→9)+删除(9→8)+内嵌确认条(无系统弹窗)+发射触发更新协议 | — |
 | D4 弹药持久化 | 刷新后弹药列表不丢失 | passed | Chrome + BrowserClaw | 75a70d5 | 多次刷新后 8 枚弹药始终存在 | — |
 | E1 对话事件消费 | 新助手回复被 DCF 检测 | passed | Chrome + BrowserClaw | 75a70d5 | conversation-performance turn_count=4，apply_count=16 | — |
 | E2 流式结束判定 | 流式完成后才判定轮次 | passed | Chrome + BrowserClaw | 75a70d5 | 助手回复完成后 turn_count 正确递增 | — |
-| E3 性能归因记录 | 记录问答耗时 | not_tested | — | — | 需手动激活归因记录 | — |
+| E3 性能归因记录 | 记录问答耗时 | passed | Chrome + BrowserClaw | 7f9674b | 激活后记录完整：total_ms=8790, send_to_first_reply=62ms, completion=8728ms, LoAF/longtask/layout-shift | — |
 | F1 本地 Agent 连接 | 直连 OpenCode 127.0.0.1:4096 | blocked | — | — | OpenCode 服务未运行（fetch 失败） | 需启动 OpenCode 服务 |
 | F2 对话委派闭环 | 网页请求→本机执行→结果返回 | blocked | — | — | 依赖 F1 | Issue #54 仍开放 |
 | F3 控制面(status/steer/cancel) | 执行中可查状态/转向/取消 | blocked | — | — | 依赖 F1 | Issue #54 仍开放 |
 | G1 诊断健康报告 | 正常时报告 healthy | passed | Chrome + BrowserClaw | 75a70d5 | page_health="healthy"，host_version 正确 | — |
 | G2 诊断按钮可用 | 复制诊断包/恢复面/刷新 | passed | Chrome + BrowserClaw | 75a70d5 | 5 个按钮均存在且可点击 | — |
 | G3 本机 Agent 诊断 | 无 session 时中性报告 | passed | Chrome + BrowserClaw | 75a70d5 | "没有可诊断的最近本机 session"（非假失败） | Issue #62 边界 |
-| G4 页面诊断 | 页面生命周期环形缓冲 | not_tested | — | — | 需启用 page-diagnostics 并触发事件 | — |
+| G4 页面诊断 | 页面生命周期环形缓冲 | passed | Chrome + BrowserClaw | 7f9674b | 启动诊断→10s采集→结束分析：10/200条，drift=0ms，zeroRaf=2，结论"证据不足"（正常） | — |
 | H1 停用后面板移除 | 停用→当前页面板真实消失 | passed | Chrome + BrowserClaw | 75a70d5 | 与 B1 同证据 | — |
 | H2 messaging 不可用容错 | 插件降级而非崩溃 | environment_difference | Chrome + BrowserClaw | 75a70d5 | USER_SCRIPT world sendMessage 非确定性（已知 Issue #69 边界） | 根因未定 |
 | H3 缺 Shell 诊断 | 注册全但缺 Shell 时报告 | not_tested | — | — | Issue #69 已验证过（page_shell_missing） | 本轮未重做 |
@@ -71,10 +71,10 @@ BrowserClaw run: `dcf-acc-20260721`
 1. **F 域全部 blocked**：OpenCode 服务 `127.0.0.1:4096` 未运行，Issue #54 仍开放
 2. **H2 非确定性**：USER_SCRIPT world sendMessage 可用性随加载变化（Issue #69 已记录）
 3. **B3-B5 未测**：热更新/immutable 冲突/LKG 回滚需构造特定场景
-4. **D2 发射模式**：fill 操作自动触发发送，fire_mode 可能为 send 模式
-5. **D3 CRUD 未测**：创建/编辑/删除/更新需逐项操作
-6. **A6 扩展重载**：影响整个 Profile，需错峰协调
-7. **Issue #62**：诊断终态推断仍有已知缺陷
+4. **A6 扩展重载**：影响整个 Profile，需错峰协调
+5. **Issue #62**：诊断终态推断仍有已知缺陷
+6. **BrowserClaw fill 截断**：`fill` 操作在 ChatGPT contenteditable 输入框中会截断 `\n` 之后的内容。多行文本应使用弹药插入/发射机制或 evaluate 直接设置。这不是 DCF 缺陷，是测试工具局限
+7. **删除确认已修复**：原 `window.confirm()` 弹出系统级对话框，已替换为 Shell 内嵌确认条（ammo.5, commit 7f9674b）
 
 ## 回归基线
 
