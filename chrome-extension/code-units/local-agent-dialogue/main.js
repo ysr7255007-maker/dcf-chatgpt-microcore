@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.local-agent-dialogue';
-  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.18';
+  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.19';
   const LOCAL_AGENT_ID = 'dcf.firstparty.local-agent';
   const PANEL_ID = 'dcf-panel-local-agent';
   const SHELL_ID = 'dcf-chrome-shell-host';
@@ -1073,9 +1073,10 @@
         const currentVal = composerValue(target).trim();
         if (currentVal && currentVal !== entry.text.slice(0, currentVal.length)) { entry.state = 'composer_occupied'; markDeliveryDegraded('composer_occupied'); continue; }
         if (isStreaming()) { entry.state = 'page_streaming'; markDeliveryDegraded('page_streaming'); continue; }
+        if (!currentVal) fillComposer(entry.text);
+        await sleep(120);
         const sendBtn = document.querySelector('[data-testid="send-button"]') || document.querySelector('button[aria-label*="Send"],button[aria-label*="\u53d1\u9001"]');
         if (!sendBtn || sendBtn.disabled || sendBtn.getAttribute('aria-disabled') === 'true') { entry.state = 'button_unavailable'; markDeliveryDegraded('button_unavailable'); continue; }
-        if (!currentVal) fillComposer(entry.text);
         if (entry.force_send || state.settings.auto_send_results) {
           entry.baseline_users = countUserMessages();
           entry.state = 'click_unconfirmed';
