@@ -162,7 +162,7 @@
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/plugin-manager/main.js",
       "default_enabled": true,
       "description": "低频功能启停与统一 DCF 更新入口。",
-      "hash": "6392dbdfb69f138675a5aeacbb889a2930eaadc5fc1026b8b646219ddaab69d9",
+      "hash": "1da02452063981312738baf964e7669b4c0829966c2e1903658bcdb35192dcb2",
       "host_api": "2",
       "id": "dcf.firstparty.plugin-manager",
       "matches": [
@@ -173,7 +173,7 @@
       "required": true,
       "run_at": "document_idle",
       "title": "功能管理",
-      "version": "1.0.0-rc.2-plugin-manager.5",
+      "version": "1.0.0-rc.2-plugin-manager.6",
       "world_id": "dcf-firstparty-plugin-manager"
     },
     {

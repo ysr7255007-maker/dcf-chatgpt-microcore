@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.plugin-manager';
-  const UNIT_VERSION = '1.0.0-rc.2-plugin-manager.5';
+  const UNIT_VERSION = '1.0.0-rc.2-plugin-manager.6';
   const PANEL_ID = 'plugins';
   const HOST_ID = 'dcf-panel-plugins';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_PLUGIN_MANAGER__';
@@ -57,6 +57,14 @@
 
   function emitShellCommand(action, panelId, activate = true) {
     document.dispatchEvent(new CustomEvent('dcf:shell-command', { detail: JSON.stringify({ action, panel_id: panelId, activate }) }));
+  }
+  function removePanelFromPage(panelId) {
+    const selector = `[data-dcf-panel-id="${panelId}"]`;
+    const shellShadow = document.getElementById('dcf-chrome-shell-host')?.shadowRoot;
+    const inShadow = shellShadow && shellShadow.querySelector(selector);
+    if (inShadow) inShadow.remove();
+    const inDoc = document.querySelector(selector);
+    if (inDoc) inDoc.remove();
   }
   function queryShellState() { document.dispatchEvent(new CustomEvent('dcf:shell-query')); }
   function panelIsPinned(panelId) { return Array.isArray(shellState.pinned_panels) && shellState.pinned_panels.includes(panelId); }
@@ -157,6 +165,9 @@
           if (enabled) {
             const info = PANEL_BY_UNIT[button.dataset.id];
             if (info && panelIsPinned(info.panel_id)) emitShellCommand('unpin', info.panel_id, false);
+            // Unregistering only affects future injections; remove the live panel
+            // from the current page so the disabled unit truly disappears.
+            if (info) removePanelFromPage(info.panel_id);
           }
           if (!enabled && result.status === 'reload_required') {
             notice = '配置已保存，正在刷新页面以完成启用…';
