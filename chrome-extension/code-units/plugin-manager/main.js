@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.plugin-manager';
-  const UNIT_VERSION = '1.0.0-rc.2-plugin-manager.4';
+  const UNIT_VERSION = '1.0.0-rc.2-plugin-manager.5';
   const PANEL_ID = 'plugins';
   const HOST_ID = 'dcf-panel-plugins';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_PLUGIN_MANAGER__';
@@ -19,10 +19,22 @@
     'dcf.firstparty.page-diagnostics': { panel_id: 'dcf-panel-page-diagnostics', title: '页面诊断' }
   };
 
-  const send = (message) => chrome.runtime.sendMessage(message).then((result) => {
-    if (!result || result.ok === false) throw new Error(result && result.error || 'DCF host rejected request');
-    return result;
-  });
+  function send(message, timeoutMs = 10000) {
+    return new Promise((resolve, reject) => {
+      let done = false;
+      const finish = (fn, value) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        fn(value);
+      };
+      const timer = setTimeout(() => finish(reject, new Error(`host_message_timeout:${String(message && message.type || 'unknown')}`)), timeoutMs);
+      Promise.resolve(chrome.runtime.sendMessage(message)).then((result) => {
+        if (!result || result.ok === false) throw new Error(result && (result.error || result.status) || 'DCF host rejected request');
+        finish(resolve, result);
+      }).catch((error) => finish(reject, error));
+    });
+  }
 
   const previous = globalThis[GLOBAL_KEY];
   if (previous?.destroy) previous.destroy();
@@ -55,6 +67,7 @@
   }
   function queryShellState() { document.dispatchEvent(new CustomEvent('dcf:shell-query')); }
   function panelIsPinned(panelId) { return Array.isArray(shellState.pinned_panels) && shellState.pinned_panels.includes(panelId); }
+  function panelIsAvailable(panelId) { return Array.isArray(shellState.panels) && shellState.panels.some((item) => String(item.id || '') === panelId); }
   function currentSnapshot() {
     return status && (status.snapshots.candidate || status.snapshots.current || status.snapshots.last_known_good);
   }
@@ -71,6 +84,34 @@
       notice = `${label}失败：${errorText(error)}`;
       render();
     }
+  }
+  function reloadCurrentPage(message) {
+    notice = message;
+    render();
+    setTimeout(() => location.reload(), 180);
+  }
+  async function waitForPanel(panelId, timeoutMs = 900) {
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+      if (panelIsAvailable(panelId)) return true;
+      queryShellState();
+      await new Promise((resolve) => setTimeout(resolve, 80));
+    }
+    return panelIsAvailable(panelId);
+  }
+  async function rememberPinned(panelId) {
+    const next = normalizeMemory({
+      pinned_panels: [...remembered.pinned_panels.filter((id) => id !== panelId && id !== 'plugins'), panelId, 'plugins'],
+      active_panel: panelId
+    });
+    await saveMemory(next);
+  }
+  async function forgetPinned(panelId) {
+    const next = normalizeMemory({
+      pinned_panels: remembered.pinned_panels.filter((id) => id !== panelId),
+      active_panel: remembered.active_panel === panelId ? 'plugins' : remembered.active_panel
+    });
+    await saveMemory(next);
   }
 
   async function loadMemory() {
@@ -178,7 +219,7 @@
         notice = '正在保存标签并检查更新…';
         render();
         await saveMemory(shellState);
-        const result = await send({ type: 'host.check_all_updates' });
+        const result = await send({ type: 'host.check_all_updates' }, 45000);
         notice = result.plugins?.ok === false
           ? `功能更新失败：${result.plugins.error}`
           : result.plugins?.status === 'current'
@@ -191,14 +232,22 @@
     for (const button of root.querySelectorAll('[data-action="toggle"]')) {
       button.onclick = () => runAction('功能启停', async () => {
         const enabled = button.dataset.enabled === 'true';
-        notice = `正在${enabled ? '停用' : '启用'} ${button.dataset.id}…`;
+        const nextEnabled = !enabled;
+        const info = PANEL_BY_UNIT[button.dataset.id];
+        notice = `正在${nextEnabled ? '启用' : '停用'} ${button.dataset.id}…`;
         render();
-        await send({ type: 'host.set_unit_enabled', id: button.dataset.id, enabled: !enabled });
-        if (enabled) {
-          const info = PANEL_BY_UNIT[button.dataset.id];
-          if (info && panelIsPinned(info.panel_id)) emitShellCommand('unpin', info.panel_id, false);
+        const result = await send({ type: 'host.set_unit_enabled', id: button.dataset.id, enabled: nextEnabled }, 8000);
+        if (!nextEnabled && info) {
+          if (panelIsPinned(info.panel_id)) emitShellCommand('unpin', info.panel_id, false);
+          await forgetPinned(info.panel_id);
         }
         await refresh();
+        if (result.page?.status === 'reload_required') {
+          reloadCurrentPage(nextEnabled ? '配置已启用，正在刷新当前页面完成加载…' : '配置已停用，正在刷新当前页面移除运行实例…');
+          return;
+        }
+        notice = nextEnabled ? '功能已启用' : '功能已停用';
+        render();
       });
     }
 
@@ -209,17 +258,26 @@
         const panelId = button.dataset.panelId;
         if (pinned) {
           emitShellCommand('unpin', panelId, false);
+          await forgetPinned(panelId);
           notice = '已移出标签栏，功能仍保持启用';
           render();
           return;
         }
+        let result = null;
         if (!enabled) {
           notice = `正在启用 ${button.dataset.id} 并添加到标签栏…`;
           render();
-          await send({ type: 'host.set_unit_enabled', id: button.dataset.id, enabled: true });
+          result = await send({ type: 'host.set_unit_enabled', id: button.dataset.id, enabled: true }, 8000);
+          await refresh();
+        }
+        await rememberPinned(panelId);
+        const available = result?.page?.status === 'activated' ? await waitForPanel(panelId) : panelIsAvailable(panelId);
+        if (!available) {
+          reloadCurrentPage('配置已启用，正在刷新当前页面并恢复标签栏…');
+          return;
         }
         emitShellCommand('pin', panelId, true);
-        notice = '已添加到标签栏';
+        notice = '已启用并添加到标签栏';
         render();
         setTimeout(queryShellState, 120);
       });
