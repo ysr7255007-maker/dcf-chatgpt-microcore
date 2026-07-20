@@ -1,10 +1,12 @@
 'use strict';
 
+const BRIDGE_VERSION = '1.0.0-rc.2.2';
 const NEXT_HOST_ID = 'dcf-next-shell-host';
 const ATTEMPT_ATTR = 'data-dcf-chrome-next-migration-attempted';
 const DCF_HOST_ID = 'dcf-chrome-shell-host';
 const SURVIVAL_FALLBACK_ID = 'dcf-chrome-survival-fallback';
 const SURVIVAL_RELOAD_KEY = 'dcf.chrome.survival.reload.v1';
+const PAGE_INSTANCE_KEY = 'dcf.chrome.page.instance.v1';
 const SURVIVAL_RETRY_WINDOW_MS = 30 * 1000;
 
 function delay(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
@@ -14,6 +16,19 @@ function fieldByLabel(root, label) {
   const wrap = Array.from(root.querySelectorAll('.dcf-field,label')).find((node) => text(node.querySelector('span')) === label || text(node.firstElementChild) === label);
   return wrap && wrap.querySelector('input,textarea,select');
 }
+function pageInstanceId() {
+  try {
+    const existing = sessionStorage.getItem(PAGE_INSTANCE_KEY);
+    if (existing) return existing;
+    const created = `page-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    sessionStorage.setItem(PAGE_INSTANCE_KEY, created);
+    return created;
+  } catch (_) {
+    return `page-${Date.now().toString(36)}`;
+  }
+}
+const PAGE_INSTANCE_ID = pageInstanceId();
+
 async function extractNextPayload(host) {
   const root = host && host.shadowRoot;
   if (!root) throw new Error('DCF Next Shadow DOM 不可读取');
@@ -86,6 +101,32 @@ async function attemptMigration() {
     await chrome.runtime.sendMessage({ type: 'migration.error', error: String(error && error.message || error) }).catch(() => undefined);
   }
 }
+
+function pageProbe() {
+  const shellHost = document.getElementById(DCF_HOST_ID);
+  const shellRoot = shellHost && shellHost.shadowRoot;
+  const panels = shellRoot ? shellRoot.querySelectorAll('[data-dcf-panel-root="true"]') : [];
+  return {
+    ok: true,
+    schema: 'dcf.chrome.page_probe.v1',
+    generated_at: new Date().toISOString(),
+    bridge_version: BRIDGE_VERSION,
+    static_bridge_present: true,
+    page_instance_id: PAGE_INSTANCE_ID,
+    ready_state: document.readyState,
+    visibility: document.visibilityState,
+    has_focus: document.hasFocus(),
+    shell_present: Boolean(shellHost && shellHost.isConnected),
+    shell_shadow_root_present: Boolean(shellRoot),
+    mounted_panel_count: panels.length,
+    recovery_present: Boolean(document.getElementById(SURVIVAL_FALLBACK_ID))
+  };
+}
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (!message || message.type !== 'host.page_probe') return undefined;
+  sendResponse(pageProbe());
+  return false;
+});
 
 function clearSurvivalFallback() {
   document.getElementById(SURVIVAL_FALLBACK_ID)?.remove();
