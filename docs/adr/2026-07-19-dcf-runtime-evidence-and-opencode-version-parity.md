@@ -74,3 +74,46 @@ Live recovery evidence:
 - DCF result: `DCF_READ_ONLY_SMOKE_OK`;
 - elapsed time: 6.452 seconds;
 - endpoint errors: all `null`.
+
+## 2026-07-20 architecture clarification: product surface and runtime truth are different planes
+
+The browser remains DCF's primary product surface. Its value is created inside the user's current ChatGPT conversation, so replacing the browser product with a desktop application would move the experience away from the place where language ammo, dialogue handoff and cognitive continuity are actually used.
+
+The browser must not, however, remain the only engineering and diagnostic surface. DCF now spans several independently failing truth planes:
+
+- repository and build truth;
+- Chrome page, extension, Service Worker, registration and storage truth;
+- each plugin's own business-state projection;
+- OpenCode service, session and process truth;
+- the user's irreducibly experiential judgment.
+
+No remote or local AI sees all of these by default. DCF must therefore construct a queryable evidence projection instead of expecting an AI to infer the whole system from source code or expecting the user to carry missing facts between tools.
+
+This produces the following maintenance architecture:
+
+1. **Plugin-owned evidence is the first line.** Each plugin exposes its own bounded state transitions, queue reasons, command consumption, side effects and delivery state because it understands its business semantics best.
+2. **An external local runtime observatory is the fallback and cross-layer view.** It attaches to the exact Chrome target and related local services, remains read-only by default, identifies the observed target precisely and exposes privacy-bounded snapshots and events from CDP, extension state and OpenCode.
+3. **Neither observer replaces the other.** A plugin cannot be the sole witness of its own initialization failure, while an external observer cannot infer business semantics that the plugin has not made explicit.
+4. **The remote conversational AI receives structured projections automatically.** The local AI may query deeper selectable surfaces directly. The user does not copy logs, session IDs, DOM state or service evidence between them.
+5. **CI loads the complete plugin where practical.** Extracted source fragments and token assertions may support a test, but they cannot stand in for full initialization, observer binding, side effects, queue transitions and teardown.
+6. **Real-browser acceptance remains the final runtime fact.** A controlled harness reduces uncertainty before publication; it does not replace one meaningful acceptance against the actual ChatGPT page.
+
+The corrected development sequence is therefore not “desktop first instead of web first.” It is:
+
+```text
+minimal browser vertical slice
+→ full-plugin deterministic harness
+→ local exact-target runtime observatory
+→ product-owned structured evidence
+→ feature expansion
+→ one real-browser acceptance
+```
+
+The rejected alternatives are:
+
+- abandoning the browser product merely because browser debugging is difficult;
+- treating a native companion UI as the new primary DCF product;
+- granting a general-purpose remote browser-control channel before a bounded evidence model exists;
+- relying only on plugin self-report when the plugin itself may be broken;
+- relying only on CDP or external observation without plugin business-state evidence;
+- continuing feature growth while the maintenance AI sees only repository source and user descriptions.
