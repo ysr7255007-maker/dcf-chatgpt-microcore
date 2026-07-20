@@ -11,13 +11,20 @@ async function load() {
   if (!response.ok) throw new Error(response.error || '诊断失败');
   lastReport = response.report;
   const report = lastReport;
-  const healthy = report.user_scripts_available && report.deviations.length === 0;
-  $('#health').className = `status ${healthy ? 'good' : report.user_scripts_available ? 'warn' : 'bad'}`;
-  $('#health').textContent = !report.user_scripts_available ? 'Chrome 尚未开放用户脚本权限' : healthy ? 'DCF 正常' : `发现 ${report.deviations.length} 项运行偏差`;
+  const healthy = report.health === 'healthy';
+  const unknown = report.health === 'unknown';
+  $('#health').className = `status ${healthy ? 'good' : unknown ? 'warn' : report.user_scripts_available ? 'warn' : 'bad'}`;
+  $('#health').textContent = !report.user_scripts_available
+    ? 'Chrome 尚未开放用户脚本权限'
+    : healthy
+      ? 'DCF 页面与注册状态正常'
+      : unknown
+        ? 'DCF 页面事实未知'
+        : `发现 ${report.deviations.length} 项运行偏差`;
   $('#snapshots').innerHTML = snapshotHtml('候选', report.candidate_snapshot) + snapshotHtml('当前', report.current_snapshot) + snapshotHtml('最近可用', report.last_known_good_snapshot);
   $('#actual').innerHTML = report.actual_registered_scripts.length ? report.actual_registered_scripts.map((item)=>`<div class="unit"><div class="unit-title">${esc(item.id)}</div><div class="technical">${esc(item.world || '')} · ${esc(item.worldId || '')}</div></div>`).join('') : '<div class="muted">没有 DCF 功能脚本注册</div>';
   const status = await chrome.runtime.sendMessage({ type: 'host.status' });
-  const current = status.snapshots.current || status.snapshots.last_known_good;
+  const current = status.snapshots.candidate || status.snapshots.current || status.snapshots.last_known_good;
   $('#units').innerHTML = Object.entries(status.code_units || {}).map(([id, versions]) => {
     const enabled = !!(current && current.entries.find((entry) => entry.id === id && entry.enabled !== false));
     return `<div class="unit"><div class="unit-title">${esc(id)}</div><div class="technical">已保存：${esc(versions.join(', '))}</div><div class="actions"><button data-toggle="${esc(id)}" data-enabled="${enabled ? 'true' : 'false'}">${enabled ? '停用' : '启用'}</button></div></div>`;
@@ -26,10 +33,19 @@ async function load() {
     const next = button.dataset.enabled !== 'true';
     $('#notice').textContent = `正在${next ? '启用' : '停用'} ${button.dataset.toggle}…`;
     const result = await chrome.runtime.sendMessage({ type: 'host.set_unit_enabled', id: button.dataset.toggle, enabled: next });
-    $('#notice').textContent = result.ok ? '已建立新的候选组合。' : `失败：${result.error || result.status}`;
+    $('#notice').textContent = result.ok
+      ? result.page?.status === 'reload_required'
+        ? '配置已提交；打开的 ChatGPT 页面需要刷新以应用。'
+        : '配置已提交。'
+      : `失败：${result.error || result.status}`;
     await load();
   });
-  $('#evidence').textContent = JSON.stringify(report.recent_evidence, null, 2);
+  $('#evidence').textContent = JSON.stringify({
+    health: report.health,
+    deviations: report.deviations,
+    page_reports: report.page_reports,
+    recent_evidence: report.recent_evidence
+  }, null, 2);
 }
 async function action(type, pending) {
   $('#notice').textContent = pending;
