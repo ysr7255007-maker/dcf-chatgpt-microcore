@@ -1,108 +1,114 @@
 # DCF Current State
 
-Updated: 2026-07-19
+Updated: 2026-07-20
 
-## Current product state
+## Product position
+
+DCF is personal cognitive infrastructure jointly maintained by the user and AI. The current product shape is one Chrome extension whose static base preserves installation, immutable plugin storage, exact snapshots, startup evidence and recovery. All visible product behavior remains in independent first-party plugins while the user experiences one complete DCF.
 
 - Chrome candidate: `1.0.0-rc.2`
 - Candidate branch: `rebuild/chrome-native-host-v2`
-- Product baseline: complete DCF Next before Core Review
-- User acceptance:
-  - Shell hot update and exclusive panel switching passed in a real browser;
-  - pinned workspace tabs, arrows, wheel switching and selectable ammo UI are in real use;
-  - Local Agent connected on the real Mac to an independent OpenCode server at `127.0.0.1:4096`, without authentication and with the required browser origins allowed;
-  - dialogue `.7` proved the card can hot-remount inside the Shell-hosted Local Agent panel, history is shown as an inert baseline, the latest-only control is visible and idle status is no longer `unknown`;
-  - the same live check found that dialogue controls were rendered but unbound because `ShadowRoot.dataset` was used as an event-binding marker;
-  - dialogue `.8` fixed the binding boundary and its real-page `一键验收并回传` report passed all ten checks;
-  - the accepted report proved true in-page hot replacement, one event binding, inert three-message history baseline, persisted clearing without replay, retained active `local-agent` workspace and matching plugin versions/hashes;
-  - fresh request `dcf-dialogue-readonly-smoke-20260718-1549-01` was detected after startup, created session `ses_08a14519cffe3I29cL7721KlVm` and automatically returned a structured `bridge_error` result after synchronous `POST /session/:id/message` returned HTTP 500;
-  - diagnostics `.1` was downloaded, registered, started and committed successfully, but its one-shot recovery report was not generated because the persisted dialogue `last_session_id` was already empty when diagnostics started;
-  - browser CDP, the original Chrome extension LevelDB, OpenCode HTTP/SQLite data and server logs established that the HTTP 500 was not a DCF, Provider, model or Agent error: standalone OpenCode CLI `1.17.8` was incompatible with the database schema already used by the regularly updated Desktop App and failed with `SQLiteError: no such column: replacement_seq`;
-  - the standalone CLI was upgraded to `1.18.3`, the old `serve` process was stopped gracefully and the service was restarted with the same port, CORS and no-password behavior;
-  - native OpenCode smoke `OPENCODE_SCHEMA_OK` then passed and `POST /session/:id/message` returned HTTP 200;
-  - fresh DCF request `dcf-dialogue-readonly-smoke-20260719-upgrade-01` created session `ses_089953d95ffe3kyJBThTifGIoj`, completed in 6.452 seconds and automatically returned `DCF_READ_ONLY_SMOKE_OK` with no endpoint, permission, question, todo or diff errors;
-  - the first real long-task attempt proved dialogue `.8` used total wall-clock duration as timeout: an active task was aborted after about three minutes, and a second task was later marked `timeout` while OpenCode was still `busy` and explicitly waiting for permission;
-  - dialogue `.9` replaced total-duration timeout with observable idle time and transferred OpenCode permission requests to the current conversation for `once / always / reject` judgment;
-  - live request `dcf-dialogue-v9-keepalive-live-20260719-01` ran for 238.059 seconds and exceeded its 90-second test threshold without total-duration termination; it returned `inactive_timeout` only after about 90 seconds with no observable change, while OpenCode remained `busy` and every observation endpoint stayed healthy;
-  - live request `dcf-dialogue-v9-permission-live-20260719-01` returned a complete permission evidence package for `read /Library/LaunchAgents`, accepted a conversation-issued `once` decision, continued the same session `ses_089396f11ffeNTMkgi4LPSIDKn`, and completed once with `DCF_PERMISSION_FLOW_OK NO_MATCH`.
+- Current documented baseline: `4b94bd224c2b910c9e4a1497e9a9118df7a549de`
+- Product-semantic baseline: complete DCF Next before Core Review
 - Data continuity: DCF Next + Chrome `rc.1`; no separate `0.18.2` migration
 
-## Implemented
+## Current composition
 
-- one Manifest V3 Chrome extension as the only user installation;
-- static pure base with no normal DCF product code;
-- ten independent self-contained first-party plugins:
-  - shell;
-  - language ammo;
-  - long-conversation relief;
-  - question-answer attribution;
-  - appearance;
-  - Local Agent OpenCode client;
-  - Local Agent dialogue-loop adapter;
-  - backup;
-  - plugin manager;
-  - diagnostics;
-- one unique `USER_SCRIPT` world and registration per plugin;
-- immutable plugin versions and SHA-256 verification;
-- candidate/current/LKG exact combinations and startup-evidence commit;
-- automatic rollback and registration reconstruction;
-- fixed GitHub plugin index and six-hour update checks;
-- Shell shows pinned workspaces while the Function page manages pinning;
-- language ammo uses selectable cards, a scrollable list and one shared action dock;
-- Local Agent remains a pure plugin and directly uses the OpenCode HTTP API;
-- the manual workbench covers connection, agent/model, sessions, tasks, status, messages, todo, diff, abort, permissions, questions, result insertion and diagnostics;
-- Local Agent `.3` uses safe encoded model values, restores a persisted model even before the provider catalog is available, and clears it only after an explicit saved selection of `OpenCode 默认模型`;
-- the dialogue adapter accepts exact `dcf.local-agent.request.v1` artifacts, creates an independent session, and returns one final `dcf.local-agent.result.v1` to the same conversation;
-- dialogue `.11` uses the persisted Local Agent model for automatic delegation and supports `final`, `reasoning` and `diagnostic` return profiles; reasoning covers all Assistant turns in the current delegated session, diagnostic evidence is bounded, and no profile returns raw messages;
-- existing assistant replies form an inert startup baseline; automatic intake consumes only assistant replies added after startup and manual recovery checks only the latest assistant reply;
-- dialogue controls bind to the actual mounted ShadowRoot identity rather than storing metadata on ShadowRoot;
-- `一键验收并回传` verifies mount, event binding, status semantics and the dialogue protocol, then returns one `dcf.local-agent-dialogue.acceptance.v1` artifact automatically;
-- dialogue `.9` maintains an activity fingerprint over session status, messages, tool state/input/output, todo, diff, permissions, questions and synchronous-request state;
-- dialogue `.9` refreshes `last_activity_at` whenever observable execution changes and returns `inactive_timeout` only after the configured idle interval plus two unchanged final snapshots;
-- the synchronous `/session/:id/message` request has no task wall-clock abort; if that response channel fails, the existing session remains under observation as `detached`;
-- permission and question waits pause idle timeout;
-- OpenCode permission events are enriched with the associated `messageID/callID` tool input, original task, recent Assistant output, Todo and Diff, then returned as `dcf.local-agent.permission-request.v1`;
-- a matching `dcf.local-agent.permission-decision.v1` is validated against the active request/session/permission, translated to OpenCode `once / always / reject`, and sent back to the same session;
-- permission requests are intermediate events and do not create a second final result;
-- dialogue `.12` retains the notified permission identity across transient snapshots that omit the permission; only a successful native permission reply or job teardown clears it, preventing valid conversation decisions from being rejected as request/session mismatches;
-- question transfer, saved-Always management, permission revocation, blocking and expiry are intentionally not implemented in `.9`;
-- diagnostics reads the latest dialogue request/session identifiers, performs loopback GET-only evidence recovery and returns one `dcf.local-agent.diagnostic.v1` artifact automatically when a persisted recent session exists;
-- automatic Local Agent diagnostics excludes message/task text, credentials, Provider private options and raw OpenCode configuration;
-- the same failed session is automatically diagnosed only once;
-- request IDs are persisted for deduplication;
-- an occupied ChatGPT composer is never overwritten.
+The fixed personal index currently contains eleven default first-party plugins:
 
-## Automated evidence
+- Shell;
+- language ammo;
+- long-conversation relief;
+- question-answer attribution;
+- appearance;
+- Local Agent workbench;
+- Local Agent dialogue loop;
+- backup;
+- plugin manager;
+- Local Agent diagnostics;
+- page lifecycle diagnostics.
 
-`npm run verify:chrome` proves:
+Each plugin remains a self-contained immutable JavaScript artifact with a stable ID, SHA-256 and independent USER_SCRIPT world. Candidate/current/LKG are exact combinations; static recovery does not depend on Shell or any dynamic plugin.
 
-- the base contains no bundled product unit archive;
-- ten plugin hashes, unique worlds and self-contained IIFEs;
-- default GitHub install, exact registration and startup evidence;
-- updating one plugin preserves the other nine references;
-- generic plugin data isolation and base update checks;
-- deterministic Chrome ZIP generation;
-- workspace tab and selectable ammo boundaries;
-- Local Agent, dialogue and diagnostics changes do not add dedicated Manifest, background or Host API behavior;
-- exact request/result/permission-request/permission-decision/acceptance/diagnostic markers and schemas exist;
-- the old total-duration timeout, timeout-bound synchronous message request and `needs_user` final-result path are absent;
-- activity fingerprinting, two-snapshot inactivity confirmation, permission evidence enrichment and same-session permission reply paths exist;
-- return-profile tests prove final-text isolation, complete current-session reasoning extraction, bounded diagnostic evidence and absence of raw `messages`;
-- model-persistence tests prove safe model-value round trips, persisted fallback rendering and one canonical model for automatic delegation;
-- Local Agent failure diagnostics remains loopback-only, GET-only, one-report-per-session and excludes message text, credentials, Provider private options and raw configuration.
+## Accepted live boundaries
 
-## Current live boundary
+Real-browser evidence has established:
 
-- runtime acceptance for dialogue `.8`, minimal read-only execution and dialogue `.9` permission delegation are complete;
-- Local Agent `.3` model persistence and dialogue `.11` return profiles have automated verification; real-browser model-identity and three-profile acceptance remain pending;
-- the accepted minimal result is `DCF_READ_ONLY_SMOKE_OK` from session `ses_089953d95ffe3kyJBThTifGIoj`, with status `completed`, OpenCode status `idle` and every observation endpoint error field `null`;
-- dialogue `.9` observable-idle behavior is proven by session `ses_0893de5a4ffeI9S0El9NFh5YVY`: total runtime 238.059 seconds, 90-second test idle threshold, final `inactive_timeout`, status `busy`, and all observation endpoint errors `null`;
-- dialogue `.9` permission delegation is proven by session `ses_089396f11ffeNTMkgi4LPSIDKn`: exact permission/tool evidence reached the current conversation, `once` returned to the same session, and the task completed once with `DCF_PERMISSION_FLOW_OK NO_MATCH`;
-- the prior HTTP 500 was caused by an external runtime-version mismatch: an old standalone OpenCode CLI `1.17.8` was serving a database schema already used by a newer Desktop App; upgrading and restarting the CLI at `1.18.3` restored native and DCF execution without a DCF code change;
-- source inspection is not sufficient evidence for browser/runtime failures. Future diagnosis must use selectable runtime evidence surfaces such as the exact ChatGPT target, DCF Host state, plugin storage, CDP console/network, OpenCode API/database and service logs;
-- full Always authorization records, revocation, blocking, expiry and question-answer delegation remain later phases;
-- the next step is to use the proven Local Agent dialogue bridge to inspect the actual OpenCode keepalive/startup mechanism and the current OpenCode permission persistence/revocation interfaces before designing further changes;
-- diagnostics `.1` remains implemented as a privacy-bounded recovery path; its hypotheses must not override contradictory session/message evidence;
-- the `DCF OpenCode Service` macOS shortcut remains a later local integration after the existing keepalive mechanism is found and assessed;
-- the candidate index points to the candidate branch, while formal store builds point to `main`;
-- PR #23 remains open pending the service-shortcut boundary and explicit final merge approval.
+- independent plugin hot replacement and Shell panel remount;
+- pinned workspace continuity and selectable language-ammo UI;
+- post-start-only assistant artifact intake with existing history kept inert;
+- direct Local Agent connection to the user's OpenCode service at `127.0.0.1:4096`;
+- minimal request → independent session → execution → automatic result return, producing `DCF_READ_ONLY_SMOKE_OK`;
+- observable-idle timeout instead of total wall-clock timeout;
+- same-session permission delegation with a conversation-issued `once` decision;
+- automatic rollback/update boundaries and immutable-version enforcement;
+- runtime diagnosis that identified the prior HTTP 500 as standalone OpenCode CLI/database version mismatch rather than a DCF defect.
+
+These accepted facts are recorded in the current ADRs. This file does not repeat their full evidence history.
+
+## Current Local Agent dialogue boundary
+
+The basic dialogue handoff works. Long-task control and return-path survivability do not yet pass.
+
+Dialogue `.16` added first progress, `target: current`, request-ID resolution, status/steer/cancel and command idempotency. A real status command then exposed an invalid Promise assumption: synchronous `sendArtifact()` was followed by `.catch`, causing a TypeError and making later control ineffective.
+
+Dialogue `.17` was merged through PR #63 and is the current published dialogue version. It:
+
+- restores the synchronous enqueue contract;
+- contains individual control-command errors;
+- distinguishes task failure, delivery degradation and module-fatal failure at a basic level;
+- preserves cancel behavior in unit-level harnesses.
+
+The next real-browser test still failed the product boundary:
+
+- the panel alternated between execution and delivery-failure text because both responsibilities shared one visible status field;
+- status and cancel produced no visible ACK;
+- source inspection showed that OpenCode polling was asynchronous and did not block the JavaScript event loop;
+- the return path could remain stuck behind weak page-wide streaming detection and a serial confirmation loop;
+- the UI and persisted state could not distinguish command-not-consumed from command-executed-but-not-delivered.
+
+Therefore Issue #54 remains open. The accepted architecture is now recorded in `docs/adr/2026-07-20-dcf-dialogue-control-and-delivery-survivability.md`.
+
+The next dialogue candidate must provide:
+
+- narrow, visible composer-scoped streaming detection;
+- separate execution, control and delivery state;
+- a persistent non-blocking outbox state machine;
+- priority for cancel/result/permission over progress and heartbeat;
+- independent evidence for detection, consumption, side effect, enqueue and delivery;
+- live proof that status, steer and cancel remain usable while earlier delivery is waiting or degraded.
+
+No `.18` candidate is accepted yet.
+
+## Diagnostics boundary
+
+Diagnostics `.1` remains a privacy-bounded GET-only recovery path. It excludes message text, credentials, provider private options and raw configuration.
+
+A second real sample confirmed that it can over-interpret `normalized: null` or absence from `/session/status` as proof that execution never became observable, even when the service, session, messages and other endpoints are healthy. Issue #62 remains open.
+
+A missing active-status entry must be represented first as a neutral fact. Known terminal state, session existence, message evidence and endpoint health must be considered before generating a failure hypothesis. Normal terminal sessions should not automatically occupy the conversation with a failure diagnostic.
+
+## Maintenance discipline
+
+- GitHub is the durable project memory and publication source.
+- The user must not be used as a log copier, session-ID carrier, dependency manager or multi-round test operator.
+- Prefer one complete candidate and one meaningful real-browser acceptance.
+- Source inspection and CI produce evidence, not runtime truth.
+- Tests must exercise behavior and state transitions, not only source strings or schema tokens.
+- Execution, control, delivery and module health are separate failure planes.
+- A task may fail or a result may wait without disabling status and cancel.
+- Normal browser/composer waits are not delivery failures.
+- Repeated deterministic checks should become tools or structured evidence; AI judgment remains responsible for interpreting them and choosing the intervention.
+
+## Open work
+
+- **Issue #54:** finish and prove the Local Agent long-task control plane and non-blocking return path.
+- **Issue #62:** correct Diagnostics terminal-session inference and automatic-report criteria.
+- **PR #59:** draft browser runtime evidence bridge; separate from the current dialogue repair and must not be merged merely to compensate for missing plugin-owned evidence.
+- model identity and all return profiles still need final real-browser acceptance.
+- full Always authorization records, revocation, blocking, expiry and question-answer delegation remain later phases.
+- the `DCF OpenCode Service` macOS shortcut remains later work after the existing service lifecycle is understood.
+
+## Next action
+
+Continue Issue #54 from the current baseline. Review the next implementation against the 2026-07-20 survivability ADR and the maintenance skill, then run one end-to-end long-task acceptance. Do not close the issue because CI passes or because the OpenCode task eventually terminates; close it only when the current conversation can observe, steer and cancel the task without user-carried identifiers or evidence.
