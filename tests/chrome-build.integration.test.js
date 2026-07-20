@@ -25,17 +25,17 @@ for (const unit of index.units) {
 }
 const localAgent = index.units.find((unit) => unit.id === 'dcf.firstparty.local-agent');
 assert(localAgent);
-assert.strictEqual(localAgent.version, '1.0.0-rc.2-local-agent.4');
+assert.strictEqual(localAgent.version, '1.0.0-rc.2-local-agent.5');
 assert.strictEqual(localAgent.default_enabled, true);
 assert.strictEqual(localAgent.phase, 55);
 const dialogue = index.units.find((unit) => unit.id === 'dcf.firstparty.local-agent-dialogue');
 assert(dialogue);
-assert.strictEqual(dialogue.version, '1.0.0-rc.2-local-agent-dialogue.17');
+assert.strictEqual(dialogue.version, '1.0.0-rc.2-local-agent-dialogue.18');
 assert.strictEqual(dialogue.default_enabled, true);
 assert.strictEqual(dialogue.phase, 57);
 const manager = index.units.find((unit) => unit.id === 'dcf.firstparty.plugin-manager');
 assert(manager);
-assert.strictEqual(manager.version, '1.0.0-rc.2-plugin-manager.3');
+assert.strictEqual(manager.version, '1.0.0-rc.2-plugin-manager.5');
 assert.strictEqual(manager.default_enabled, true);
 assert.strictEqual(manager.phase, 70);
 assert(!fs.existsSync(path.join(extension, 'official/code-units.json')));

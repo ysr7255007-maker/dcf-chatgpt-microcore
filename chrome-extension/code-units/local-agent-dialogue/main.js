@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.local-agent-dialogue';
-  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.17';
+  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.18';
   const LOCAL_AGENT_ID = 'dcf.firstparty.local-agent';
   const PANEL_ID = 'dcf-panel-local-agent';
   const SHELL_ID = 'dcf-chrome-shell-host';
@@ -43,10 +43,13 @@
   const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
   }[char]));
-  const host = (message) => chrome.runtime.sendMessage(message).then((result) => {
-    if (!result || result.ok === false) throw new Error(result?.error || 'DCF host rejected request');
-    return result;
-  });
+  const host = (message) => {
+    if (typeof chrome === 'undefined' || !chrome.runtime || typeof chrome.runtime.sendMessage !== 'function') return Promise.reject(new Error('host_messaging_unavailable'));
+    return chrome.runtime.sendMessage(message).then((result) => {
+      if (!result || result.ok === false) throw new Error(result?.error || 'DCF host rejected request');
+      return result;
+    });
+  };
 
   let destroyed = false;
   let activeJob = null;

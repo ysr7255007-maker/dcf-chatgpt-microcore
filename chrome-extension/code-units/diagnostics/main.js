@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.diagnostics';
-  const UNIT_VERSION = '1.0.0-rc.2-diagnostics.1';
+  const UNIT_VERSION = '1.0.0-rc.2-diagnostics.3';
   const PANEL_ID = 'diagnostics';
   const HOST_ID = 'dcf-panel-diagnostics';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_DIAGNOSTICS__';
@@ -16,10 +16,13 @@
   const previous = globalThis[GLOBAL_KEY];
   if (previous?.destroy) previous.destroy();
 
-  const sendHost = (message) => chrome.runtime.sendMessage(message).then((result) => {
-    if (!result || result.ok === false) throw new Error(result?.error || 'DCF host rejected request');
-    return result;
-  });
+  const sendHost = (message) => {
+    if (typeof chrome === 'undefined' || !chrome.runtime || typeof chrome.runtime.sendMessage !== 'function') return Promise.reject(new Error('host_messaging_unavailable'));
+    return chrome.runtime.sendMessage(message).then((result) => {
+      if (!result || result.ok === false) throw new Error(result?.error || 'DCF host rejected request');
+      return result;
+    });
+  };
 
   let panel = null;
   let hostReport = null;
@@ -431,7 +434,15 @@
 
   function render() {
     if (!panel || !hostReport) return;
-    const ok = hostReport.user_scripts_available && hostReport.deviations.length === 0;
+    const pageHealth = hostReport.page_health || 'unknown';
+    const registrationOk = hostReport.user_scripts_available && hostReport.deviations.filter((d) => d.code !== 'page_shell_missing').length === 0;
+    const ok = registrationOk && pageHealth === 'healthy';
+    const healthLabel = ok ? 'DCF 正常'
+      : pageHealth === 'page_shell_missing' ? '脚本已注册但当前页缺少 DCF Shell'
+      : pageHealth === 'unknown' ? '页面状态未知'
+      : pageHealth === 'degraded' ? `发现 ${hostReport.deviations.length} 项偏差`
+      : `发现 ${hostReport.deviations.length} 项偏差`;
+    const healthClass = ok ? 'good' : pageHealth === 'page_shell_missing' ? 'error' : 'warn';
     const root = panel.shadowRoot;
     const localSummary = localReport ? {
       session_id: localReport.session_id,
@@ -451,7 +462,7 @@
     } : null;
     root.querySelector('.content').innerHTML = `
       <section class="card">
-        <b class="${ok ? 'good' : 'warn'}">${ok ? 'DCF 正常' : `发现 ${hostReport.deviations.length} 项偏差`}</b>
+        <b class="${healthClass}">${healthLabel}</b>
         <div class="row">
           <button data-action="copy-host">复制底座诊断包</button>
           <button data-action="diagnose-agent">诊断最近本机 Agent</button>
@@ -462,6 +473,8 @@
         <div class="${/失败|错误/.test(notice) ? 'error' : ''}">${escapeHtml(notice)}</div>
         <pre>${escapeHtml(safeJson({
           host_version: hostReport.host_version,
+          page_health: hostReport.page_health || 'unknown',
+          page_probe: hostReport.page_probe || null,
           current: hostReport.current_snapshot?.id || null,
           candidate: hostReport.candidate_snapshot?.id || null,
           registered: hostReport.actual_registered_scripts.length,

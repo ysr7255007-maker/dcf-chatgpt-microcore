@@ -20,9 +20,52 @@
       const state = await H.storageGet();
       let scripts = []; let available = true;
       try { scripts = await H.actualDcfScripts(); } catch (_) { available = false; }
-      return { ok: true, report: C.diagnostics(state, scripts, available) };
+      const report = C.diagnostics(state, scripts, available);
+      // Page probe: check if DCF Shell exists on the sender's tab
+      const senderTabId = sender && sender.tab && sender.tab.id;
+      if (senderTabId && chrome.scripting) {
+        try {
+          const probeResults = await H.withTimeout(
+            chrome.scripting.executeScript({ target: { tabId: senderTabId }, func: () => {
+              const shellHost = document.getElementById('dcf-chrome-shell-host');
+              const shellShadow = shellHost ? shellHost.shadowRoot : null;
+              const panels = shellShadow ? shellShadow.querySelectorAll('[data-dcf-panel-root="true"]') : [];
+              return {
+                shell_host_exists: !!shellHost,
+                shell_shadow_exists: !!shellShadow,
+                mounted_panel_count: panels.length,
+                mounted_panel_ids: Array.from(panels).map((p) => p.dataset.dcfPanelId || '').filter(Boolean),
+                document_ready_state: document.readyState,
+                url_origin: location.origin,
+                probe_at: new Date().toISOString()
+              };
+            }, world: 'MAIN' }),
+            4000,
+            'page_probe'
+          );
+          report.page_probe = probeResults && probeResults[0] && probeResults[0].result || null;
+        } catch (probeError) {
+          report.page_probe = { error: String(probeError && probeError.message || probeError), probe_at: new Date().toISOString() };
+        }
+      } else {
+        report.page_probe = { error: 'probe_unavailable_no_tab_or_scripting', probe_at: new Date().toISOString() };
+      }
+      // Determine overall health considering page truth
+      const registrationHealthy = report.deviations.length === 0 && report.user_scripts_available;
+      const probe = report.page_probe;
+      if (registrationHealthy && probe && !probe.error && !probe.shell_host_exists) {
+        report.page_health = 'page_shell_missing';
+        report.deviations.push({ code: 'page_shell_missing', detail: 'Scripts registered but DCF Shell not found on current page' });
+      } else if (registrationHealthy && probe && !probe.error && probe.shell_host_exists) {
+        report.page_health = 'healthy';
+      } else if (probe && probe.error) {
+        report.page_health = 'unknown';
+      } else {
+        report.page_health = registrationHealthy ? 'healthy' : 'degraded';
+      }
+      return { ok: true, report };
     }
-    if (type === 'host.set_unit_enabled') return H.setUnitEnabled(String(message.id || ''), message.enabled !== false);
+    if (type === 'host.set_unit_enabled') return H.setUnitEnabled(String(message.id || ''), message.enabled !== false, sender && sender.tab && sender.tab.id || null);
     if (type === 'plugin.data.get') return { ok: true, data: await H.pluginDataGet(message.plugin_id) };
     if (type === 'plugin.data.set') return { ok: true, data: (await H.pluginDataSet(message.plugin_id, message.data)).result };
     if (type === 'backup.export') return { ok: true, backup: await H.exportBackup() };

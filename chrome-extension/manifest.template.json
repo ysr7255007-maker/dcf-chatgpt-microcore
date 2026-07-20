@@ -5,7 +5,7 @@
   "description": "DCF 的 Chrome 纯底座与个人独立功能插件。",
   "version": "1.0.0.2",
   "version_name": "1.0.0-rc.2",
-  "permissions": ["userScripts", "storage", "tabs", "alarms", "clipboardWrite"],
+  "permissions": ["userScripts", "storage", "tabs", "alarms", "clipboardWrite", "scripting"],
   "host_permissions": [
     "https://chatgpt.com/*",
     "https://chat.openai.com/*",

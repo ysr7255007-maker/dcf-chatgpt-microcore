@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.local-agent';
-  const UNIT_VERSION = '1.0.0-rc.2-local-agent.4';
+  const UNIT_VERSION = '1.0.0-rc.2-local-agent.5';
   const PANEL_ID = 'local-agent';
   const HOST_ID = 'dcf-panel-local-agent';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_LOCAL_AGENT__';
@@ -18,10 +18,13 @@
   const previous = globalThis[GLOBAL_KEY];
   if (previous && typeof previous.destroy === 'function') previous.destroy();
 
-  const hostSend = (message) => chrome.runtime.sendMessage(message).then((result) => {
-    if (!result || result.ok === false) throw new Error(result && result.error || 'DCF host rejected request');
-    return result;
-  });
+  const hostSend = (message) => {
+    if (typeof chrome === 'undefined' || !chrome.runtime || typeof chrome.runtime.sendMessage !== 'function') return Promise.reject(new Error('host_messaging_unavailable'));
+    return chrome.runtime.sendMessage(message).then((result) => {
+      if (!result || result.ok === false) throw new Error(result && result.error || 'DCF host rejected request');
+      return result;
+    });
+  };
 
   let panel = null;
   let pollTimer = null;

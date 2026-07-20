@@ -18,7 +18,7 @@
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/shell/main.js",
       "default_enabled": true,
       "description": "DCF 的统一可见入口与独立插件面板挂载。",
-      "hash": "2e708a48f4a4524429251556ccdbe906f0b4fcab5409ec7173974d9bc56eee0f",
+      "hash": "1d95479d46a505f72488b853205c394c7967c0ce040b619b7ae0cb36cf43361e",
       "host_api": "2",
       "id": "dcf.firstparty.shell",
       "matches": [
@@ -29,14 +29,14 @@
       "required": true,
       "run_at": "document_idle",
       "title": "基础界面",
-      "version": "1.0.0-rc.2-shell.5",
+      "version": "1.0.0-rc.2-shell.7",
       "world_id": "dcf-firstparty-shell"
     },
     {
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/ammo/main.js",
       "default_enabled": true,
       "description": "语言弹药工作台、自动装填、发射、更新与 GitHub 便携库。",
-      "hash": "6eb670ae16fa8c163732d45aa71a5c393167761fd6693f89633d7c3aeb8a5f4f",
+      "hash": "e805b71adb6defc5ecd685ed56ae873d2db97440f61fe72308e9730727bc011a",
       "host_api": "2",
       "id": "dcf.firstparty.ammo",
       "matches": [
@@ -47,14 +47,14 @@
       "required": true,
       "run_at": "document_idle",
       "title": "语言弹药",
-      "version": "1.0.0-rc.2-ammo.3",
+      "version": "1.0.0-rc.2-ammo.4",
       "world_id": "dcf-firstparty-ammo"
     },
     {
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/conversation-performance/main.js",
       "default_enabled": true,
       "description": "可逆的长对话渲染减负与历史窗口。",
-      "hash": "111f5349ff319df35287ae2bcb852506cbc302b84ef691ae739b65f704b4947f",
+      "hash": "daae8c34c58af037d6ba7f9f05a39ce9e40c7500f915fdb2a4e1b1380100cfdb",
       "host_api": "2",
       "id": "dcf.firstparty.conversation-performance",
       "matches": [
@@ -65,14 +65,14 @@
       "required": true,
       "run_at": "document_idle",
       "title": "长对话减负",
-      "version": "1.0.0-rc.2",
+      "version": "1.0.0-rc.2-conversation-performance.1",
       "world_id": "dcf-firstparty-conversation-performance"
     },
     {
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/attribution/main.js",
       "default_enabled": true,
       "description": "从下一次发送到回复完成的有界性能样本。",
-      "hash": "fc5e8fe1a402dc300fb90f99d957014bd28775ce92eb85aa41342e184ebe19d3",
+      "hash": "36ad385cf561bb18f2c5f93db10b29c2b7af7bad563330a7aedf278223afe842",
       "host_api": "2",
       "id": "dcf.firstparty.attribution",
       "matches": [
@@ -83,14 +83,14 @@
       "required": true,
       "run_at": "document_idle",
       "title": "问答性能归因",
-      "version": "1.0.0-rc.2",
+      "version": "1.0.0-rc.2-attribution.1",
       "world_id": "dcf-firstparty-attribution"
     },
     {
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/appearance/main.js",
       "default_enabled": true,
       "description": "DCF 侧栏方向、尺寸与位置。",
-      "hash": "028efc884c250324734fa7749bf79e42e1b74ff0dfbd57d7d48898ca3eebf4bf",
+      "hash": "e54db0126e60ff1fca1a0c19aee4b7b49ecee7d0d678bf14c5645b42147e792f",
       "host_api": "2",
       "id": "dcf.firstparty.appearance",
       "matches": [
@@ -101,14 +101,14 @@
       "required": true,
       "run_at": "document_idle",
       "title": "外观",
-      "version": "1.0.0-rc.2-appearance.1",
+      "version": "1.0.0-rc.2-appearance.2",
       "world_id": "dcf-firstparty-appearance"
     },
     {
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/local-agent/main.js",
       "default_enabled": true,
       "description": "纯插件直连 OpenCode，管理会话、任务、权限、结果与文件差异。",
-      "hash": "0795a95a5857051756f3112babc20e56345345de095518d66acd764e045c8c50",
+      "hash": "b136ca2c824a441d273a2e295340e520ab6d425808ac7d51afa4938f4d5da891",
       "host_api": "2",
       "id": "dcf.firstparty.local-agent",
       "matches": [
@@ -119,14 +119,14 @@
       "required": true,
       "run_at": "document_idle",
       "title": "本机 Agent",
-      "version": "1.0.0-rc.2-local-agent.4",
+      "version": "1.0.0-rc.2-local-agent.5",
       "world_id": "dcf-firstparty-local-agent"
     },
     {
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/local-agent-dialogue/main.js",
       "default_enabled": true,
       "description": "将严格的对话委派工件交给本机 OpenCode，并把结构化结果自动送回当前对话。",
-      "hash": "93d058f30f349e42dce6e48e6f0ebe5784489ab52f63667ed63996b5ccff6663",
+      "hash": "42fa4e7199f58c044e9a67fc50dfbb338355df0b687d81e1d782b6dbba1bf45d",
       "host_api": "2",
       "id": "dcf.firstparty.local-agent-dialogue",
       "matches": [
@@ -137,14 +137,14 @@
       "required": true,
       "run_at": "document_idle",
       "title": "本机对话闭环",
-      "version": "1.0.0-rc.2-local-agent-dialogue.17",
+      "version": "1.0.0-rc.2-local-agent-dialogue.18",
       "world_id": "dcf-firstparty-local-agent-dialogue"
     },
     {
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/backup/main.js",
       "default_enabled": true,
       "description": "独立插件数据的一键备份与恢复。",
-      "hash": "60dfc90c996344f700aefab57f11fdb6788fbd81a9b1263de127922b3e91b5bb",
+      "hash": "37f0d8b5677e7569ace879ba55844b6ba65f5767cd910a3152ac0832ce8494d1",
       "host_api": "2",
       "id": "dcf.firstparty.backup",
       "matches": [
@@ -155,14 +155,14 @@
       "required": true,
       "run_at": "document_idle",
       "title": "备份恢复",
-      "version": "1.0.0-rc.2",
+      "version": "1.0.0-rc.2-backup.1",
       "world_id": "dcf-firstparty-backup"
     },
     {
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/plugin-manager/main.js",
       "default_enabled": true,
       "description": "低频功能启停与统一 DCF 更新入口。",
-      "hash": "2cd146160002587a66f8643a4862947f780e030432f7acc8edb18cf62652bc1b",
+      "hash": "6392dbdfb69f138675a5aeacbb889a2930eaadc5fc1026b8b646219ddaab69d9",
       "host_api": "2",
       "id": "dcf.firstparty.plugin-manager",
       "matches": [
@@ -173,14 +173,14 @@
       "required": true,
       "run_at": "document_idle",
       "title": "功能管理",
-      "version": "1.0.0-rc.2-plugin-manager.3",
+      "version": "1.0.0-rc.2-plugin-manager.5",
       "world_id": "dcf-firstparty-plugin-manager"
     },
     {
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/diagnostics/main.js",
       "default_enabled": true,
       "description": "正常时压缩状态，异常时自动回传本机 Agent 的隐私受限证据。",
-      "hash": "d033ddd3f1983b3f656b52a705980f505b7e9f864c3b8909675d5690d7c55642",
+      "hash": "81b01cad02eedd4e5bd4e4ffe8e06f406a965aac89c9499eb2a8255dc54ef4be",
       "host_api": "2",
       "id": "dcf.firstparty.diagnostics",
       "matches": [
@@ -191,14 +191,14 @@
       "required": true,
       "run_at": "document_idle",
       "title": "诊断",
-      "version": "1.0.0-rc.2-diagnostics.1",
+      "version": "1.0.0-rc.2-diagnostics.3",
       "world_id": "dcf-firstparty-diagnostics"
     },
     {
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/page-diagnostics/main.js",
       "default_enabled": true,
       "description": "默认关闭的页面生命周期与流式渲染诊断，固定环形缓冲区，不记录对话正文。",
-      "hash": "e08ba89769bc5b7ba6f498c1956cc8601d326316eb7af3d55721d6b6f0da5f3d",
+      "hash": "3ee3817b55436046a5af49fed7b0291ec2c447f7cf257a418259f91fb9f77e9a",
       "host_api": "2",
       "id": "dcf.firstparty.page-diagnostics",
       "matches": [
@@ -209,7 +209,7 @@
       "required": true,
       "run_at": "document_idle",
       "title": "页面诊断",
-      "version": "1.0.0-rc.2-page-diagnostics.2",
+      "version": "1.0.0-rc.2-page-diagnostics.3",
       "world_id": "dcf-firstparty-page-diagnostics"
     }
   ],

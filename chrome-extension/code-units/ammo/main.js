@@ -2,17 +2,20 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.ammo';
-  const UNIT_VERSION = '1.0.0-rc.2-ammo.3';
+  const UNIT_VERSION = '1.0.0-rc.2-ammo.4';
   const PANEL_ID = 'ammo';
   const HOST_ID = 'dcf-panel-ammo';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_AMMO__';
   const UPDATE_MARKER = '〔DCF·弹药更新〕';
   const DEFAULT_LIBRARY_URL = 'https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/language-ammo-library/data/language-ammo/library.json';
 
-  const send = (message) => chrome.runtime.sendMessage(message).then((result) => {
-    if (!result || result.ok === false) throw new Error(result && result.error || 'DCF host rejected request');
-    return result;
-  });
+  const send = (message) => {
+    if (typeof chrome === 'undefined' || !chrome.runtime || typeof chrome.runtime.sendMessage !== 'function') return Promise.reject(new Error('host_messaging_unavailable'));
+    return chrome.runtime.sendMessage(message).then((result) => {
+      if (!result || result.ok === false) throw new Error(result && result.error || 'DCF host rejected request');
+      return result;
+    });
+  };
 
   const previous = globalThis[GLOBAL_KEY];
   if (previous && typeof previous.destroy === 'function') previous.destroy();

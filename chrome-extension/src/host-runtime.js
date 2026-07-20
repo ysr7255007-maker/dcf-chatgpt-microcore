@@ -3,6 +3,14 @@
   const H = root.DCFHost;
   const C = H.C;
   const CANDIDATE_TIMEOUT_MINUTES = 1;
+  const EXECUTE_TIMEOUT_MS = 6000;
+  const ENABLE_HARD_TIMEOUT_MS = 8000;
+
+  H.withTimeout = function withTimeout(promise, ms, label) {
+    let timer;
+    const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`${label || 'operation'}_timed_out_after_${ms}ms`)), ms); });
+    return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+  };
 
   H.userScriptsApi = function userScriptsApi() {
     if (!chrome.userScripts || typeof chrome.userScripts.getScripts !== 'function') throw new Error('USER_SCRIPTS_PERMISSION_REQUIRED');
@@ -50,19 +58,26 @@
     if (!snapshot || !chrome.userScripts || typeof chrome.userScripts.execute !== 'function') return { executed: 0 };
     const tabs = await H.chatGptTabs();
     let executed = 0;
+    let timedOut = 0;
     for (const tab of tabs) {
       if (!tab.id) continue;
       for (const ref of snapshot.entries.filter((entry) => entry.enabled !== false)) {
         const unit = C.getUnit(state, ref.id, ref.version);
         try {
-          await chrome.userScripts.execute({ target: { tabId: tab.id }, js: [{ code: unit.code }], world: 'USER_SCRIPT', worldId: unit.world_id });
+          await H.withTimeout(
+            chrome.userScripts.execute({ target: { tabId: tab.id }, js: [{ code: unit.code }], world: 'USER_SCRIPT', worldId: unit.world_id }),
+            EXECUTE_TIMEOUT_MS,
+            `execute_${ref.id}_tab${tab.id}`
+          );
           executed += 1;
         } catch (error) {
-          await H.mutate(async (next) => C.appendEvidence(next, { type: 'candidate.execute.failed', unit_id: ref.id, tab_id: tab.id, detail: String(error && error.message || error) }));
+          const message = String(error && error.message || error);
+          if (message.includes('timed_out')) timedOut += 1;
+          await H.mutate(async (next) => C.appendEvidence(next, { type: 'candidate.execute.failed', unit_id: ref.id, tab_id: tab.id, detail: message }));
         }
       }
     }
-    return { executed, tabs: tabs.length };
+    return { executed, tabs: tabs.length, timedOut };
   };
   H.armCandidateEvidence = async function armCandidateEvidence() {
     if (!(await H.storageGet()).snapshots.candidate) return;
@@ -154,18 +169,64 @@
       return C.clone(candidate);
     });
   };
-  H.setUnitEnabled = async function setUnitEnabled(id, enabled) {
+  H.setUnitEnabled = async function setUnitEnabled(id, enabled, senderTabId) {
     const state = await H.storageGet();
     const base = state.snapshots.current || state.snapshots.last_known_good;
     if (!base) throw new Error('no_snapshot_to_edit');
-    const candidate = C.clone(base);
-    const ref = candidate.entries.find((entry) => entry.id === id);
+    const ref = base.entries.find((entry) => entry.id === id);
     if (!ref) throw new Error(`unit_not_installed:${id}`);
-    ref.enabled = enabled !== false;
-    candidate.id = `snapshot-${Date.now().toString(36)}`;
-    candidate.created_at = C.nowIso();
-    candidate.reason = `${ref.enabled ? 'enable' : 'disable'}-unit:${id}`;
-    await H.mutate(async (next) => { next.snapshots.candidate = C.validateSnapshot(next, candidate); C.appendEvidence(next, { type: 'candidate.staged', reason: candidate.reason, snapshot_id: candidate.id }); });
-    return H.reconcileTarget(candidate.reason);
+    const wantEnabled = enabled !== false;
+    if (ref.enabled === wantEnabled) return { ok: true, status: 'unchanged', id, enabled: wantEnabled };
+
+    // Step 1: commit the config fact directly to current + LKG (no candidate)
+    await H.mutate(async (next) => {
+      const target = next.snapshots.current || next.snapshots.last_known_good;
+      const entry = target.entries.find((e) => e.id === id);
+      if (entry) entry.enabled = wantEnabled;
+      if (next.snapshots.current && next.snapshots.last_known_good) {
+        const lkgEntry = next.snapshots.last_known_good.entries.find((e) => e.id === id);
+        if (lkgEntry) lkgEntry.enabled = wantEnabled;
+      }
+      next.snapshots.candidate = null;
+      C.appendEvidence(next, { type: 'unit.config_changed', unit_id: id, enabled: wantEnabled });
+    });
+
+    // Step 2: reconcile only the target unit's registration
+    const api = H.userScriptsApi();
+    const unit = C.getUnit(state, ref.id, ref.version);
+    if (!unit) throw new Error(`unit_code_missing:${id}@${ref.version}`);
+    try {
+      if (wantEnabled) {
+        await H.configureWorlds([unit]);
+        const existing = await api.getScripts({ ids: [C.scriptId(id)] });
+        const registration = C.registrationFor(unit);
+        if (existing.length) await api.update([registration]);
+        else await api.register([registration]);
+      } else {
+        await api.unregister({ ids: [C.scriptId(id)] }).catch(() => {});
+      }
+    } catch (regError) {
+      return { ok: false, status: 'registration_failed', id, enabled: wantEnabled, error: String(regError && regError.message || regError) };
+    }
+
+    // Step 3: if enabling, try bounded hot-execute on the source tab only
+    if (wantEnabled && chrome.userScripts && typeof chrome.userScripts.execute === 'function') {
+      const tabId = senderTabId || null;
+      if (tabId) {
+        try {
+          await H.withTimeout(
+            chrome.userScripts.execute({ target: { tabId }, js: [{ code: unit.code }], world: 'USER_SCRIPT', worldId: unit.world_id }),
+            EXECUTE_TIMEOUT_MS,
+            `hot_enable_${id}`
+          );
+          return { ok: true, status: 'completed', id, enabled: true, hot_executed: true };
+        } catch (_) {
+          return { ok: true, status: 'reload_required', id, enabled: true, hot_executed: false, reason: 'hot_execute_timed_out_or_failed' };
+        }
+      }
+      return { ok: true, status: 'reload_required', id, enabled: true, hot_executed: false, reason: 'no_source_tab' };
+    }
+
+    return { ok: true, status: 'completed', id, enabled: wantEnabled };
   };
 })(self);

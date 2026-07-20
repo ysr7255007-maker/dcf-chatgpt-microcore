@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.page-diagnostics';
-  const UNIT_VERSION = '1.0.0-rc.2-page-diagnostics.2';
+  const UNIT_VERSION = '1.0.0-rc.2-page-diagnostics.3';
   const PANEL_ID = 'dcf-panel-page-diagnostics';
   const HOST_ID = 'dcf-panel-page-diagnostics';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_PAGE_DIAGNOSTICS__';
@@ -13,10 +13,13 @@
   const previous = globalThis[GLOBAL_KEY];
   if (previous?.destroy) previous.destroy();
 
-  const sendHost = (message) => chrome.runtime.sendMessage(message).then((result) => {
-    if (!result || result.ok === false) throw new Error(result?.error || 'DCF host rejected request');
-    return result;
-  });
+  const sendHost = (message) => {
+    if (typeof chrome === 'undefined' || !chrome.runtime || typeof chrome.runtime.sendMessage !== 'function') return Promise.reject(new Error('host_messaging_unavailable'));
+    return chrome.runtime.sendMessage(message).then((result) => {
+      if (!result || result.ok === false) throw new Error(result?.error || 'DCF host rejected request');
+      return result;
+    });
+  };
 
   let destroyed = false;
   let running = false;

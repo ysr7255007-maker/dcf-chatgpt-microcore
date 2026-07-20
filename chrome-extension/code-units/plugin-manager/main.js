@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.plugin-manager';
-  const UNIT_VERSION = '1.0.0-rc.2-plugin-manager.3';
+  const UNIT_VERSION = '1.0.0-rc.2-plugin-manager.5';
   const PANEL_ID = 'plugins';
   const HOST_ID = 'dcf-panel-plugins';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_PLUGIN_MANAGER__';
@@ -19,10 +19,16 @@
     'dcf.firstparty.page-diagnostics': { panel_id: 'dcf-panel-page-diagnostics', title: '页面诊断' }
   };
 
-  const send = (message) => chrome.runtime.sendMessage(message).then((result) => {
-    if (!result || result.ok === false) throw new Error(result && result.error || 'DCF host rejected request');
-    return result;
-  });
+  const SEND_TIMEOUT_MS = 10000;
+  const send = (message, timeoutMs = SEND_TIMEOUT_MS) => {
+    let timer;
+    const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('host_message_timed_out')), timeoutMs); });
+    return Promise.race([chrome.runtime.sendMessage(message), timeout]).then((result) => {
+      clearTimeout(timer);
+      if (!result || result.ok === false) throw new Error(result && result.error || 'DCF host rejected request');
+      return result;
+    }).catch((error) => { clearTimeout(timer); throw error; });
+  };
 
   const previous = globalThis[GLOBAL_KEY];
   if (previous?.destroy) previous.destroy();
@@ -146,10 +152,21 @@
         const enabled = button.dataset.enabled === 'true';
         notice = `正在${enabled ? '停用' : '启用'} ${button.dataset.id}…`;
         render();
-        await send({ type: 'host.set_unit_enabled', id: button.dataset.id, enabled: !enabled });
-        if (enabled) {
-          const info = PANEL_BY_UNIT[button.dataset.id];
-          if (info && panelIsPinned(info.panel_id)) emitShellCommand('unpin', info.panel_id, false);
+        try {
+          const result = await send({ type: 'host.set_unit_enabled', id: button.dataset.id, enabled: !enabled });
+          if (enabled) {
+            const info = PANEL_BY_UNIT[button.dataset.id];
+            if (info && panelIsPinned(info.panel_id)) emitShellCommand('unpin', info.panel_id, false);
+          }
+          if (!enabled && result.status === 'reload_required') {
+            notice = '配置已保存，正在刷新页面以完成启用…';
+            render();
+            setTimeout(() => location.reload(), 300);
+            return;
+          }
+          notice = enabled ? '已停用' : '已启用';
+        } catch (error) {
+          notice = `操作失败：${String(error && error.message || error)}`;
         }
         await refresh();
       };
@@ -169,11 +186,26 @@
         if (!enabled) {
           notice = `正在启用 ${button.dataset.id} 并添加到标签栏…`;
           render();
-          await send({ type: 'host.set_unit_enabled', id: button.dataset.id, enabled: true });
+          try {
+            const result = await send({ type: 'host.set_unit_enabled', id: button.dataset.id, enabled: true });
+            if (result.status === 'reload_required') {
+              notice = '配置已保存，正在刷新页面以完成启用…';
+              render();
+              // Persist pin intent before reload
+              const intent = remembered.pinned_panels.includes(panelId) ? remembered : { ...remembered, pinned_panels: [...remembered.pinned_panels, panelId] };
+              await send({ type: 'plugin.data.set', plugin_id: UNIT_ID, data: normalizeMemory(intent) }).catch(() => {});
+              setTimeout(() => location.reload(), 300);
+              return;
+            }
+          } catch (error) {
+            notice = `启用失败：${String(error && error.message || error)}`;
+            render();
+            return;
+          }
         }
         emitShellCommand('pin', panelId, true);
         notice = '已添加到标签栏';
-        render();
+        await refresh();
         setTimeout(queryShellState, 120);
       };
     }

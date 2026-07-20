@@ -2,17 +2,22 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.shell';
-  const UNIT_VERSION = '1.0.0-rc.2-shell.5';
+  const UNIT_VERSION = '1.0.0-rc.2-shell.7';
   const HOST_ID = 'dcf-chrome-shell-host';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_SHELL__';
   const PANEL_SELECTOR = '[data-dcf-panel-root="true"]';
   const FUNCTION_PANEL_ID = 'plugins';
   const DEFAULT_PINNED = ['ammo', FUNCTION_PANEL_ID];
 
-  const send = (message) => chrome.runtime.sendMessage(message).then((result) => {
-    if (!result || result.ok === false) throw new Error(result && result.error || 'DCF host rejected request');
-    return result;
-  });
+  const send = (message) => {
+    if (typeof chrome === 'undefined' || !chrome.runtime || typeof chrome.runtime.sendMessage !== 'function') {
+      return Promise.reject(new Error('host_messaging_unavailable'));
+    }
+    return chrome.runtime.sendMessage(message).then((result) => {
+      if (!result || result.ok === false) throw new Error(result && result.error || 'DCF host rejected request');
+      return result;
+    });
+  };
 
   const previous = globalThis[GLOBAL_KEY];
   const previousHost = document.getElementById(HOST_ID);
@@ -393,8 +398,8 @@
     cleanup.push(() => document.removeEventListener('dcf:appearance', appearanceListener, true));
 
     Promise.all([
-      send({ type: 'plugin.data.get', plugin_id: UNIT_ID }),
-      send({ type: 'plugin.data.get', plugin_id: 'dcf.firstparty.appearance' })
+      send({ type: 'plugin.data.get', plugin_id: UNIT_ID }).catch(() => ({ data: {} })),
+      send({ type: 'plugin.data.get', plugin_id: 'dcf.firstparty.appearance' }).catch(() => ({ data: {} }))
     ]).then(([shellState, appearance]) => {
       const data = shellState.data && typeof shellState.data === 'object' ? shellState.data : {};
       activeId = data.active_panel || null;

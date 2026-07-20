@@ -7,7 +7,7 @@ const root = path.resolve(__dirname, '..');
 const index = JSON.parse(fs.readFileSync(path.join(root, 'releases/chrome/official-index.json'), 'utf8'));
 const ref = index.units.find((unit) => unit.id === 'dcf.firstparty.local-agent');
 assert(ref);
-assert.strictEqual(ref.version, '1.0.0-rc.2-local-agent.4');
+assert.strictEqual(ref.version, '1.0.0-rc.2-local-agent.5');
 const code = fs.readFileSync(path.join(root, 'chrome-extension/code-units/local-agent/main.js'), 'utf8');
 assert.strictEqual(crypto.createHash('sha256').update(code).digest('hex'), ref.hash);
 for (const token of [

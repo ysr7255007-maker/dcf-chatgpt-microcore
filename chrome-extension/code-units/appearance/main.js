@@ -1,7 +1,7 @@
 (function () {
   'use strict';
   const UNIT_ID = 'dcf.firstparty.appearance';
-  const UNIT_VERSION = '1.0.0-rc.2-appearance.1';
+  const UNIT_VERSION = '1.0.0-rc.2-appearance.2';
   const PANEL_ID = 'appearance';
   const HOST_ID = 'dcf-panel-appearance';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_APPEARANCE__';
@@ -12,10 +12,13 @@
     height: { label: '高度', min: 240, max: 1200, step: 20 },
     margin: { label: '侧边距', min: 0, max: 80, step: 4 }
   };
-  const send = (message) => chrome.runtime.sendMessage(message).then((result) => {
-    if (!result || result.ok === false) throw new Error(result && result.error || 'DCF host rejected request');
-    return result;
-  });
+  const send = (message) => {
+    if (typeof chrome === 'undefined' || !chrome.runtime || typeof chrome.runtime.sendMessage !== 'function') return Promise.reject(new Error('host_messaging_unavailable'));
+    return chrome.runtime.sendMessage(message).then((result) => {
+      if (!result || result.ok === false) throw new Error(result && result.error || 'DCF host rejected request');
+      return result;
+    });
+  };
   const previous = globalThis[GLOBAL_KEY];
   if (previous && typeof previous.destroy === 'function') previous.destroy();
 
