@@ -20,7 +20,7 @@ BrowserClaw run: `dcf-acc-20260721`
 | A6 扩展重载/Worker 重启 | 重载后状态恢复 | passed | Chrome + BrowserClaw | 6ebbfc9 | 重载扩展→刷新页面→9面板全部恢复，chrome.storage状态存活 | — |
 | B1 插件停用 | 停用后面板从当前页消失 | passed | Chrome + BrowserClaw | 75a70d5 | page-diagnostics 停用：9→8 面板，shadow+document 均移除 | — |
 | B2 插件启用 | 启用后面板恢复挂载 | passed | Chrome + BrowserClaw | 75a70d5 | page-diagnostics 启用：8→9 面板恢复 | — |
-| B3 热更新 | 插件独立更新不需重装扩展 | not_tested | — | — | 需触发 GitHub 索引版本变更 | 下轮版本更新时验证 |
+| B3 热更新 | 插件独立更新不需重装扩展 | passed | Chrome + BrowserClaw | d5c702a | 检查更新→ammo.5从GitHub下载→刷新后confirm-bar样式存在（ammo.5代码运行中） | — |
 | B4 immutable 冲突 | 同版本不同哈希被拒绝 | not_tested | — | — | 需构造冲突场景 | — |
 | B5 LKG 回滚 | 故障时自动退回上一可用组合 | not_tested | — | — | 需构造 candidate 失败 | — |
 | C1 标签切换 | 弹药/性能/功能标签自由切换 | passed | Chrome + BrowserClaw | 75a70d5 | 三个标签均切换成功，面板内容正确 | — |
@@ -70,7 +70,7 @@ BrowserClaw run: `dcf-acc-20260721`
 
 1. **F 域全部 blocked**：OpenCode 服务 `127.0.0.1:4096` 未运行，Issue #54 仍开放
 2. **H2 非确定性**：USER_SCRIPT world sendMessage 可用性随加载变化（Issue #69 已记录）
-3. **B3-B5 未测**：热更新/immutable 冲突/LKG 回滚需构造特定场景
+3. **B4-B5 未测**：immutable 冲突/LKG 回滚需构造特定场景
 4. **A6 扩展重载**：影响整个 Profile，需错峰协调
 5. **Issue #62**：诊断终态推断仍有已知缺陷
 6. **BrowserClaw fill 截断**：`fill` 操作在 ChatGPT contenteditable 输入框中会截断 `\n` 之后的内容。多行文本应使用弹药插入/发射机制或 evaluate 直接设置。这不是 DCF 缺陷，是测试工具局限
