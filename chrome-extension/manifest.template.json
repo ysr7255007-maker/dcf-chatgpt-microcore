@@ -3,8 +3,8 @@
   "minimum_chrome_version": "138",
   "name": "DCF Chrome",
   "description": "DCF 的 Chrome 纯底座与个人独立功能插件。",
-  "version": "1.0.0.3",
-  "version_name": "1.0.0-rc.2.1",
+  "version": "1.0.0.4",
+  "version_name": "1.0.0-rc.2.2",
   "permissions": [
     "userScripts",
     "storage",
