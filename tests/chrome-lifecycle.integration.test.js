@@ -8,6 +8,9 @@ const root = path.resolve(__dirname, '..');
 const index = JSON.parse(fs.readFileSync(path.join(root, 'releases/chrome/official-index.json'), 'utf8'));
 let stored = {};
 let registrations = [];
+let openTabs = [];
+let executeImpl = async () => {};
+let pageProbeImpl = async () => ({ ok: true, static_bridge_present: true, shell_present: true, shell_shadow_root_present: true, mounted_panel_count: 2 });
 const alarms = [];
 const worlds = [];
 const listeners = () => ({ addListener() {} });
@@ -20,9 +23,13 @@ global.chrome = {
     async register(items) { registrations.push(...JSON.parse(JSON.stringify(items))); },
     async update(items) { for (const item of items) { const i = registrations.findIndex((x) => x.id === item.id); if (i >= 0) registrations[i] = JSON.parse(JSON.stringify(item)); } },
     async unregister({ ids }) { registrations = registrations.filter((item) => !ids.includes(item.id)); },
-    async execute() {}
+    execute(...args) { return executeImpl(...args); }
   },
-  tabs: { async query() { return []; }, async create() { return {}; } },
+  tabs: {
+    async query() { return JSON.parse(JSON.stringify(openTabs)); },
+    async create() { return {}; },
+    sendMessage(...args) { return pageProbeImpl(...args); }
+  },
   alarms: { async create(name, options) { alarms.push({ name, options }); }, onAlarm: listeners() },
   runtime: { getURL(name) { return `chrome-extension://${name}`; }, async requestUpdateCheck() { return { status: 'no_update' }; }, onMessage: listeners(), onUserScriptMessage: listeners(), onInstalled: listeners(), onStartup: listeners(), onUpdateAvailable: listeners() },
   action: { onClicked: listeners() }
@@ -67,6 +74,39 @@ const H = global.DCFHost;
   assert.strictEqual(repaired.result.added, 11);
   assert.strictEqual(registrations.length, 11);
 
+  const appearanceId = 'dcf.firstparty.appearance';
+  const disabled = await H.setUnitEnabled(appearanceId, false, { tab: { id: 1, url: 'https://chatgpt.com/c/test' }, url: 'https://chatgpt.com/c/test' });
+  assert.strictEqual(disabled.ok, true);
+  assert.strictEqual(disabled.status, 'configuration_committed');
+  assert.strictEqual(disabled.page.reason, 'disable_requires_reload');
+  state = await H.storageGet();
+  assert.strictEqual(state.snapshots.candidate, null);
+  assert.strictEqual(state.snapshots.current.entries.find((entry) => entry.id === appearanceId).enabled, false);
+  assert.strictEqual(registrations.some((item) => item.id === H.C.scriptId(appearanceId)), false);
+
+  openTabs = [{ id: 1, url: 'https://chatgpt.com/c/test' }];
+  H.PAGE_ACTIVATION_TIMEOUT_MS = 20;
+  executeImpl = () => new Promise(() => {});
+  const startedAt = Date.now();
+  const enabled = await H.setUnitEnabled(appearanceId, true, { tab: { id: 1, url: 'https://chatgpt.com/c/test' }, url: 'https://chatgpt.com/c/test' });
+  assert(Date.now() - startedAt < 500, 'toggle must not hang on page activation');
+  assert.strictEqual(enabled.ok, true);
+  assert.strictEqual(enabled.page.status, 'reload_required');
+  assert.strictEqual(enabled.page.reason, 'unit_page_activation_timeout');
+  state = await H.storageGet();
+  assert.strictEqual(state.snapshots.candidate, null);
+  assert.strictEqual(state.snapshots.current.entries.find((entry) => entry.id === appearanceId).enabled, true);
+  assert.strictEqual(registrations.some((item) => item.id === H.C.scriptId(appearanceId)), true);
+  assert(state.evidence.some((event) => event.type === 'unit.toggle.committed' && event.unit_id === appearanceId));
+  assert(state.evidence.some((event) => event.type === 'unit.toggle.page_result' && event.page?.reason === 'unit_page_activation_timeout'));
+
+  pageProbeImpl = async () => ({ ok: true, static_bridge_present: true, shell_present: false, shell_shadow_root_present: false, recovery_present: true });
+  const pageReports = await H.probeChatGptPages();
+  const falseHealthy = H.C.diagnostics(state, registrations, true, pageReports);
+  assert(falseHealthy.deviations.some((item) => item.code === 'page_shell_missing'));
+
+  openTabs = [];
+  executeImpl = async () => {};
   const previousRefs = Object.fromEntries(state.snapshots.current.entries.map((entry) => [entry.id, { ...entry }]));
   const shellRef = index.units.find((unit) => unit.id === 'dcf.firstparty.shell');
   const nextCode = `${fs.readFileSync(path.join(root, 'chrome-extension/code-units/shell/main.js'), 'utf8')}\n/* shell update test */\n`;
@@ -89,5 +129,17 @@ const H = global.DCFHost;
   assert.strictEqual(base.ok, true);
   await H.pluginDataSet('dcf.firstparty.test', { value: 7 });
   assert.deepStrictEqual(await H.pluginDataGet('dcf.firstparty.test'), { value: 7 });
-  console.log(JSON.stringify({ ok: true, github_default_install: 11, startup_evidence_commit: true, dynamic_registration_self_heal: 11, one_shell_plugin_update: true, unchanged_plugin_refs: 10, base_update_check: true, generic_plugin_storage: true }, null, 2));
+  console.log(JSON.stringify({
+    ok: true,
+    github_default_install: 11,
+    startup_evidence_commit: true,
+    dynamic_registration_self_heal: 11,
+    toggle_configuration_commit: true,
+    hung_page_activation_bounded: true,
+    page_false_health_detected: true,
+    one_shell_plugin_update: true,
+    unchanged_plugin_refs: 10,
+    base_update_check: true,
+    generic_plugin_storage: true
+  }, null, 2));
 })().catch((error) => { console.error(error); process.exitCode = 1; });
