@@ -9,8 +9,8 @@ const extension = path.join(root, 'dist/dcf-chrome-extension');
 const manifest = JSON.parse(fs.readFileSync(path.join(extension, 'manifest.json'), 'utf8'));
 const config = JSON.parse(fs.readFileSync(path.join(extension, 'config.json'), 'utf8'));
 const index = JSON.parse(fs.readFileSync(path.join(root, 'releases/chrome/official-index.json'), 'utf8'));
-assert.strictEqual(manifest.version_name, '1.0.0-rc.2');
-assert.strictEqual(manifest.version, '1.0.0.2');
+assert.strictEqual(manifest.version_name, '1.0.0-rc.2.1');
+assert.strictEqual(manifest.version, '1.0.0.3');
 assert.strictEqual(config.schema, 'dcf.chrome.config.v1');
 assert(config.plugin_index_url.includes('/rebuild/chrome-native-host-v2/'));
 assert.strictEqual(index.schema, 'dcf.plugin_index.v1');
@@ -35,7 +35,7 @@ assert.strictEqual(dialogue.default_enabled, true);
 assert.strictEqual(dialogue.phase, 57);
 const manager = index.units.find((unit) => unit.id === 'dcf.firstparty.plugin-manager');
 assert(manager);
-assert.strictEqual(manager.version, '1.0.0-rc.2-plugin-manager.3');
+assert.strictEqual(manager.version, '1.0.0-rc.2-plugin-manager.4');
 assert.strictEqual(manager.default_enabled, true);
 assert.strictEqual(manager.phase, 70);
 assert(!fs.existsSync(path.join(extension, 'official/code-units.json')));
@@ -50,8 +50,15 @@ const css = fs.readFileSync(path.join(extension, 'pages/common.css'), 'utf8');
 assert(css.includes('--text:'));
 assert(/@media\s*\(prefers-color-scheme:dark\)/.test(css));
 assert(/--text:\s*#f3f4f6/.test(css));
+const workflow = fs.readFileSync(path.join(root, '.github/workflows/chrome-candidate.yml'), 'utf8');
+assert(workflow.includes('name: dcf-chrome-extension-1.0.0-rc.2.1'));
+assert(workflow.includes('dist/dcf-chrome-extension-1.0.0-rc.2.1.zip'));
 const migration = fs.readFileSync(path.join(extension, 'static/migration-bridge.js'), 'utf8');
 assert(migration.includes('dcf-next-shell-host'));
+assert(migration.includes('dcf-chrome-shell-host'));
+assert(migration.includes("type: 'host.activate'"));
+assert(migration.includes('dcf.chrome.survival.reload.v1'));
+assert(migration.includes('DCF 恢复'));
 assert(!migration.includes('dcf-chatgpt-microcore-host'));
 console.log(JSON.stringify({
   ok: true,
@@ -69,6 +76,8 @@ console.log(JSON.stringify({
   robust_artifact_parsing: true,
   stable_dialogue_controls: true,
   pinned_tab_memory_is_plugin_owned: true,
+  candidate_state_is_visible: true,
+  static_survival_bridge: true,
   base_unchanged: true,
   dark_mode: true,
   next_migration_only: true

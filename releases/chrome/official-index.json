@@ -21,10 +21,7 @@
       "hash": "2e708a48f4a4524429251556ccdbe906f0b4fcab5409ec7173974d9bc56eee0f",
       "host_api": "2",
       "id": "dcf.firstparty.shell",
-      "matches": [
-        "https://chatgpt.com/*",
-        "https://chat.openai.com/*"
-      ],
+      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
       "phase": 10,
       "required": true,
       "run_at": "document_idle",
@@ -39,10 +36,7 @@
       "hash": "6eb670ae16fa8c163732d45aa71a5c393167761fd6693f89633d7c3aeb8a5f4f",
       "host_api": "2",
       "id": "dcf.firstparty.ammo",
-      "matches": [
-        "https://chatgpt.com/*",
-        "https://chat.openai.com/*"
-      ],
+      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
       "phase": 20,
       "required": true,
       "run_at": "document_idle",
@@ -57,10 +51,7 @@
       "hash": "111f5349ff319df35287ae2bcb852506cbc302b84ef691ae739b65f704b4947f",
       "host_api": "2",
       "id": "dcf.firstparty.conversation-performance",
-      "matches": [
-        "https://chatgpt.com/*",
-        "https://chat.openai.com/*"
-      ],
+      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
       "phase": 30,
       "required": true,
       "run_at": "document_idle",
@@ -75,10 +66,7 @@
       "hash": "fc5e8fe1a402dc300fb90f99d957014bd28775ce92eb85aa41342e184ebe19d3",
       "host_api": "2",
       "id": "dcf.firstparty.attribution",
-      "matches": [
-        "https://chatgpt.com/*",
-        "https://chat.openai.com/*"
-      ],
+      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
       "phase": 40,
       "required": true,
       "run_at": "document_idle",
@@ -93,10 +81,7 @@
       "hash": "028efc884c250324734fa7749bf79e42e1b74ff0dfbd57d7d48898ca3eebf4bf",
       "host_api": "2",
       "id": "dcf.firstparty.appearance",
-      "matches": [
-        "https://chatgpt.com/*",
-        "https://chat.openai.com/*"
-      ],
+      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
       "phase": 50,
       "required": true,
       "run_at": "document_idle",
@@ -111,10 +96,7 @@
       "hash": "0795a95a5857051756f3112babc20e56345345de095518d66acd764e045c8c50",
       "host_api": "2",
       "id": "dcf.firstparty.local-agent",
-      "matches": [
-        "https://chatgpt.com/*",
-        "https://chat.openai.com/*"
-      ],
+      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
       "phase": 55,
       "required": true,
       "run_at": "document_idle",
@@ -129,10 +111,7 @@
       "hash": "93d058f30f349e42dce6e48e6f0ebe5784489ab52f63667ed63996b5ccff6663",
       "host_api": "2",
       "id": "dcf.firstparty.local-agent-dialogue",
-      "matches": [
-        "https://chatgpt.com/*",
-        "https://chat.openai.com/*"
-      ],
+      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
       "phase": 57,
       "required": true,
       "run_at": "document_idle",
@@ -147,10 +126,7 @@
       "hash": "60dfc90c996344f700aefab57f11fdb6788fbd81a9b1263de127922b3e91b5bb",
       "host_api": "2",
       "id": "dcf.firstparty.backup",
-      "matches": [
-        "https://chatgpt.com/*",
-        "https://chat.openai.com/*"
-      ],
+      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
       "phase": 60,
       "required": true,
       "run_at": "document_idle",
@@ -162,18 +138,15 @@
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/plugin-manager/main.js",
       "default_enabled": true,
       "description": "低频功能启停与统一 DCF 更新入口。",
-      "hash": "2cd146160002587a66f8643a4862947f780e030432f7acc8edb18cf62652bc1b",
+      "hash": "5f503a54040be688a76dbc6ecbd72a17aa49ad6f9cf21f487afa1599a424fd87",
       "host_api": "2",
       "id": "dcf.firstparty.plugin-manager",
-      "matches": [
-        "https://chatgpt.com/*",
-        "https://chat.openai.com/*"
-      ],
+      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
       "phase": 70,
       "required": true,
       "run_at": "document_idle",
       "title": "功能管理",
-      "version": "1.0.0-rc.2-plugin-manager.3",
+      "version": "1.0.0-rc.2-plugin-manager.4",
       "world_id": "dcf-firstparty-plugin-manager"
     },
     {
@@ -183,10 +156,7 @@
       "hash": "d033ddd3f1983b3f656b52a705980f505b7e9f864c3b8909675d5690d7c55642",
       "host_api": "2",
       "id": "dcf.firstparty.diagnostics",
-      "matches": [
-        "https://chatgpt.com/*",
-        "https://chat.openai.com/*"
-      ],
+      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
       "phase": 90,
       "required": true,
       "run_at": "document_idle",
@@ -201,10 +171,7 @@
       "hash": "e08ba89769bc5b7ba6f498c1956cc8601d326316eb7af3d55721d6b6f0da5f3d",
       "host_api": "2",
       "id": "dcf.firstparty.page-diagnostics",
-      "matches": [
-        "https://chatgpt.com/*",
-        "https://chat.openai.com/*"
-      ],
+      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
       "phase": 95,
       "required": true,
       "run_at": "document_idle",
@@ -213,5 +180,5 @@
       "world_id": "dcf-firstparty-page-diagnostics"
     }
   ],
-  "version": "1.0.0-rc.2"
+  "version": "1.0.0-rc.2.1"
 }

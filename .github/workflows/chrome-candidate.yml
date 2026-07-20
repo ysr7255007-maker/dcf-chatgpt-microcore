@@ -19,8 +19,8 @@ jobs:
       - name: Upload unique candidate
         uses: actions/upload-artifact@v4
         with:
-          name: dcf-chrome-extension-1.0.0-rc.2
+          name: dcf-chrome-extension-1.0.0-rc.2.1
           path: |
-            dist/dcf-chrome-extension-1.0.0-rc.2.zip
+            dist/dcf-chrome-extension-1.0.0-rc.2.1.zip
             dist/verification-summary.json
           if-no-files-found: error

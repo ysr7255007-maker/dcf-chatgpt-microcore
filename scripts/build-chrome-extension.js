@@ -9,7 +9,7 @@ const sourceRoot = path.join(root, 'chrome-extension');
 const distRoot = path.join(root, 'dist');
 const extensionRoot = path.join(distRoot, 'dcf-chrome-extension');
 const releaseRoot = path.join(root, 'releases', 'chrome');
-const VERSION_NAME = '1.0.0-rc.2';
+const VERSION_NAME = '1.0.0-rc.2.1';
 const DEFAULT_REF = process.env.DCF_PLUGIN_INDEX_REF || 'rebuild/chrome-native-host-v2';
 const RAW_ROOT = `https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/${DEFAULT_REF}`;
 

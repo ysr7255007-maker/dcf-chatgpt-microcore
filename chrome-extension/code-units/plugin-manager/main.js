@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.plugin-manager';
-  const UNIT_VERSION = '1.0.0-rc.2-plugin-manager.3';
+  const UNIT_VERSION = '1.0.0-rc.2-plugin-manager.4';
   const PANEL_ID = 'plugins';
   const HOST_ID = 'dcf-panel-plugins';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_PLUGIN_MANAGER__';
@@ -35,6 +35,7 @@
   let shellStateListener;
   let shellReadyListener;
   let persistTimer = null;
+  let candidateRefreshTimer = null;
   let restoring = true;
 
   const unique = (values) => Array.from(new Set((Array.isArray(values) ? values : []).map(String).map((value) => value.trim()).filter(Boolean)));
@@ -54,7 +55,23 @@
   }
   function queryShellState() { document.dispatchEvent(new CustomEvent('dcf:shell-query')); }
   function panelIsPinned(panelId) { return Array.isArray(shellState.pinned_panels) && shellState.pinned_panels.includes(panelId); }
-  function currentSnapshot() { return status && (status.snapshots.current || status.snapshots.last_known_good); }
+  function currentSnapshot() {
+    return status && (status.snapshots.candidate || status.snapshots.current || status.snapshots.last_known_good);
+  }
+  function candidatePending() {
+    return Boolean(status && status.snapshots && status.snapshots.candidate);
+  }
+  function errorText(error) {
+    return String(error && error.message || error || 'unknown');
+  }
+  async function runAction(label, action) {
+    try {
+      await action();
+    } catch (error) {
+      notice = `${label}失败：${errorText(error)}`;
+      render();
+    }
+  }
 
   async function loadMemory() {
     const [own, shell] = await Promise.all([
@@ -99,21 +116,37 @@
   }
 
   async function refresh() {
+    clearTimeout(candidateRefreshTimer);
+    candidateRefreshTimer = null;
     status = await send({ type: 'host.status' });
     render();
     queryShellState();
+    if (candidatePending()) {
+      candidateRefreshTimer = setTimeout(() => {
+        refresh().catch((error) => {
+          notice = `验证状态刷新失败：${errorText(error)}`;
+          render();
+        });
+      }, 700);
+    }
   }
 
   function render() {
     if (!status || !panel) return;
     const root = panel.shadowRoot;
     const current = currentSnapshot();
+    const pending = candidatePending();
     const units = Object.entries(status.code_units || {});
+    const registered = Array.isArray(status.actual_scripts) ? status.actual_scripts.length : 0;
+    const expected = current?.entries?.filter((entry) => entry.enabled !== false).length || 0;
+    const phaseNotice = pending
+      ? `正在验证首次安装或更新：浏览器已注册 ${registered}/${expected} 个功能，完成启动证据后会自动转为正式版本。`
+      : '';
     root.querySelector('.content').innerHTML = `
       <section class="card">
-        <div class="row"><b class="grow">DCF 功能库</b><button class="primary" data-action="update">检查 DCF 更新</button></div>
+        <div class="row"><b class="grow">DCF 功能库</b><button class="primary" data-action="update" ${pending ? 'disabled' : ''}>${pending ? '正在验证' : '检查 DCF 更新'}</button></div>
         <div class="description">标签栏只保留当前固定的工作区。固定状态会跨插件更新保留。</div>
-        <div class="notice">${notice}</div>
+        <div class="notice">${notice || phaseNotice}</div>
       </section>
       <section class="card">
         ${units.map(([id, versions]) => {
@@ -123,26 +156,40 @@
           const pinned = panelInfo ? panelIsPinned(panelInfo.panel_id) : false;
           const essential = id === SHELL_UNIT_ID || id === UNIT_ID;
           const title = panelInfo?.title || id.replace('dcf.firstparty.', '');
+          const badge = essential
+            ? '<span class="badge">核心入口</span>'
+            : pending && ref
+              ? `<span class="badge">${enabled ? '验证中 · 已启用' : '验证中 · 已停用'}</span>`
+              : enabled
+                ? '<span class="badge">已启用</span>'
+                : '<span class="badge">已停用</span>';
           return `<div class="unit ${essential ? 'locked' : ''}" data-unit-id="${id}">
-            <div class="row"><span class="title grow">${title}</span>${essential ? '<span class="badge">核心入口</span>' : enabled ? '<span class="badge">已启用</span>' : '<span class="badge">已停用</span>'}</div>
+            <div class="row"><span class="title grow">${title}</span>${badge}</div>
             <div class="description">${unitDescription(id)}</div>
             <div class="technical">${ref ? `${ref.version} · ${ref.hash.slice(0, 12)}` : `已保存 ${versions.join(', ')}`}</div>
-            ${essential ? '' : `<div class="actions"><button data-action="toggle" data-id="${id}" data-enabled="${enabled}">${enabled ? '停用功能' : '启用功能'}</button>${panelInfo ? `<button class="${pinned ? '' : 'primary'}" data-action="pin" data-id="${id}" data-panel-id="${panelInfo.panel_id}" data-enabled="${enabled}" data-pinned="${pinned}">${pinned ? '移出标签栏' : enabled ? '添加到标签栏' : '启用并添加'}</button>` : ''}</div>`}
+            ${essential ? '' : `<div class="actions"><button data-action="toggle" data-id="${id}" data-enabled="${enabled}" ${pending ? 'disabled' : ''}>${enabled ? '停用功能' : '启用功能'}</button>${panelInfo ? `<button class="${pinned ? '' : 'primary'}" data-action="pin" data-id="${id}" data-panel-id="${panelInfo.panel_id}" data-enabled="${enabled}" data-pinned="${pinned}" ${pending ? 'disabled' : ''}>${pinned ? '移出标签栏' : enabled ? '添加到标签栏' : '启用并添加'}</button>` : ''}</div>`}
           </div>`;
         }).join('') || '尚未安装功能插件'}
       </section>`;
 
-    root.querySelector('[data-action="update"]').onclick = async () => {
-      notice = '正在保存标签并检查更新…';
-      render();
-      await saveMemory(shellState);
-      const result = await send({ type: 'host.check_all_updates' });
-      notice = result.plugins?.ok === false ? `功能更新失败：${result.plugins.error}` : result.plugins?.status === 'current' ? 'DCF 已是最新版本' : '已取得更新，正在恢复工作区';
-      await refresh();
-    };
+    const updateButton = root.querySelector('[data-action="update"]');
+    if (updateButton) {
+      updateButton.onclick = () => runAction('DCF 更新', async () => {
+        notice = '正在保存标签并检查更新…';
+        render();
+        await saveMemory(shellState);
+        const result = await send({ type: 'host.check_all_updates' });
+        notice = result.plugins?.ok === false
+          ? `功能更新失败：${result.plugins.error}`
+          : result.plugins?.status === 'current'
+            ? 'DCF 已是最新版本'
+            : '已取得更新，正在验证并恢复工作区';
+        await refresh();
+      });
+    }
 
     for (const button of root.querySelectorAll('[data-action="toggle"]')) {
-      button.onclick = async () => {
+      button.onclick = () => runAction('功能启停', async () => {
         const enabled = button.dataset.enabled === 'true';
         notice = `正在${enabled ? '停用' : '启用'} ${button.dataset.id}…`;
         render();
@@ -152,11 +199,11 @@
           if (info && panelIsPinned(info.panel_id)) emitShellCommand('unpin', info.panel_id, false);
         }
         await refresh();
-      };
+      });
     }
 
     for (const button of root.querySelectorAll('[data-action="pin"]')) {
-      button.onclick = async () => {
+      button.onclick = () => runAction('标签操作', async () => {
         const pinned = button.dataset.pinned === 'true';
         const enabled = button.dataset.enabled === 'true';
         const panelId = button.dataset.panelId;
@@ -175,7 +222,7 @@
         notice = '已添加到标签栏';
         render();
         setTimeout(queryShellState, 120);
-      };
+      });
     }
   }
 
@@ -194,6 +241,7 @@
 
   function destroy() {
     clearTimeout(persistTimer);
+    clearTimeout(candidateRefreshTimer);
     if (shellStateListener) document.removeEventListener('dcf:shell-state', shellStateListener, true);
     if (shellReadyListener) document.removeEventListener('dcf:shell-ready', shellReadyListener, true);
     panel?.remove();

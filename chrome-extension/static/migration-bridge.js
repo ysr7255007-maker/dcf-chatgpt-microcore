@@ -2,6 +2,11 @@
 
 const NEXT_HOST_ID = 'dcf-next-shell-host';
 const ATTEMPT_ATTR = 'data-dcf-chrome-next-migration-attempted';
+const DCF_HOST_ID = 'dcf-chrome-shell-host';
+const SURVIVAL_FALLBACK_ID = 'dcf-chrome-survival-fallback';
+const SURVIVAL_RELOAD_KEY = 'dcf.chrome.survival.reload.v1';
+const SURVIVAL_RETRY_WINDOW_MS = 30 * 1000;
+
 function delay(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 function text(node) { return String(node && (node.value ?? node.textContent) || '').trim(); }
 function buttonByText(root, label) { return Array.from(root.querySelectorAll('button')).find((node) => text(node) === label); }
@@ -81,5 +86,62 @@ async function attemptMigration() {
     await chrome.runtime.sendMessage({ type: 'migration.error', error: String(error && error.message || error) }).catch(() => undefined);
   }
 }
+
+function clearSurvivalFallback() {
+  document.getElementById(SURVIVAL_FALLBACK_ID)?.remove();
+}
+function markSurvivalHealthy() {
+  try { sessionStorage.removeItem(SURVIVAL_RELOAD_KEY); } catch (_) {}
+  clearSurvivalFallback();
+}
+function showSurvivalFallback(detail) {
+  if (document.getElementById(SURVIVAL_FALLBACK_ID)) return;
+  const host = document.createElement('div');
+  host.id = SURVIVAL_FALLBACK_ID;
+  host.style.cssText = 'all:initial;position:fixed;z-index:2147483647;right:12px;bottom:12px;font:13px/1.4 system-ui;color:#202124';
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.textContent = 'DCF 恢复';
+  button.title = `DCF 动态功能尚未恢复${detail ? `：${detail}` : ''}`;
+  button.style.cssText = 'all:initial;display:block;box-sizing:border-box;padding:9px 12px;border:1px solid #999;border-radius:10px;background:#fff;color:#202124;box-shadow:0 6px 24px #0003;cursor:pointer;font:600 13px/1.2 system-ui';
+  button.onclick = () => chrome.runtime.sendMessage({ type: 'host.open_recovery' }).catch(() => undefined);
+  host.append(button);
+  document.documentElement.append(host);
+}
+async function ensureDcfHost() {
+  if (document.getElementById(DCF_HOST_ID)) {
+    markSurvivalHealthy();
+    return;
+  }
+  let activation;
+  try {
+    activation = await chrome.runtime.sendMessage({ type: 'host.activate' });
+  } catch (error) {
+    showSurvivalFallback(String(error && error.message || error));
+    return;
+  }
+  if (!activation || activation.ok === false) {
+    showSurvivalFallback(String(activation && (activation.error || activation.status) || '底座激活失败'));
+    return;
+  }
+  await delay(450);
+  if (document.getElementById(DCF_HOST_ID)) {
+    markSurvivalHealthy();
+    return;
+  }
+  let previous = 0;
+  try { previous = Number(sessionStorage.getItem(SURVIVAL_RELOAD_KEY) || 0); } catch (_) {}
+  if (!previous || Date.now() - previous > SURVIVAL_RETRY_WINDOW_MS) {
+    try { sessionStorage.setItem(SURVIVAL_RELOAD_KEY, String(Date.now())); } catch (_) {}
+    location.reload();
+    return;
+  }
+  showSurvivalFallback('已重新注册功能，但当前页面仍未注入');
+}
+
 setTimeout(attemptMigration, 1800);
-new MutationObserver(() => { if (document.getElementById(NEXT_HOST_ID)) attemptMigration(); }).observe(document.documentElement, { childList: true, subtree: true });
+setTimeout(ensureDcfHost, 1600);
+new MutationObserver(() => {
+  if (document.getElementById(NEXT_HOST_ID)) attemptMigration();
+  if (document.getElementById(DCF_HOST_ID)) markSurvivalHealthy();
+}).observe(document.documentElement, { childList: true, subtree: true });

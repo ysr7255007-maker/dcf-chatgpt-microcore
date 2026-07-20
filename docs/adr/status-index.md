@@ -4,6 +4,7 @@ Updated: 2026-07-20
 
 ## Current
 
+- `2026-07-20-dcf-first-install-static-survival.md` — **implementation candidate prepared; CI and BrowserClaw live acceptance pending**; candidate plugins are displayed truthfully during startup validation, action failures are visible, and the manifest-declared bridge can reconcile missing dynamic registrations, reload once and retain a static recovery entry
 - `2026-07-20-dcf-dialogue-control-and-delivery-survivability.md` — **accepted architecture; implementation and live acceptance pending under Issue #54**; execution, control and delivery are separate survivability planes, normal transport waits are not failures, and the user must never become the control or evidence relay
 - `2026-07-19-dcf-local-agent-model-persistence.md` — **accepted; implementation and GitHub Action verification complete; live browser acceptance pending**; one persisted provider/model selection governs workbench, continued-session and dialogue delegation paths
 - `2026-07-19-dcf-dialogue-compact-result-boundary.md` — **accepted; implementation and GitHub Action verification complete; live browser acceptance pending**; final, all-session reasoning-review and bounded diagnostic profiles replace raw message-history return

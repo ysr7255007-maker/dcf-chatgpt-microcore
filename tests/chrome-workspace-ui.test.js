@@ -46,7 +46,7 @@ assert(ammo.includes('内容已写入，但发送按钮暂不可用'));
 assert(!ammo.includes('ammo-actions'));
 
 const manager = fs.readFileSync(path.join(root, 'chrome-extension/code-units/plugin-manager/main.js'), 'utf8');
-assert(manager.includes("const UNIT_VERSION = '1.0.0-rc.2-plugin-manager.3'"));
+assert(manager.includes("const UNIT_VERSION = '1.0.0-rc.2-plugin-manager.4'"));
 assert(manager.includes('添加到标签栏'));
 assert(manager.includes('移出标签栏'));
 assert(manager.includes("document.dispatchEvent(new CustomEvent('dcf:shell-command'"));
@@ -58,11 +58,16 @@ assert(manager.includes('async function saveMemory(next = shellState)'));
 assert(manager.includes('function restoreRemembered()'));
 assert(manager.includes('await saveMemory(shellState)'));
 assert(manager.includes("setTimeout(restoreRemembered, 220)"));
+assert(manager.includes('status.snapshots.candidate || status.snapshots.current'));
+assert(manager.includes('验证中 · 已启用'));
+assert(manager.includes('candidateRefreshTimer'));
+assert(manager.includes("runAction('功能启停'"));
+assert(manager.includes('notice = `${label}失败：${errorText(error)}`'));
 
 const versions = Object.fromEntries(index.units.map((unit) => [unit.id, unit.version]));
 assert.strictEqual(versions['dcf.firstparty.shell'], '1.0.0-rc.2-shell.5');
 assert.strictEqual(versions['dcf.firstparty.ammo'], '1.0.0-rc.2-ammo.3');
-assert.strictEqual(versions['dcf.firstparty.plugin-manager'], '1.0.0-rc.2-plugin-manager.3');
+assert.strictEqual(versions['dcf.firstparty.plugin-manager'], '1.0.0-rc.2-plugin-manager.4');
 assert.strictEqual(versions['dcf.firstparty.local-agent'], '1.0.0-rc.2-local-agent.4');
 assert.strictEqual(versions['dcf.firstparty.local-agent-dialogue'], '1.0.0-rc.2-local-agent-dialogue.17');
 
@@ -75,6 +80,8 @@ console.log(JSON.stringify({
   function_tab_locked: true,
   function_page_pinning: true,
   pinned_tabs_survive_updates: true,
+  first_install_candidate_state_visible: true,
+  plugin_action_errors_visible: true,
   selectable_ammo_cards: true,
   shared_ammo_controls: true,
   dialogue_one_click_acceptance: true,

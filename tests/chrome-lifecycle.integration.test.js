@@ -61,6 +61,12 @@ const H = global.DCFHost;
   assert.strictEqual(state.snapshots.current.id, candidateId);
   assert.strictEqual(state.snapshots.last_known_good.id, candidateId);
 
+  registrations = [];
+  const repaired = await H.reconcileTarget('page-survival-bridge');
+  assert.strictEqual(repaired.ok, true);
+  assert.strictEqual(repaired.result.added, 11);
+  assert.strictEqual(registrations.length, 11);
+
   const previousRefs = Object.fromEntries(state.snapshots.current.entries.map((entry) => [entry.id, { ...entry }]));
   const shellRef = index.units.find((unit) => unit.id === 'dcf.firstparty.shell');
   const nextCode = `${fs.readFileSync(path.join(root, 'chrome-extension/code-units/shell/main.js'), 'utf8')}\n/* shell update test */\n`;
@@ -83,5 +89,5 @@ const H = global.DCFHost;
   assert.strictEqual(base.ok, true);
   await H.pluginDataSet('dcf.firstparty.test', { value: 7 });
   assert.deepStrictEqual(await H.pluginDataGet('dcf.firstparty.test'), { value: 7 });
-  console.log(JSON.stringify({ ok: true, github_default_install: 11, startup_evidence_commit: true, one_shell_plugin_update: true, unchanged_plugin_refs: 10, base_update_check: true, generic_plugin_storage: true }, null, 2));
+  console.log(JSON.stringify({ ok: true, github_default_install: 11, startup_evidence_commit: true, dynamic_registration_self_heal: 11, one_shell_plugin_update: true, unchanged_plugin_refs: 10, base_update_check: true, generic_plugin_storage: true }, null, 2));
 })().catch((error) => { console.error(error); process.exitCode = 1; });
