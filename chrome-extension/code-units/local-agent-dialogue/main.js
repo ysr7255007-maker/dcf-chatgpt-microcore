@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.local-agent-dialogue';
-  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.19';
+  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.20';
   const LOCAL_AGENT_ID = 'dcf.firstparty.local-agent';
   const PANEL_ID = 'dcf-panel-local-agent';
   const SHELL_ID = 'dcf-chrome-shell-host';
@@ -1030,7 +1030,7 @@
       if (existing.id.includes('progress.v1') && !existing.id.includes('ack:')) { existing.text = text; existing.created_at = Date.now(); }
       return true;
     }
-    const entry = { id, text, force_send: forceSend, state: 'queued', created_at: Date.now(), attempts: 0, baseline_users: -1 };
+    const entry = { id, text, force_send: forceSend, state: 'queued', created_at: Date.now(), attempts: 0, baseline_users: -1, conversation_url: location.pathname };
     if (isCritical(entry) && outbox.items.length >= 8) {
       const replaceable = outbox.items.findIndex((item) => item.id.includes('progress.v1') && !isCritical(item));
       if (replaceable >= 0) outbox.items.splice(replaceable, 1); else outbox.items.shift();
@@ -1068,6 +1068,7 @@
         if (destroyed) break;
         if (entry.state === 'delivered' || entry.state === 'awaiting_manual_send') continue;
         if (entry.state === 'recoverable_failure' && entry.attempts > 3) continue;
+        if (entry.conversation_url && entry.conversation_url !== location.pathname) continue;
         const target = composer();
         if (!target) { entry.state = 'composer_unavailable'; markDeliveryDegraded('composer_unavailable'); continue; }
         const currentVal = composerValue(target).trim();
@@ -1126,7 +1127,11 @@
       if (entry.baseline_users >= 0 && userNodes.length <= entry.baseline_users) continue;
       for (let i = userNodes.length - 1; i >= Math.max(0, userNodes.length - 3); i -= 1) {
         const nodeText = String(userNodes[i].innerText || userNodes[i].textContent || '');
-        if (!nodeText.includes('DCF_LOCAL_AGENT')) continue;
+        if (identity.includes('result.v1') && !nodeText.includes('DCF_LOCAL_AGENT_RESULT')) continue;
+        if (identity.includes('progress.v1') && !nodeText.includes('DCF_LOCAL_AGENT_PROGRESS')) continue;
+        if (identity.includes('permission-request') && !nodeText.includes('DCF_LOCAL_AGENT_PERMISSION_REQUEST')) continue;
+        if (identity.includes('acceptance') && !nodeText.includes('DCF_LOCAL_AGENT_DIALOGUE_ACCEPTANCE')) continue;
+        if (!identity.includes('result.v1') && !identity.includes('progress.v1') && !identity.includes('permission-request') && !identity.includes('acceptance') && !nodeText.includes('DCF_LOCAL_AGENT')) continue;
         if (requestId && !nodeText.includes(requestId)) continue;
         if (seqOrRest && /^\d+$/.test(seqOrRest) && !nodeText.includes(`"seq": ${seqOrRest}`) && !nodeText.includes(`"seq":${seqOrRest}`)) continue;
         if (sessionId && nodeText.includes('session_id') && !nodeText.includes(sessionId)) continue;

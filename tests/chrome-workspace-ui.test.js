@@ -17,7 +17,7 @@ for (const ref of index.units) {
 }
 
 const shell = fs.readFileSync(path.join(root, 'chrome-extension/code-units/shell/main.js'), 'utf8');
-assert(shell.includes("const UNIT_VERSION = '1.0.0-rc.2-shell.7'"));
+assert(shell.includes("const UNIT_VERSION = '1.0.0-rc.2-shell.8'"));
 assert(shell.includes("const DEFAULT_PINNED = ['ammo', FUNCTION_PANEL_ID]"));
 assert(shell.includes('pinned_panels'));
 assert(shell.includes('tab-arrow prev'));
@@ -60,11 +60,11 @@ assert(manager.includes('await saveMemory(shellState)'));
 assert(manager.includes("setTimeout(restoreRemembered, 220)"));
 
 const versions = Object.fromEntries(index.units.map((unit) => [unit.id, unit.version]));
-assert.strictEqual(versions['dcf.firstparty.shell'], '1.0.0-rc.2-shell.7');
+assert.strictEqual(versions['dcf.firstparty.shell'], '1.0.0-rc.2-shell.8');
 assert.strictEqual(versions['dcf.firstparty.ammo'], '1.0.0-rc.2-ammo.5');
 assert.strictEqual(versions['dcf.firstparty.plugin-manager'], '1.0.0-rc.2-plugin-manager.6');
 assert.strictEqual(versions['dcf.firstparty.local-agent'], '1.0.0-rc.2-local-agent.6');
-assert.strictEqual(versions['dcf.firstparty.local-agent-dialogue'], '1.0.0-rc.2-local-agent-dialogue.19');
+assert.strictEqual(versions['dcf.firstparty.local-agent-dialogue'], '1.0.0-rc.2-local-agent-dialogue.20');
 
 const changedHashes = Object.fromEntries(index.units.filter((unit) => ['dcf.firstparty.plugin-manager', 'dcf.firstparty.local-agent', 'dcf.firstparty.local-agent-dialogue'].includes(unit.id)).map((unit) => [unit.id, unit.hash]));
 console.log(JSON.stringify({

@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.shell';
-  const UNIT_VERSION = '1.0.0-rc.2-shell.7';
+  const UNIT_VERSION = '1.0.0-rc.2-shell.8';
   const HOST_ID = 'dcf-chrome-shell-host';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_SHELL__';
   const PANEL_SELECTOR = '[data-dcf-panel-root="true"]';
@@ -386,7 +386,7 @@
 
     collapse.onclick = async () => {
       const collapsed = !shell.classList.contains('collapsed');
-      await saveShellState({ collapsed });
+      try { await saveShellState({ collapsed }); } catch (_) {}
       applyAppearance({ collapsed });
     };
     recovery.onclick = () => send({ type: 'host.open_recovery' }).catch(() => undefined);

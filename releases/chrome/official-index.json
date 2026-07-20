@@ -18,7 +18,7 @@
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/shell/main.js",
       "default_enabled": true,
       "description": "DCF 的统一可见入口与独立插件面板挂载。",
-      "hash": "1d95479d46a505f72488b853205c394c7967c0ce040b619b7ae0cb36cf43361e",
+      "hash": "6d5a68043c09209fd487b4aa487ba6915608e64c6134d5a177c8727959b47f01",
       "host_api": "2",
       "id": "dcf.firstparty.shell",
       "matches": [
@@ -29,7 +29,7 @@
       "required": true,
       "run_at": "document_idle",
       "title": "基础界面",
-      "version": "1.0.0-rc.2-shell.7",
+      "version": "1.0.0-rc.2-shell.8",
       "world_id": "dcf-firstparty-shell"
     },
     {
@@ -126,7 +126,7 @@
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/local-agent-dialogue/main.js",
       "default_enabled": true,
       "description": "将严格的对话委派工件交给本机 OpenCode，并把结构化结果自动送回当前对话。",
-      "hash": "4f6ff990d723c14aa6e7d737c3c12c9d3b3ea9fd38a4f31197860392292cd76f",
+      "hash": "678d3396840ae33697189015d1b3da7598c7be793310d35f6b5f8a3468b30c83",
       "host_api": "2",
       "id": "dcf.firstparty.local-agent-dialogue",
       "matches": [
@@ -137,7 +137,7 @@
       "required": true,
       "run_at": "document_idle",
       "title": "本机对话闭环",
-      "version": "1.0.0-rc.2-local-agent-dialogue.19",
+      "version": "1.0.0-rc.2-local-agent-dialogue.20",
       "world_id": "dcf-firstparty-local-agent-dialogue"
     },
     {
