@@ -6,7 +6,7 @@
   'use strict';
 
   const HOST_SCHEMA = 'dcf.chrome.host.state.v2';
-  const HOST_VERSION = '1.0.0-rc.2';
+  const HOST_VERSION = '1.0.0-rc.2.2';
   const STATE_KEY = 'dcf.chrome.host.state.v1';
   const SCRIPT_PREFIX = 'dcf-unit-';
 
@@ -191,19 +191,44 @@
   function expectedScriptIds(snapshot) { return new Set((snapshot && snapshot.entries || []).filter((entry) => entry.enabled !== false).map((entry) => scriptId(entry.id))); }
   function appendEvidence(state, event) { state.evidence = [...(state.evidence || []), Object.assign({ at: nowIso() }, clone(event || {}))].slice(-240); }
 
-  function diagnostics(state, actualScripts, userScriptsAvailable) {
+  function diagnostics(state, actualScripts, userScriptsAvailable, pageReports) {
     const target = state.snapshots.candidate || state.snapshots.current || state.snapshots.last_known_good;
     const expected = expectedScriptIds(target);
     const actual = new Set((actualScripts || []).map((item) => item.id));
+    const pages = Array.isArray(pageReports) ? clone(pageReports) : [];
     const deviations = [];
     for (const id of expected) if (!actual.has(id)) deviations.push({ code: 'missing_registration', id });
     for (const id of actual) if (!expected.has(id)) deviations.push({ code: 'unexpected_registration', id });
     if (!userScriptsAvailable) deviations.push({ code: 'user_scripts_unavailable' });
+    for (const page of pages) {
+      const identity = { tab_id: page && page.tab_id || null, url: page && page.url || null };
+      if (!page || page.reachable !== true) {
+        deviations.push({ code: 'page_probe_unreachable', ...identity, detail: page && page.error || 'unknown' });
+        continue;
+      }
+      if (target && expected.size && page.shell_present !== true) {
+        deviations.push({
+          code: 'page_shell_missing',
+          ...identity,
+          static_bridge_present: page.static_bridge_present === true,
+          recovery_present: page.recovery_present === true,
+          ready_state: page.ready_state || null,
+          visibility: page.visibility || null
+        });
+        continue;
+      }
+      if (page.shell_present === true && page.shell_shadow_root_present !== true) {
+        deviations.push({ code: 'page_shell_shadow_missing', ...identity });
+      }
+    }
+    const pageHealthKnown = pages.length > 0;
+    const health = deviations.length ? 'degraded' : pageHealthKnown ? 'healthy' : 'unknown';
     return {
-      schema: 'dcf.chrome.diagnostic.v2', generated_at: nowIso(), host_version: HOST_VERSION,
+      schema: 'dcf.chrome.diagnostic.v3', generated_at: nowIso(), host_version: HOST_VERSION, health,
       state_revision: state.revision, user_scripts_available: !!userScriptsAvailable,
       candidate_snapshot: clone(state.snapshots.candidate), current_snapshot: clone(state.snapshots.current),
       last_known_good_snapshot: clone(state.snapshots.last_known_good), actual_registered_scripts: clone(actualScripts || []),
+      page_reports: pages,
       installed_units: Object.fromEntries(Object.entries(state.code_units).map(([id, entry]) => [id, Object.keys(entry.versions || {}).sort()])),
       update: clone(state.update), migration: clone(state.migration), deviations,
       recent_evidence: clone((state.evidence || []).slice(-40))
