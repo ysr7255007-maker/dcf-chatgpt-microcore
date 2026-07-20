@@ -20,9 +20,13 @@
       const state = await H.storageGet();
       let scripts = []; let available = true;
       try { scripts = await H.actualDcfScripts(); } catch (_) { available = false; }
-      return { ok: true, report: C.diagnostics(state, scripts, available) };
+      let pages = [];
+      try { pages = await H.probeChatGptPages(); } catch (error) {
+        pages = [{ reachable: false, tab_id: null, url: null, error: String(error && error.message || error) }];
+      }
+      return { ok: true, report: C.diagnostics(state, scripts, available, pages) };
     }
-    if (type === 'host.set_unit_enabled') return H.setUnitEnabled(String(message.id || ''), message.enabled !== false);
+    if (type === 'host.set_unit_enabled') return H.setUnitEnabled(String(message.id || ''), message.enabled !== false, sender);
     if (type === 'plugin.data.get') return { ok: true, data: await H.pluginDataGet(message.plugin_id) };
     if (type === 'plugin.data.set') return { ok: true, data: (await H.pluginDataSet(message.plugin_id, message.data)).result };
     if (type === 'backup.export') return { ok: true, backup: await H.exportBackup() };
