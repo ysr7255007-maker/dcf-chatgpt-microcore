@@ -9,11 +9,13 @@ const extension = path.join(root, 'dist/dcf-chrome-extension');
 const manifest = JSON.parse(fs.readFileSync(path.join(extension, 'manifest.json'), 'utf8'));
 const config = JSON.parse(fs.readFileSync(path.join(extension, 'config.json'), 'utf8'));
 const index = JSON.parse(fs.readFileSync(path.join(root, 'releases/chrome/official-index.json'), 'utf8'));
-assert.strictEqual(manifest.version_name, '1.0.0-rc.2.1');
-assert.strictEqual(manifest.version, '1.0.0.3');
+assert.strictEqual(manifest.version_name, '1.0.0-rc.2.2');
+assert.strictEqual(manifest.version, '1.0.0.4');
 assert.strictEqual(config.schema, 'dcf.chrome.config.v1');
+assert.strictEqual(config.version, '1.0.0-rc.2.2');
 assert(config.plugin_index_url.includes('/rebuild/chrome-native-host-v2/'));
 assert.strictEqual(index.schema, 'dcf.plugin_index.v1');
+assert.strictEqual(index.version, '1.0.0-rc.2.2');
 assert.strictEqual(index.units.length, 11);
 assert.strictEqual(index.defaults.length, 11);
 assert.strictEqual(new Set(index.units.map((unit) => unit.world_id)).size, index.units.length);
@@ -35,7 +37,7 @@ assert.strictEqual(dialogue.default_enabled, true);
 assert.strictEqual(dialogue.phase, 57);
 const manager = index.units.find((unit) => unit.id === 'dcf.firstparty.plugin-manager');
 assert(manager);
-assert.strictEqual(manager.version, '1.0.0-rc.2-plugin-manager.4');
+assert.strictEqual(manager.version, '1.0.0-rc.2-plugin-manager.5');
 assert.strictEqual(manager.default_enabled, true);
 assert.strictEqual(manager.phase, 70);
 assert(!fs.existsSync(path.join(extension, 'official/code-units.json')));
@@ -51,15 +53,24 @@ assert(css.includes('--text:'));
 assert(/@media\s*\(prefers-color-scheme:dark\)/.test(css));
 assert(/--text:\s*#f3f4f6/.test(css));
 const workflow = fs.readFileSync(path.join(root, '.github/workflows/chrome-candidate.yml'), 'utf8');
-assert(workflow.includes('name: dcf-chrome-extension-1.0.0-rc.2.1'));
-assert(workflow.includes('dist/dcf-chrome-extension-1.0.0-rc.2.1.zip'));
+assert(workflow.includes('name: dcf-chrome-extension-1.0.0-rc.2.2'));
+assert(workflow.includes('dist/dcf-chrome-extension-1.0.0-rc.2.2.zip'));
 const migration = fs.readFileSync(path.join(extension, 'static/migration-bridge.js'), 'utf8');
 assert(migration.includes('dcf-next-shell-host'));
 assert(migration.includes('dcf-chrome-shell-host'));
 assert(migration.includes("type: 'host.activate'"));
 assert(migration.includes('dcf.chrome.survival.reload.v1'));
 assert(migration.includes('DCF 恢复'));
+assert(migration.includes("schema: 'dcf.chrome.page_probe.v1'"));
+assert(migration.includes("message.type !== 'host.page_probe'"));
 assert(!migration.includes('dcf-chatgpt-microcore-host'));
+const runtime = fs.readFileSync(path.join(extension, 'src/host-runtime.js'), 'utf8');
+assert(runtime.includes('unit.toggle.committed'));
+assert(runtime.includes('PAGE_ACTIVATION_TIMEOUT_MS'));
+assert(runtime.includes('probeChatGptPages'));
+const recovery = fs.readFileSync(path.join(extension, 'pages/recovery.js'), 'utf8');
+assert(recovery.includes("report.health === 'healthy'"));
+assert(recovery.includes('page_reports'));
 console.log(JSON.stringify({
   ok: true,
   pure_base: true,
@@ -77,6 +88,8 @@ console.log(JSON.stringify({
   stable_dialogue_controls: true,
   pinned_tab_memory_is_plugin_owned: true,
   candidate_state_is_visible: true,
+  bounded_toggle_activation: true,
+  page_truth_diagnostic: true,
   static_survival_bridge: true,
   base_unchanged: true,
   dark_mode: true,
