@@ -1,7 +1,7 @@
 (function () {
   'use strict';
   const UNIT_ID = 'dcf.firstparty.appearance';
-  const UNIT_VERSION = '1.0.0-rc.2-appearance.2';
+  const UNIT_VERSION = '1.0.0-rc.2-appearance.3';
   const PANEL_ID = 'appearance';
   const HOST_ID = 'dcf-panel-appearance';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_APPEARANCE__';
@@ -121,6 +121,10 @@
       apply();
       await send({ type: 'unit.started', unit_id: UNIT_ID, version: UNIT_VERSION });
     }).catch((error) => {
+      // Degrade gracefully: render with defaults instead of leaving an empty panel
+      settings = normalize(DEFAULTS);
+      render();
+      apply();
       send({ type: 'unit.failed', unit_id: UNIT_ID, version: UNIT_VERSION, error: String(error && error.message || error) }).catch(() => undefined);
     });
   } catch (error) {

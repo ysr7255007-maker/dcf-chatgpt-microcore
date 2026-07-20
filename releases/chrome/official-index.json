@@ -90,7 +90,7 @@
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/appearance/main.js",
       "default_enabled": true,
       "description": "DCF 侧栏方向、尺寸与位置。",
-      "hash": "e54db0126e60ff1fca1a0c19aee4b7b49ecee7d0d678bf14c5645b42147e792f",
+      "hash": "832341f9062898d3fb027dde5271d3038cc555a0894ac52867cc96b95bdd99cb",
       "host_api": "2",
       "id": "dcf.firstparty.appearance",
       "matches": [
@@ -101,7 +101,7 @@
       "required": true,
       "run_at": "document_idle",
       "title": "外观",
-      "version": "1.0.0-rc.2-appearance.2",
+      "version": "1.0.0-rc.2-appearance.3",
       "world_id": "dcf-firstparty-appearance"
     },
     {
