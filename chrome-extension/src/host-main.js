@@ -119,6 +119,14 @@
   chrome.action.onClicked.addListener(() => chrome.tabs.create({ url: chrome.runtime.getURL('pages/recovery.html') }));
   chrome.alarms.onAlarm.addListener(async (alarm) => {
     if (alarm.name === 'dcf-plugin-update-check') { await H.maybeCheckRemoteUpdates('scheduled'); return; }
+    if (alarm.name === 'dcf-keepalive') {
+      const tabs = await H.chatGptTabs();
+      for (const tab of tabs) {
+        if (!tab.id) continue;
+        chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', func: () => { document.dispatchEvent(new CustomEvent('dcf:keepalive', { detail: { at: Date.now() } })); } }).catch(() => {});
+      }
+      return;
+    }
     if (alarm.name !== 'dcf-candidate-timeout') return;
     const state = await H.storageGet();
     if (!state.snapshots.candidate) return;
@@ -130,4 +138,5 @@
     if (missing.length) await H.rollbackToLastKnownGood(`candidate-timeout:${missing.join(',')}`);
   });
   chrome.alarms.create('dcf-plugin-update-check', { periodInMinutes: 360 });
+  chrome.alarms.create('dcf-keepalive', { periodInMinutes: 0.5 });
 })(self);

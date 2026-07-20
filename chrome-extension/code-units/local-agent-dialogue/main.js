@@ -1613,6 +1613,7 @@
     if (panelReadyListener) document.removeEventListener('dcf:panel-ready', panelReadyListener, true);
     document.removeEventListener('visibilitychange', visibilityListener);
     window.removeEventListener('focus', focusListener);
+    document.removeEventListener('dcf:keepalive', keepaliveListener);
     clearInterval(mountTimer);
     clearInterval(rootTimer);
     clearInterval(elapsedTimer);
@@ -1624,6 +1625,7 @@
 
   let visibilityListener = null;
   let focusListener = null;
+  let keepaliveListener = null;
 
   globalThis[GLOBAL_KEY] = {
     version: UNIT_VERSION,
@@ -1651,8 +1653,10 @@
     watchdogTimer = setInterval(() => ensureRuntimeAlive('watchdog'), WATCHDOG_INTERVAL_MS);
     visibilityListener = () => { if (!document.hidden) ensureRuntimeAlive('visibility'); };
     focusListener = () => ensureRuntimeAlive('focus');
+    keepaliveListener = () => ensureRuntimeAlive('keepalive');
     document.addEventListener('visibilitychange', visibilityListener);
     window.addEventListener('focus', focusListener);
+    document.addEventListener('dcf:keepalive', keepaliveListener);
     loadState().then(async () => {
       for (let attempt = 0; attempt < 65 && !ensurePanelMount(); attempt += 1) await sleep(80);
       if (!ensurePanelMount()) throw new Error('对话闭环未能挂载到本机 Agent 面板');

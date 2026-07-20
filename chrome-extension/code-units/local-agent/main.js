@@ -810,11 +810,14 @@
     render();
   }
 
+  let keepaliveListener = null;
+
   function destroy() {
     destroyed = true;
     memoryPassword = '';
     clearTimeout(pollTimer);
     pollTimer = null;
+    if (keepaliveListener) document.removeEventListener('dcf:keepalive', keepaliveListener);
     panel && panel.remove();
   }
 
@@ -823,6 +826,8 @@
   try {
     document.getElementById(HOST_ID)?.remove();
     create();
+    keepaliveListener = () => { if (!destroyed && state.connected) { refreshAll(false).catch(() => {}); schedulePoll(); } };
+    document.addEventListener('dcf:keepalive', keepaliveListener);
     loadState()
       .then(() => hostSend({ type: 'unit.started', unit_id: UNIT_ID, version: UNIT_VERSION }))
       .catch((error) => hostSend({ type: 'unit.failed', unit_id: UNIT_ID, version: UNIT_VERSION, error: String(error && error.message || error) }).catch(() => undefined));

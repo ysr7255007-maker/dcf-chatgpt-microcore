@@ -108,7 +108,7 @@
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/local-agent/main.js",
       "default_enabled": true,
       "description": "纯插件直连 OpenCode，管理会话、任务、权限、结果与文件差异。",
-      "hash": "691350a644ec7b6aa4c95b0c97b494cf2c3f223f4d429a745a00db7862abfd01",
+      "hash": "8a56f341fe11000ad54f9b45918174c764f977fda090e2d06f9f2fbf761219f1",
       "host_api": "2",
       "id": "dcf.firstparty.local-agent",
       "matches": [
@@ -126,7 +126,7 @@
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/local-agent-dialogue/main.js",
       "default_enabled": true,
       "description": "将严格的对话委派工件交给本机 OpenCode，并把结构化结果自动送回当前对话。",
-      "hash": "6649036212aecb2bfc1e752f72499c259330e1852cfd394aa55d768dddf1eece",
+      "hash": "4f6ff990d723c14aa6e7d737c3c12c9d3b3ea9fd38a4f31197860392292cd76f",
       "host_api": "2",
       "id": "dcf.firstparty.local-agent-dialogue",
       "matches": [
