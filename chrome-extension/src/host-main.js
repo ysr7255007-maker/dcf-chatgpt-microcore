@@ -70,6 +70,10 @@
     if (type === 'plugin.data.set') return { ok: true, data: (await H.pluginDataSet(message.plugin_id, message.data)).result };
     if (type === 'backup.export') return { ok: true, backup: await H.exportBackup() };
     if (type === 'backup.import') return { ok: true, result: (await H.importBackup(message.backup)).result };
+    if (type === 'clipboard.write') {
+      try { await navigator.clipboard.writeText(String(message.text || '')); return { ok: true }; }
+      catch (error) { return { ok: false, error: String(error?.message || error) }; }
+    }
     if (type === 'migration.import_next') return { ok: true, result: (await H.importNextMigration(message.payload)).result };
     if (type === 'migration.status') return { ok: true, migration: C.clone((await H.storageGet()).migration) };
     if (type === 'migration.error') {
