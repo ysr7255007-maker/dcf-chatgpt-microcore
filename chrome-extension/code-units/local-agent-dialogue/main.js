@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.local-agent-dialogue';
-  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.23';
+  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.24';
   const LOCAL_AGENT_ID = 'dcf.firstparty.local-agent';
   const PANEL_ID = 'dcf-panel-local-agent';
   const SHELL_ID = 'dcf-chrome-shell-host';
@@ -1001,17 +1001,13 @@
       if (setter) setter.call(target, text); else target.value = text;
       target.setSelectionRange?.(text.length, text.length);
     } else {
-      const selection = getSelection();
-      if (selection) {
-        const range = document.createRange();
-        range.selectNodeContents(target);
-        selection.removeAllRanges();
-        selection.addRange(range);
-      }
-      if (!document.execCommand?.('insertText', false, text)) target.textContent = text;
+      target.textContent = text;
+      // Dispatch native input event chain for React detection
+      target.dispatchEvent(new Event('compositionstart', { bubbles: true }));
+      target.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, inputType: 'insertText', data: text }));
+      target.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));
+      target.dispatchEvent(new Event('compositionend', { bubbles: true }));
     }
-    try { target.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text })); }
-    catch (_) { target.dispatchEvent(new Event('input', { bubbles: true })); }
   }
 
   async function clickSend() {
