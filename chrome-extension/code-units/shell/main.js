@@ -422,7 +422,7 @@
       saveShellState({ pinned_panels: pinnedIds.slice(), active_panel: activeId }).catch(() => undefined);
       document.dispatchEvent(new CustomEvent('dcf:shell-ready'));
       emitShellState();
-      return send({ type: 'unit.started', unit_id: UNIT_ID, version: UNIT_VERSION });
+      return withTimeout(send({ type: 'unit.started', unit_id: UNIT_ID, version: UNIT_VERSION }), 5000);
     }).catch((error) => {
       send({ type: 'unit.failed', unit_id: UNIT_ID, version: UNIT_VERSION, error: String(error && error.message || error) }).catch(() => undefined);
     });
