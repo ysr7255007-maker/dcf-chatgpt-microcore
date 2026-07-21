@@ -32,6 +32,7 @@ BrowserClaw run: `dcf-acc-20260721`
 | D4 弹药持久化 | 刷新后弹药列表不丢失 | passed | Chrome + BrowserClaw | 75a70d5 | 多次刷新后 8 枚弹药始终存在 | — |
 | D5 弹药 GitHub 加载 | 从远程弹药库同步 | passed | Chrome + BrowserClaw | af46cbf | "GitHub 载入完成：新增 0，更新 1，未变 7" | — |
 | D6 弹药更新协议 | 选中→更新→生成 DCF_AMMO 提示词填入输入框 | passed | Chrome + BrowserClaw | af46cbf | "〔DCF·弹药更新〕"提示词(1371字符)已填入输入框 | — |
+| D7 弹药提取 | 从对话提取→ChatGPT 生成 DCF_AMMO | passed | Chrome + BrowserClaw | 3a847c2 | 提取提示词→ChatGPT返回完整DCF_AMMO(id/title/purpose/body) | 自动装填可能因观察器未启动而延迟 |
 | E1 对话事件消费 | 新助手回复被 DCF 检测 | passed | Chrome + BrowserClaw | 75a70d5 | conversation-performance turn_count=4，apply_count=16 | — |
 | E2 流式结束判定 | 流式完成后才判定轮次 | passed | Chrome + BrowserClaw | 75a70d5 | 助手回复完成后 turn_count 正确递增 | — |
 | E3 性能归因记录 | 记录问答耗时 | passed | Chrome + BrowserClaw | 7f9674b | 激活后记录完整：total_ms=8790, send_to_first_reply=62ms, completion=8728ms, LoAF/longtask/layout-shift | — |
