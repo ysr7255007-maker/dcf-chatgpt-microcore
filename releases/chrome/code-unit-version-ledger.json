@@ -1,0 +1,79 @@
+{
+  "schema": "dcf.code_unit.version_ledger.v1",
+  "units": {
+    "dcf.firstparty.ammo": {
+      "legacy_collisions": [],
+      "versions": {
+        "1.0.0-rc.2-ammo.5": "325405d2e47096ef189fdeb7278789b2b3c330e62c8c6640f0b311232a235c6d"
+      }
+    },
+    "dcf.firstparty.appearance": {
+      "legacy_collisions": [],
+      "versions": {
+        "1.0.0-rc.2-appearance.3": "832341f9062898d3fb027dde5271d3038cc555a0894ac52867cc96b95bdd99cb"
+      }
+    },
+    "dcf.firstparty.attribution": {
+      "legacy_collisions": [],
+      "versions": {
+        "1.0.0-rc.2-attribution.1": "36ad385cf561bb18f2c5f93db10b29c2b7af7bad563330a7aedf278223afe842"
+      }
+    },
+    "dcf.firstparty.backup": {
+      "legacy_collisions": [],
+      "versions": {
+        "1.0.0-rc.2-backup.2": "3d354c37183a8a4eb4640ae7d04f0c94c7c0ec1d8457dfc210391faf06b7ea34"
+      }
+    },
+    "dcf.firstparty.conversation-performance": {
+      "legacy_collisions": [],
+      "versions": {
+        "1.0.0-rc.2-conversation-performance.1": "daae8c34c58af037d6ba7f9f05a39ce9e40c7500f915fdb2a4e1b1380100cfdb"
+      }
+    },
+    "dcf.firstparty.diagnostics": {
+      "legacy_collisions": [],
+      "versions": {
+        "1.0.0-rc.2-diagnostics.4": "e154e31f01617853af085f17b24fa0c57474889667aba9ddb2b1d3333030ee1b"
+      }
+    },
+    "dcf.firstparty.local-agent": {
+      "legacy_collisions": [],
+      "versions": {
+        "1.0.0-rc.2-local-agent.7": "77b283df2d5fe808ca55e6a04828d2c2399ece566ec86af5270a509bc52af3f1"
+      }
+    },
+    "dcf.firstparty.local-agent-dialogue": {
+      "legacy_collisions": [],
+      "versions": {
+        "1.0.0-rc.2-local-agent-dialogue.27": "74d82c653ca86e5f54911527e8b2329c9424e1bee93d527fac5dafad16b97739"
+      }
+    },
+    "dcf.firstparty.page-diagnostics": {
+      "legacy_collisions": [],
+      "versions": {
+        "1.0.0-rc.2-page-diagnostics.3": "3ee3817b55436046a5af49fed7b0291ec2c447f7cf257a418259f91fb9f77e9a"
+      }
+    },
+    "dcf.firstparty.plugin-manager": {
+      "legacy_collisions": [],
+      "versions": {
+        "1.0.0-rc.2-plugin-manager.6": "1da02452063981312738baf964e7669b4c0829966c2e1903658bcdb35192dcb2"
+      }
+    },
+    "dcf.firstparty.shell": {
+      "legacy_collisions": [
+        {
+          "current_hash": "7b389bdda948b25577461ff2b487e71b25689d4827a3f707c68ef4ff6737079e",
+          "previous_hash": "4d8f71b0a25dadd9b0571188aaeecf9467b091ccbe81da220c99466632a56f6a",
+          "source_commit": "d67d070491f9997bc940735be2506f104a912082",
+          "status": "legacy_evidence_only",
+          "version": "1.0.0-rc.2-shell.9"
+        }
+      ],
+      "versions": {
+        "1.0.0-rc.2-shell.9": "7b389bdda948b25577461ff2b487e71b25689d4827a3f707c68ef4ff6737079e"
+      }
+    }
+  }
+}

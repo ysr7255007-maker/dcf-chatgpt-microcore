@@ -1,114 +1,91 @@
 # DCF Current State
 
-Updated: 2026-07-20
+Updated: 2026-07-21
 
 ## Product position
 
-DCF is personal cognitive infrastructure jointly maintained by the user and AI. The current product shape is one Chrome extension whose static base preserves installation, immutable plugin storage, exact snapshots, startup evidence and recovery. All visible product behavior remains in independent first-party plugins while the user experiences one complete DCF.
+DCF 是用户与 AI 共同维护的个人认知基础设施。当前产品仍是一个 Chrome 扩展和一组独立第一方插件；用户只面对一个完整 DCF。
 
-- Chrome candidate: `1.0.0-rc.2`
+- Chrome source candidate: `1.0.0-rc.3`
 - Candidate branch: `rebuild/chrome-native-host-v2`
-- Current documented baseline: `4b94bd224c2b910c9e4a1497e9a9118df7a549de`
-- Product-semantic baseline: complete DCF Next before Core Review
-- Data continuity: DCF Next + Chrome `rc.1`; no separate `0.18.2` migration
+- Pre-change problem-evidence HEAD: `d67d070491f9997bc940735be2506f104a912082`
+- Runtime Stable/Current/LKG: 保持本次控制平面改造前最后可信基线；本源码提交不自动推进
+- Product-semantic baseline: Core Review 前完整 DCF Next
+- Data continuity: DCF Next + Chrome rc.1
 
-## Current composition
+## Source review result
 
-The fixed personal index currently contains eleven default first-party plugins:
+`candidate`、S6 和 F2f 不是三个独立根因。
 
-- Shell;
-- language ammo;
-- long-conversation relief;
-- question-answer attribution;
-- appearance;
-- Local Agent workbench;
-- Local Agent dialogue loop;
-- backup;
-- plugin manager;
-- Local Agent diagnostics;
-- page lifecycle diagnostics.
+旧宿主把以下事实混在一个流程里：
 
-Each plugin remains a self-contained immutable JavaScript artifact with a stable ID, SHA-256 and independent USER_SCRIPT world. Candidate/current/LKG are exact combinations; static recovery does not depend on Shell or any dynamic plugin.
+- 目标组合；
+- 当前注册；
+- 所有打开页面的启动回执；
+- 页面热迁移；
+- Current/LKG 提交；
+- 插件语义版本身份。
 
-## Accepted live boundaries
+因此页面延迟、消息丢失、同版本内容变化或外部工作区不匹配都会迫使系统继续增加 timeout、连号插件和恢复分支。
 
-Real-browser evidence has established:
+`d67d070` 已确认修改 `shell.9` 内容但只更新 hash，没有升级不可变语义版本；它保留为问题证据，不再作为正确发布方式。
 
-- independent plugin hot replacement and Shell panel remount;
-- pinned workspace continuity and selectable language-ammo UI;
-- post-start-only assistant artifact intake with existing history kept inert;
-- direct Local Agent connection to the user's OpenCode service at `127.0.0.1:4096`;
-- minimal request → independent session → execution → automatic result return, producing `DCF_READ_ONLY_SMOKE_OK`;
-- observable-idle timeout instead of total wall-clock timeout;
-- same-session permission delegation with a conversation-issued `once` decision;
-- automatic rollback/update boundaries and immutable-version enforcement;
-- runtime diagnosis that identified the prior HTTP 500 as standalone OpenCode CLI/database version mismatch rather than a DCF defect.
+## rc.3 implemented boundary
 
-These accepted facts are recorded in the current ADRs. This file does not repeat their full evidence history.
+源码已改为：
 
-## Current Local Agent dialogue boundary
+```text
+Desired → Observed → Committed → Reconcile
+```
 
-The basic dialogue handoff works. Long-task control and return-path survivability do not yet pass.
+实现包括：
 
-Dialogue `.16` added first progress, `target: current`, request-ID resolution, status/steer/cancel and command idempotency. A real status command then exposed an invalid Promise assumption: synchronous `sendArtifact()` was followed by `.catch`, causing a TypeError and making later control ineffective.
+- `dcf.chrome.host.state.v3`；
+- hash 键控 CodeUnit 工件库；
+- 精确 hash Snapshot；
+- 持久 DesiredSnapshot；
+- Current / LKG / Stable 分离；
+- legacy candidate 丢弃迁移；
+- 宿主创建的 Canary 页面；
+- 仅对相对 Current 发生变化的启用工件做最低 loaded 证明；
+- Canary 证明后的 Current/LKG 原子提交；
+- 注册调和与页面迁移解耦；
+- 页面迁移失败不回滚 Current；
+- ActivationRecord、ReconcileRecord 和统一结构化事件；
+- 构建生成 artifact_id、default snapshot、release manifest；
+- 已发布语义版本复用的构建门禁。
 
-Dialogue `.17` was merged through PR #63 and is the current published dialogue version. It:
+## Evidence status
 
-- restores the synchronous enqueue contract;
-- contains individual control-command errors;
-- distinguishes task failure, delivery degradation and module-fatal failure at a basic level;
-- preserves cancel behavior in unit-level harnesses.
+当前证据等级：
 
-The next real-browser test still failed the product boundary:
+- source implementation: `implemented_unverified`；
+- Node syntax: passed；
+- control-plane unit/integration behavior: passed；
+- repository full verification: pending GitHub Actions for the resulting commit；
+- real Chrome Canary activation: `not_tested`；
+- Current/LKG runtime advancement: not performed；
+- Stable promotion: not performed。
 
-- the panel alternated between execution and delivery-failure text because both responsibilities shared one visible status field;
-- status and cancel produced no visible ACK;
-- source inspection showed that OpenCode polling was asynchronous and did not block the JavaScript event loop;
-- the return path could remain stuck behind weak page-wide streaming detection and a serial confirmation loop;
-- the UI and persisted state could not distinguish command-not-consumed from command-executed-but-not-delivered.
+不得将源码存在、局部测试通过或 CI 通过写成真实浏览器行为通过。
 
-Therefore Issue #54 remains open. The accepted architecture is now recorded in `docs/adr/2026-07-20-dcf-dialogue-control-and-delivery-survivability.md`.
+## Frozen lanes
 
-The next dialogue candidate must provide:
+- **S6 / RESULT delivery**：冻结旧页面 outbox 局部修补；下一阶段改为宿主 durable Artifact + ConversationBinding。
+- **F2f / workspace**：冻结从 `/path` 或 `/project/current` 推测目标；下一阶段实现显式 WorkspaceBinding 和 session 前后双重验证。
+- **Diagnostics S6 line**：保持冻结，不再通过 diagnostics/dialogue 连号版本寻找控制平面事实。
 
-- narrow, visible composer-scoped streaming detection;
-- separate execution, control and delivery state;
-- a persistent non-blocking outbox state machine;
-- priority for cancel/result/permission over progress and heartbeat;
-- independent evidence for detection, consumption, side effect, enqueue and delivery;
-- live proof that status, steer and cancel remain usable while earlier delivery is waiting or degraded.
+## Next acceptance
 
-No `.18` candidate is accepted yet.
+本地 AI 在限定的 Activation Controller 接口内执行一次真实浏览器验收：
 
-## Diagnostics boundary
+1. 从准确 commit 加载 `rc.3`；
+2. 保持旧 Stable 不变；
+3. 声明一个精确 DesiredSnapshot；
+4. 观察宿主 Canary 创建、loaded 证明和关闭；
+5. 确认 Current/LKG 原子推进，Stable 未自动推进；
+6. 注入必要工件失败，确认 Current/LKG 不变；
+7. 制造一个现有页面迁移失败，确认只产生 PageRuntime 偏差；
+8. 输出结构化证据包，不让用户搬运日志。
 
-Diagnostics `.1` remains a privacy-bounded GET-only recovery path. It excludes message text, credentials, provider private options and raw configuration.
-
-A second real sample confirmed that it can over-interpret `normalized: null` or absence from `/session/status` as proof that execution never became observable, even when the service, session, messages and other endpoints are healthy. Issue #62 remains open.
-
-A missing active-status entry must be represented first as a neutral fact. Known terminal state, session existence, message evidence and endpoint health must be considered before generating a failure hypothesis. Normal terminal sessions should not automatically occupy the conversation with a failure diagnostic.
-
-## Maintenance discipline
-
-- GitHub is the durable project memory and publication source.
-- The user must not be used as a log copier, session-ID carrier, dependency manager or multi-round test operator.
-- Prefer one complete candidate and one meaningful real-browser acceptance.
-- Source inspection and CI produce evidence, not runtime truth.
-- Tests must exercise behavior and state transitions, not only source strings or schema tokens.
-- Execution, control, delivery and module health are separate failure planes.
-- A task may fail or a result may wait without disabling status and cancel.
-- Normal browser/composer waits are not delivery failures.
-- Repeated deterministic checks should become tools or structured evidence; AI judgment remains responsible for interpreting them and choosing the intervention.
-
-## Open work
-
-- **Issue #54:** finish and prove the Local Agent long-task control plane and non-blocking return path.
-- **Issue #62:** correct Diagnostics terminal-session inference and automatic-report criteria.
-- **PR #59:** draft browser runtime evidence bridge; separate from the current dialogue repair and must not be merged merely to compensate for missing plugin-owned evidence.
-- model identity and all return profiles still need final real-browser acceptance.
-- full Always authorization records, revocation, blocking, expiry and question-answer delegation remain later phases.
-- the `DCF OpenCode Service` macOS shortcut remains later work after the existing service lifecycle is understood.
-
-## Next action
-
-Continue Issue #54 from the current baseline. Review the next implementation against the 2026-07-20 survivability ADR and the maintenance skill, then run one end-to-end long-task acceptance. Do not close the issue because CI passes or because the OpenCode task eventually terminates; close it only when the current conversation can observe, steer and cancel the task without user-carried identifiers or evidence.
+只有行为通过后，才可显式提升 Stable。
