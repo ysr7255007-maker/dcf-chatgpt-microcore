@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.local-agent-dialogue';
-  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.20';
+  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.21';
   const LOCAL_AGENT_ID = 'dcf.firstparty.local-agent';
   const PANEL_ID = 'dcf-panel-local-agent';
   const SHELL_ID = 'dcf-chrome-shell-host';
@@ -128,7 +128,14 @@
     state.last_request_id = String(data.last_request_id || '');
     state.last_session_id = String(data.last_session_id || '');
     state.last_terminal = data.last_terminal && typeof data.last_terminal === 'object' ? data.last_terminal : null;
-    outbox.items = Array.isArray(data.outbox) ? data.outbox.filter((item) => item && item.text && item.state !== 'delivered').slice(-8) : [];
+    const currentPath = location.pathname;
+    const raw = Array.isArray(data.outbox) ? data.outbox : [];
+    outbox.items = raw.filter((item) => item && item.text && item.state !== 'delivered' && item.conversation_url === currentPath).slice(-8);
+    const staleCount = raw.filter((item) => item && (!item.conversation_url || item.conversation_url !== currentPath) && item.state !== 'delivered').length;
+    if (staleCount) {
+      const cleaned = raw.map((item) => (item && (!item.conversation_url || item.conversation_url !== currentPath) && item.state !== 'delivered') ? { ...item, state: 'delivered' } : item);
+      host({ type: 'plugin.data.set', plugin_id: UNIT_ID, data: { ...data, outbox: cleaned } }).catch(() => {});
+    }
     outbox.status = outbox.items.length ? `恢复 ${outbox.items.length} 个待回传工件` : '';
     if (outbox.items.length) scheduleOutboxPump();
     state.completed_commands = list(data.completed_commands).map(String).slice(-100);
