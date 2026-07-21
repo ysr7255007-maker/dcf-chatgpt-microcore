@@ -1,71 +1,102 @@
-# DCF 当前架构：Chrome 纯底座与个人功能插件
+# DCF 当前架构：纯底座上的声明—观察—承诺—调和
 
-Updated: 2026-07-17  
-Candidate: `1.0.0-rc.2`
+Updated: 2026-07-21  
+Candidate: `1.0.0-rc.3`
 
-## 1. 最高约束
+## 1. 价值约束
 
-DCF 必须减少用户认知与操作负担。内部拆分不得转化为逐项安装、依赖判断、版本选择、日志阅读或重复确认。
+DCF 必须替用户吸收内部复杂度。插件独立、状态分层和证据完备只有在它们减少安装、判断、恢复、日志搬运和多轮验收负担时才有价值。
 
-## 2. 纯底座
+## 2. 最小生存底座
 
-静态扩展仅拥有：
+静态扩展只拥有：
 
-- 插件代码库；
-- 精确 candidate/current/LKG 组合；
-- SHA-256 与不可变版本；
-- `chrome.userScripts` 注册协调；
-- 启动证据与自动恢复；
-- GitHub 插件索引更新；
-- Chrome 底座更新检查；
-- DCF Next/rc.1 数据接续；
-- 静态启用与恢复页面；
-- 通用插件数据命名空间与隐私受限诊断。
+- 内容寻址 CodeUnit 的保存与校验；
+- DesiredSnapshot；
+- Committed Current / LKG / Stable；
+- Canary 证明与注册协调；
+- PageRuntime 观察和迁移状态；
+- ActivationRecord、ReconcileRecord 与有界证据；
+- 通用插件数据命名空间；
+- 固定 GitHub 个人索引更新；
+- DCF Next / Chrome rc.1 数据接续；
+- 不依赖动态插件的恢复页面。
 
-它不包含普通产品功能或功能专用 API。
+底座不理解语言弹药、本机 Agent、对话投递或其他业务语义。
 
-## 3. 独立插件工件
-
-每项功能是一份自足的构建后 JavaScript：稳定 ID、不可变版本、SHA-256、固定来源、适用页面、执行时机、独立 world、阶段和默认启用状态。
-
-浏览器不执行 TypeScript、不解析 npm 依赖、不运行安装脚本。源码工具只负责生成工件，不进入产品运行时。
-
-## 4. 低耦合协作
-
-- 每个插件独立注册和独立 JS world；
-- 每个插件的数据按插件 ID 保存；
-- 每个功能面板拥有自己的 DOM 根与 Shadow DOM；
-- Shell 是普通插件，只发现和挂载标记面板；
-- 插件停用或更新时，新实例先清理旧实例；
-- 不建立通用服务容器、公共市场、权限平台或浏览器内包管理器。
-
-## 5. 精确组合与恢复
+## 3. 事实所有权
 
 ```text
-插件下载并校验
-→ 存入不可变代码库
-→ 形成 candidate 精确组合
-→ 独立注册
-→ 启用插件全部返回证据
-→ 提交 current 与 LKG
+DesiredSnapshot
+  用户或正式更新入口声明目标，宿主持久化
+
+ObservedRuntime
+  Canary、PageRuntime、chrome.userScripts 和外部运行面提供观察
+
+CommittedActivation
+  只有宿主在不变量成立后原子产生
+
+Reconciler
+  计算差异并执行最小幂等动作
 ```
 
-失败不覆盖 LKG；底座恢复上一组合。静态恢复页不依赖 Shell、插件管理器或任何动态插件。
+Observed 可以延迟、重复、缺失或失败，但不能直接覆盖 Committed。页面插件只能上报观察和请求语义操作，不能声明 Current、LKG 或 Stable。
 
-## 6. 更新
+## 4. 内容寻址 CodeUnit
 
-### 功能插件
+```text
+CodeUnitIdentity = unit_id + content_hash
+```
 
-固定 GitHub 个人插件索引是来源。自动检查受六小时节流；只下载发生变化的插件，经过相同 candidate/LKG 事务。
+宿主按 hash 保存不可变内容，同一语义版本的历史冲突可以作为两个不同 hash 的工件被保留，不再互相覆盖。Snapshot 始终引用 hash；版本只是标签。构建期 release ledger 阻止新的语义版本复用进入运行时。
 
-### Chrome 底座
+## 5. 激活闭环
 
-GitHub 是源码和发布触发点。`main` 中底座文件变化后，Action 构建验证 ZIP；一次性配置非公开 Chrome Web Store 后，Action 自动上传并提交，Chrome 使用自身更新机制取得版本。用户无需反复加载本地目录。
+```text
+保存工件
+→ 声明 DesiredSnapshot
+→ 创建或复用专用非活动 Canary
+→ 在 Canary 执行精确 CodeUnit
+→ 收集 loaded / ready / degraded / failed
+→ 必要单元满足最低承诺
+→ 调和正式 registrations
+→ 原子提交 Current 与 LKG
+→ 关闭 Canary
+→ 独立迁移现有页面
+```
 
-## 7. 产品功能来源
+`loaded` 表示 CodeUnit 的同步代码已经执行完毕且精确身份已由宿主观察；`ready` 来自模块更强的启动承诺；`degraded` 表示核心能力仍可用但存在非必要缺失；`failed` 表示该运行实例无法满足模块承诺。
 
-功能参照 Core Review 前的完整 DCF Next。Next Core、Core Review、文本动态执行和 minimal/standard/complete 快照均为失败路线证据，不参与新实现。
+必要单元失败阻止提交。可选单元失败被记录但不绑架整个 Snapshot。现有页面迁移失败只使对应 PageRuntime 成为 `reload_required`。
 
-## 8. 数据接续
+## 6. Current、LKG 与 Stable
 
-只接续 DCF Next 和 Chrome rc.1。`0.18.2` 不再是独立迁移对象。
+- **Current**：最新一次由 Canary 证明并原子提交的目标组合；
+- **LKG**：宿主可自动恢复的最近一次已提交组合；
+- **Stable**：经过明确真实验收后显式晋升的长期可信检查点。
+
+三者不再互相推断。新候选提交不会自动把 Stable 推到未经真实验收的状态。
+
+## 7. PageRuntime
+
+PageRuntime 至少包含：
+
+```text
+page_instance_id
+tab_id
+conversation_id
+observed_snapshot
+units[id] = { content_hash, version, state, detail }
+migration_status
+last_seen_at
+```
+
+页面刷新会产生新的 page instance；宿主观察重新建立，不从旧 DOM 或旧内存推测当前运行状态。启停配置已经提交但无法通用销毁旧 isolated-world 实例时，页面被明确标记为 `reload_required`。
+
+## 8. 兼容边界
+
+现有插件仍可发送 `unit.started` / `unit.failed`。宿主优先使用该标签页已经记录的 snapshot 和 content hash 解析旧信号；只有唯一映射时才接受。`host.status.code_units` 保留旧数组投影供功能管理和恢复页使用，详细内容寻址库存由 `code_unit_inventory` 提供。
+
+## 9. 本轮未纳入底座的领域
+
+宿主持久 RESULT Artifact、ConversationBinding、WorkspaceBinding、权限状态和长任务生命周期将在各自垂直闭环中接入同一控制模式。本轮不以激活改造为名把这些业务状态混入一个不可验收的大事务。
