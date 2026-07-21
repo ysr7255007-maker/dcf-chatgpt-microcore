@@ -1,0 +1,35 @@
+{
+  "captured_at": "2026-07-21",
+  "items": [
+    {
+      "architectural_reading": "page/runtime acknowledgement was coupled to candidate commit",
+      "fact": "candidate code injection completed but Shell startup proof was not confirmed by the host before the old deadline",
+      "id": "candidate-shell-start-proof",
+      "status": "observed_in_handoff"
+    },
+    {
+      "architectural_reading": "semantic version was being used as content identity but not enforced at build time",
+      "fact": "d67d070 changed shell.9 content and official hash without changing semantic version",
+      "id": "shell-9-version-reuse",
+      "status": "repository_verified"
+    },
+    {
+      "architectural_reading": "requires durable Artifact and ConversationBinding",
+      "fact": "terminal task observation, persisted result, route selection, send attempt and delivered confirmation were not separate host-owned facts",
+      "id": "s6-delivery",
+      "status": "frozen"
+    },
+    {
+      "architectural_reading": "requires explicit WorkspaceBinding and fail-closed verification",
+      "fact": "session workspace was observed as /Users/looy rather than the declared DCF repository",
+      "id": "f2f-workspace",
+      "status": "failed"
+    }
+  ],
+  "no_longer_allowed": [
+    "new dialogue/shell diagnostic sequence patches",
+    "direct storage edits to force candidate/current",
+    "treating CI or source tokens as browser truth"
+  ],
+  "schema": "dcf.control-plane.legacy-failure-evidence.v1"
+}

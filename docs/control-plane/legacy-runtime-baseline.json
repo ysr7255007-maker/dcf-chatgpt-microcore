@@ -1,0 +1,31 @@
+{
+  "captured_at": "2026-07-21",
+  "claim_scope": "repository and handoff evidence only; not a fresh browser observation",
+  "frozen_lanes": [
+    "S6 RESULT delivery",
+    "F2f WorkspaceBinding",
+    "diagnostics boundary tracing"
+  ],
+  "problem_evidence_head": "d67d070491f9997bc940735be2506f104a912082",
+  "published_units_observed": {
+    "dcf.firstparty.diagnostics": {
+      "hash": "e154e31f01617853af085f17b24fa0c57474889667aba9ddb2b1d3333030ee1b",
+      "version": "1.0.0-rc.2-diagnostics.4"
+    },
+    "dcf.firstparty.local-agent-dialogue": {
+      "hash": "74d82c653ca86e5f54911527e8b2329c9424e1bee93d527fac5dafad16b97739",
+      "version": "1.0.0-rc.2-local-agent-dialogue.27"
+    },
+    "dcf.firstparty.shell": {
+      "hash": "7b389bdda948b25577461ff2b487e71b25689d4827a3f707c68ef4ff6737079e",
+      "version": "1.0.0-rc.2-shell.9"
+    }
+  },
+  "runtime_authority": {
+    "current": "must remain unchanged until rc.3 real-browser Canary acceptance",
+    "last_known_good": "must remain unchanged until rc.3 real-browser Canary acceptance",
+    "stable": "last behavior-passed pre-v3 runtime baseline; exact browser snapshot not observed by this source-only window"
+  },
+  "schema": "dcf.control-plane.legacy-runtime-baseline.v1",
+  "source_branch": "rebuild/chrome-native-host-v2"
+}

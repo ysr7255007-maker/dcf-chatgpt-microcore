@@ -1,0 +1,60 @@
+name: Publish DCF Chrome base
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'chrome-extension/manifest.template.json'
+      - 'chrome-extension/src/**'
+      - 'chrome-extension/static/**'
+      - 'chrome-extension/pages/**'
+      - 'scripts/build-chrome-extension.js'
+      - 'scripts/publish-chrome-web-store.js'
+      - '.github/workflows/chrome-web-store-release.yml'
+permissions:
+  contents: read
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    env:
+      DCF_PLUGIN_INDEX_REF: main
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify release source
+        run: npm run verify
+      - name: Detect configured private distribution
+        id: cws
+        env:
+          CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+          CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
+          CWS_EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+        run: |
+          if [ -n "$CWS_CLIENT_ID" ] && [ -n "$CWS_CLIENT_SECRET" ] && [ -n "$CWS_REFRESH_TOKEN" ] && [ -n "$CWS_PUBLISHER_ID" ] && [ -n "$CWS_EXTENSION_ID" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "Chrome Web Store secrets are not configured; verified ZIP will be retained as an artifact only."
+          fi
+      - name: Publish non-public Chrome base
+        if: steps.cws.outputs.configured == 'true'
+        env:
+          CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+          CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
+          CWS_EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+          CWS_ZIP_PATH: dist/dcf-chrome-extension-1.0.0-rc.2.zip
+        run: npm run publish:chrome
+      - name: Upload verified base package
+        uses: actions/upload-artifact@v4
+        with:
+          name: dcf-chrome-base-1.0.0-rc.2
+          path: |
+            dist/dcf-chrome-extension-1.0.0-rc.2.zip
+            dist/verification-summary.json
+          if-no-files-found: error

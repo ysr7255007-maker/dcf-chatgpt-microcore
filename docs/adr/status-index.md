@@ -1,53 +1,34 @@
 # DCF ADR canonical status index
 
-Updated: 2026-07-14
-
-The status in this file is authoritative. A status line inside an older ADR records its status when written and is historical after a later ADR supersedes it.
+Updated: 2026-07-21
 
 ## Current
 
-- `2026-07-14-dcf-stateful-command-feedback.md` — **accepted**
+- `2026-07-21-dcf-control-plane-desired-observed-committed-reconcile.md` — **accepted architecture; Activation Controller and release identity implemented, real-browser acceptance pending**; Desired/Observed/Committed/Reconcile replaces the old all-pages candidate flow, CodeUnit identity is content-addressed, Current/LKG commit after Canary loaded proof, Stable requires explicit behavior acceptance, and page migration cannot roll back Current
+- `2026-07-20-dcf-dialogue-control-and-delivery-survivability.md` — **accepted architecture; implementation line frozen pending host durable Artifact phase**; execution, control and delivery remain separate survivability planes, but S6 must no longer be solved through dialogue-only outbox patches
+- `2026-07-19-dcf-local-agent-model-persistence.md` — **accepted; implementation and GitHub Action verification complete; live browser acceptance pending**
+- `2026-07-19-dcf-dialogue-compact-result-boundary.md` — **accepted; implementation and GitHub Action verification complete; live browser acceptance pending**
+- `2026-07-19-dcf-dialogue-activity-timeout-permission-delegation.md` — **accepted; real-browser acceptance passed**
+- `2026-07-19-dcf-runtime-evidence-and-opencode-version-parity.md` — **accepted; live recovery and minimal dialogue acceptance passed**
+- `2026-07-18-dcf-local-agent-failure-evidence.md` — **accepted; original diagnostics inference requires later correction**
+- `2026-07-18-dcf-one-click-runtime-acceptance.md` — **accepted; live acceptance passed**
+- `2026-07-18-dcf-dialogue-shadow-status-semantics.md` — **accepted; live acceptance passed**
+- `2026-07-18-dcf-dialogue-event-stream-hot-refresh.md` — **accepted; actual new-event intake and automatic return passed**
+- `2026-07-18-dcf-local-agent-dialogue-loop.md` — **accepted for basic handoff; durable RESULT delivery deferred to the control-plane Artifact phase**
+- `2026-07-18-dcf-workspace-tab-memory.md` — **accepted; live acceptance passed**
+- `2026-07-17-dcf-workspace-tabs-and-ammo-selection.md` — **accepted; live use established**
+- `2026-07-17-dcf-chrome-local-agent-bridge-plan.md` — **accepted as pure plugin implementation; WorkspaceBinding remains pending**
+- `2026-07-17-dcf-chrome-pure-base-personal-plugins.md` — **accepted product boundary; its candidate/current activation mechanism is superseded by the 2026-07-21 control-plane ADR**
+- `2026-07-14-dcf-stateful-command-feedback.md` — **retained product-semantic guidance**
+- `2026-07-14-dcf-conversation-turn-attribution.md` — **implemented as an independent Chrome plugin**
+- `2026-07-14-dcf-conversation-performance-governor.md` — **implemented as an independent Chrome plugin**
+- `2026-07-14-dcf-ammo-invocation-update-protocol.md` — **retained in the independent ammo plugin**
 
-- `2026-07-14-dcf-bootstrap-package-auto-sync.md` — **accepted**
-- `2026-07-14-dcf-conversation-turn-attribution.md` — **accepted**
+## Superseded or historical
 
-- `2026-07-14-dcf-runtime-performance-attribution.md` — **accepted**
-
-- `2026-07-14-dcf-conversation-performance-governor.md` — **accepted**
-
-- `2026-07-14-dcf-canonical-module-supersession.md` — **accepted**
-
-- `2026-07-14-dcf-ammo-invocation-update-protocol.md` — **accepted**
-- `2026-07-13-dcf-conversation-environment-architecture.md` — **accepted**
-- `2026-07-13-dcf-unified-capability-reconciliation.md` — **accepted**
-- `2026-07-13-dcf-runtime-health-and-folding.md` — **accepted**
-- `2026-07-12-dcf-phase-one-whole-project-rebuild.md` — **accepted**
-- `2026-07-12-dcf-shell-geometry-source-of-truth.md` — **accepted**, retained by phase one
-- viewport-containment-fence ADR — **accepted**, retained by phase one
-
-## Proposed
-
-- `2026-07-14-dcf-compliance-as-generated-projection.md` — **proposed**; automation performs mechanical maintenance and exposes evidence, while format conformity is never treated as proof that the implementation route or architecture is correct
-- `2026-07-14-dcf-architecture-complexity-budget.md` — **proposed**; freeze further platformization, judge architecture by marginal change cost, and audit every coordination layer for simplification
-- `2026-07-14-dcf-cross-platform-memory-system.md` — **proposed**; platform-neutral canonical memory store with bounded per-platform projections, pending real multi-platform validation
-
-## Superseded or partially superseded
-
-- `2026-07-13-dcf-package-module-function-role-separation.md` — **partially superseded**; package/runtime/daily/maintenance separation remains, hidden is no longer a role
-- `2026-07-13-dcf-module-visibility-observability.md` — **superseded**; modules remain discoverable and UI density is handled by folding
-- `2026-07-12-dcf-storage-backend-bridge-and-health-report.md` — **partially superseded**; storage bridge remains, full state-dump health reporting is replaced by Runtime deviation reporting
-- `2026-07-09-dcf-release-structure.md` — complete userscript release retained; modular source is now implemented
-- `2026-07-09-dcf-sidebar-ui.md` — persistent low-friction sidebar retained; UI is now a projection
-- `2026-07-09-dcf-ammo-daily-use-and-hot-update.md` — value requirements retained; implementation replaced by package-owned contextual invocation/update protocol
-- `2026-07-09-dcf-kernel-only-maintenance-wrapper.md` — generic-core boundary retained; ammo is explicitly the required first-party product module
-- `2026-07-09-dcf-light-capability-bus-kernel.md` — capability bus retained; whole-page ingestion and automatic success feedback removed
-- `2026-07-09-dcf-command-dispatch-diagnostics-0.8.7.md` — shared command resolution retained; unified receipts replace separate diagnostic inlets
-- `2026-07-09-dcf-uisugar-content-hot-update-0.8.8.md` — declarative UI/content retained through resources and projections
-- `2026-07-11-dcf-command-evidence-chain.md` — correlation, privacy, non-interference, and delivery truth retained; transaction/command/effect receipts replace the parallel trace system
-- `2026-07-12-dcf-deterministic-package-source-model.md` — immutable revisions and deterministic projection retained inside the single-root transaction model
-
-## Superseded implementation decisions
-
-- `2026-07-09-dcf-ingestion-guard-0.8.6.md` — current-reply artifact decoding and local failure receipts replace page-block guard/seen-ledger behavior
-- SideRail and ModuleRail layout ADRs — unified Surface/module-display projection replaces fixed layout implementations
-- earlier bootloader/chunk/local-engine mitigations in the release-structure history — complete native userscript release remains the only accepted release architecture
+- the v2 `snapshots.candidate → all open pages unit.started → current/LKG` activation flow — **superseded by Desired/Observed/Committed/Reconcile**
+- `2026-07-17-dcf-chrome-native-dynamic-host.md` — **superseded product boundary; content-addressed storage and exact snapshot evidence retained**
+- DCF Next before Core Review — **product semantic baseline**, not current runtime architecture
+- Next Core, Core Review and compiled minimal/standard/complete snapshots — **rejected Tampermonkey routes**
+- `0.18.2` implementation ADRs — **historical only**
+- earlier bootloader/chunk/local-engine/CSP mitigations — **historical rejected routes**
