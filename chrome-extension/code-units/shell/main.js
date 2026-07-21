@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.shell';
-  const UNIT_VERSION = '1.0.0-rc.2-shell.8';
+  const UNIT_VERSION = '1.0.0-rc.2-shell.9';
   const HOST_ID = 'dcf-chrome-shell-host';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_SHELL__';
   const PANEL_SELECTOR = '[data-dcf-panel-root="true"]';
@@ -397,9 +397,10 @@
     document.addEventListener('dcf:appearance', appearanceListener, true);
     cleanup.push(() => document.removeEventListener('dcf:appearance', appearanceListener, true));
 
+    const withTimeout = (promise, ms) => Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms))]);
     Promise.all([
-      send({ type: 'plugin.data.get', plugin_id: UNIT_ID }).catch(() => ({ data: {} })),
-      send({ type: 'plugin.data.get', plugin_id: 'dcf.firstparty.appearance' }).catch(() => ({ data: {} }))
+      withTimeout(send({ type: 'plugin.data.get', plugin_id: UNIT_ID }), 5000).catch(() => ({ data: {} })),
+      withTimeout(send({ type: 'plugin.data.get', plugin_id: 'dcf.firstparty.appearance' }), 5000).catch(() => ({ data: {} }))
     ]).then(([shellState, appearance]) => {
       const data = shellState.data && typeof shellState.data === 'object' ? shellState.data : {};
       activeId = data.active_panel || null;

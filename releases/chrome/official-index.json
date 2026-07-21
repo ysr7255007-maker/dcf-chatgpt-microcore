@@ -18,7 +18,7 @@
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/shell/main.js",
       "default_enabled": true,
       "description": "DCF 的统一可见入口与独立插件面板挂载。",
-      "hash": "d56c2e525ca26bea9fdbad28489b4ba3949c3caa37f15a3d7a4be69b7656a566",
+      "hash": "4d8f71b0a25dadd9b0571188aaeecf9467b091ccbe81da220c99466632a56f6a",
       "host_api": "2",
       "id": "dcf.firstparty.shell",
       "matches": [
@@ -29,7 +29,7 @@
       "required": true,
       "run_at": "document_idle",
       "title": "基础界面",
-      "version": "1.0.0-rc.2-shell.8",
+      "version": "1.0.0-rc.2-shell.9",
       "world_id": "dcf-firstparty-shell"
     },
     {
