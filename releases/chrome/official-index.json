@@ -126,7 +126,7 @@
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/local-agent-dialogue/main.js",
       "default_enabled": true,
       "description": "将严格的对话委派工件交给本机 OpenCode，并把结构化结果自动送回当前对话。",
-      "hash": "f1c75bb9d76ce275021d25824a5dfc9ebed1eab3f6419335560b5c6614ceea1b",
+      "hash": "786f69ec7270709694d30dd8956660620e570260a5a5ecc82f9b353543c92a8d",
       "host_api": "2",
       "id": "dcf.firstparty.local-agent-dialogue",
       "matches": [
@@ -137,7 +137,7 @@
       "required": true,
       "run_at": "document_idle",
       "title": "本机对话闭环",
-      "version": "1.0.0-rc.2-local-agent-dialogue.21",
+      "version": "1.0.0-rc.2-local-agent-dialogue.22",
       "world_id": "dcf-firstparty-local-agent-dialogue"
     },
     {

@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.local-agent-dialogue';
-  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.21';
+  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.22';
   const LOCAL_AGENT_ID = 'dcf.firstparty.local-agent';
   const PANEL_ID = 'dcf-panel-local-agent';
   const SHELL_ID = 'dcf-chrome-shell-host';
@@ -104,7 +104,9 @@
     progress: { status_type: '', messages: 0, todo: 0, diff: 0, permissions: 0, questions: 0, preview: '', last_activity_at: '' },
     control_plane: { seq: 0, last_progress_at: 0, last_stage_sent: '', workdir: '', branch: '', head: '', changed_files: 0, test_status: '', commit_status: '', push_status: '', blocked_reason: '', permission_id: '' },
     last_terminal: null,
-    completed_commands: []
+    completed_commands: [],
+    completed_requests: [],
+    delivered_ids: []
   };
   const RESOLVE_REQUEST_ID_RE = /^[A-Za-z0-9._:-]{1,128}$/;
   const RESOLVE_SESSION_ID_RE = /^ses_[A-Za-z0-9_-]+$/;
@@ -136,9 +138,17 @@
       const cleaned = raw.map((item) => (item && (!item.conversation_url || item.conversation_url !== currentPath) && item.state !== 'delivered') ? { ...item, state: 'delivered' } : item);
       host({ type: 'plugin.data.set', plugin_id: UNIT_ID, data: { ...data, outbox: cleaned } }).catch(() => {});
     }
-    outbox.status = outbox.items.length ? `恢复 ${outbox.items.length} 个待回传工件` : '';
-    if (outbox.items.length) scheduleOutboxPump();
+    outbox.status = outbox.items.length ? `恢复 ${outbox.items.length} 个待回传工件（可手动回传）` : '';
+    // Do NOT auto-pump on page load to prevent replay loops
     state.completed_commands = list(data.completed_commands).map(String).slice(-100);
+    state.completed_requests = list(data.completed_requests).map(String).slice(-200);
+    state.delivered_ids = list(data.delivered_ids).map(String).slice(-200);
+    // Filter outbox items already in delivered tombstone
+    if (state.delivered_ids.length && outbox.items.length) {
+      const before = outbox.items.length;
+      outbox.items = outbox.items.filter((item) => !state.delivered_ids.includes(item.id));
+      if (outbox.items.length !== before && outbox.items.length === 0) outbox.status = '';
+    }
     if (data.active_task && typeof data.active_task === 'object' && !activeJob) {
       const task = data.active_task;
       if (!['completed', 'failed', 'cancelled'].includes(task.state) && task.request_id && task.session_id) {
@@ -194,6 +204,8 @@
         last_session_id: state.last_session_id,
         last_terminal: state.last_terminal,
         completed_commands: state.completed_commands.slice(-100),
+        completed_requests: state.completed_requests.slice(-200),
+        delivered_ids: state.delivered_ids.slice(-200),
         outbox: outbox.items.slice(-5),
         active_task: activeJob ? {
           request_id: activeJob.request.id, session_id: activeJob.session_id,
@@ -1025,6 +1037,10 @@
     if (ackCmd) return `${schema}:${requestId}:${sessionId}:ack:${ackCmd}:${hash(text).slice(0, 8)}`;
     return `${schema}:${requestId}:${sessionId}:${hash(text).slice(0, 12)}`;
   }
+  function outboxSessionId(id) {
+    const parts = (id || '').split(':');
+    return parts.length >= 3 ? parts[2] : '';
+  }
 
   function isCritical(entry) {
     return entry.id.includes('result.v1') || entry.id.includes('permission-request') || entry.id.includes('ack:cancel');
@@ -1032,22 +1048,38 @@
 
   function sendArtifact(text, forceSend = false) {
     const id = outboxId(text);
+    if (state.delivered_ids.includes(id)) return true;
     const existing = outbox.items.find((item) => item.id === id && item.state !== 'delivered');
     if (existing) {
       if (existing.id.includes('progress.v1') && !existing.id.includes('ack:')) { existing.text = text; existing.created_at = Date.now(); }
       return true;
     }
     const entry = { id, text, force_send: forceSend, state: 'queued', created_at: Date.now(), attempts: 0, baseline_users: -1, conversation_url: location.pathname };
+    const isProgress = entry.id.includes('progress.v1') && !entry.id.includes('ack:');
+    const isResult = entry.id.includes('result.v1');
+    // Terminal result: drop all pending progress for this session
+    if (isResult) {
+      const sessionId = outboxSessionId(entry.id);
+      if (sessionId) {
+        for (let i = outbox.items.length - 1; i >= 0; i--) {
+          const item = outbox.items[i];
+          if (item.id.includes('progress.v1') && item.id.includes(sessionId)) outbox.items.splice(i, 1);
+        }
+      }
+      // Also drop from in-queue progress
+      state.completed_requests = [...state.completed_requests, sessionId || ''].slice(-200);
+    }
     if (isCritical(entry) && outbox.items.length >= 8) {
       const replaceable = outbox.items.findIndex((item) => item.id.includes('progress.v1') && !isCritical(item));
       if (replaceable >= 0) outbox.items.splice(replaceable, 1); else outbox.items.shift();
-    } else if (outbox.items.length >= 8) {
+    } else if (!isProgress && outbox.items.length >= 8) {
       const replaceable = outbox.items.findIndex((item) => item.id.includes('progress.v1') && !isCritical(item));
       if (replaceable >= 0) outbox.items.splice(replaceable, 1);
       if (outbox.items.length >= 8) { entry.state = 'recoverable_failure'; entry.error = 'outbox_full'; markDeliveryDegraded('outbox_full'); }
     }
     outbox.items.push(entry);
-    persist().catch(() => {});
+    // Only persist critical entries, not transient progress
+    if (!isProgress) persist().catch(() => {});
     scheduleOutboxPump();
     return true;
   }
@@ -1076,6 +1108,7 @@
         if (entry.state === 'delivered' || entry.state === 'awaiting_manual_send') continue;
         if (entry.state === 'recoverable_failure' && entry.attempts > 3) continue;
         if (entry.conversation_url && entry.conversation_url !== location.pathname) continue;
+        if (state.delivered_ids.includes(entry.id)) continue;
         const target = composer();
         if (!target) { entry.state = 'composer_unavailable'; markDeliveryDegraded('composer_unavailable'); continue; }
         const currentVal = composerValue(target).trim();
@@ -1094,6 +1127,7 @@
           const confirmed = await confirmDelivery(entry);
           if (confirmed) {
             entry.state = 'delivered';
+            state.delivered_ids = [...state.delivered_ids, entry.id].slice(-200);
             outbox.items = outbox.items.filter((item) => item.id !== entry.id);
             await persist().catch(() => {});
           } else {
