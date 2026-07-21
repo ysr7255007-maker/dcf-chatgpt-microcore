@@ -30,6 +30,8 @@ BrowserClaw run: `dcf-acc-20260721`
 | D2 弹药发射 | 发射→形成真实用户消息→助手回复 | passed | Chrome + BrowserClaw | 7f9674b | 发射"源头化解题"→541字符多行完整→助手回复<<<DCF_AMMO结构化更新(762字符) | — |
 | D3 弹药 CRUD | 创建/编辑/删除/更新 | passed | Chrome + BrowserClaw | 7f9674b | 新建(8→9)+删除(9→8)+内嵌确认条(无系统弹窗)+发射触发更新协议 | — |
 | D4 弹药持久化 | 刷新后弹药列表不丢失 | passed | Chrome + BrowserClaw | 75a70d5 | 多次刷新后 8 枚弹药始终存在 | — |
+| D5 弹药 GitHub 加载 | 从远程弹药库同步 | passed | Chrome + BrowserClaw | af46cbf | "GitHub 载入完成：新增 0，更新 1，未变 7" | — |
+| D6 弹药更新协议 | 选中→更新→生成 DCF_AMMO 提示词填入输入框 | passed | Chrome + BrowserClaw | af46cbf | "〔DCF·弹药更新〕"提示词(1371字符)已填入输入框 | — |
 | E1 对话事件消费 | 新助手回复被 DCF 检测 | passed | Chrome + BrowserClaw | 75a70d5 | conversation-performance turn_count=4，apply_count=16 | — |
 | E2 流式结束判定 | 流式完成后才判定轮次 | passed | Chrome + BrowserClaw | 75a70d5 | 助手回复完成后 turn_count 正确递增 | — |
 | E3 性能归因记录 | 记录问答耗时 | passed | Chrome + BrowserClaw | 7f9674b | 激活后记录完整：total_ms=8790, send_to_first_reply=62ms, completion=8728ms, LoAF/longtask/layout-shift | — |
@@ -44,7 +46,7 @@ BrowserClaw run: `dcf-acc-20260721`
 | H2 messaging 不可用容错 | 插件降级而非崩溃 | environment_difference | Chrome + BrowserClaw | 75a70d5 | USER_SCRIPT world sendMessage 非确定性（已知 Issue #69 边界） | 根因未定 |
 | H3 缺 Shell 诊断 | 注册全但缺 Shell 时报告 | not_tested | — | — | Issue #69 已验证过（page_shell_missing） | 本轮未重做 |
 | I1 备份下载 | 下载完整备份 JSON 文件 | passed | Chrome + BrowserClaw | 424e1ab | 点击"下载备份"→通知"备份文件已生成" | — |
-| I2 备份复制 | 复制完整备份到剪贴板 | not_tested | — | — | BrowserClaw 后台操作时 Document is not focused，剪贴板 API 拒绝写入 | 用户正常使用时页面聚焦，非 DCF 缺陷 |
+| I2 备份复制 | 复制完整备份到剪贴板 | environment_difference | — | af46cbf | `backup()` 成功获取数据，但 `navigator.clipboard.writeText()` 因页面未聚焦拒绝写入（浏览器安全限制） | 非 DCF 缺陷；用户正常使用时页面聚焦可正常工作 |
 | I3 备份导入 | 导入 JSON 恢复插件数据 | not_tested | — | — | 需准备备份文件并通过文件选择器导入 | — |
 | J1 外观实时调节 | 拖动滑块 Shell 实时变形 | passed | Chrome + BrowserClaw | 424e1ab | 高度 900→500px 实时生效，宽度 340→500px 实时生效 | — |
 | J2 外观重置 | 恢复默认尺寸 | passed | Chrome + BrowserClaw | 424e1ab | 重置后恢复 380×680px 默认值 | — |
