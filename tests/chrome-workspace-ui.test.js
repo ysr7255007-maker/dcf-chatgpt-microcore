@@ -64,7 +64,7 @@ assert.strictEqual(versions['dcf.firstparty.shell'], '1.0.0-rc.2-shell.8');
 assert.strictEqual(versions['dcf.firstparty.ammo'], '1.0.0-rc.2-ammo.5');
 assert.strictEqual(versions['dcf.firstparty.plugin-manager'], '1.0.0-rc.2-plugin-manager.6');
 assert.strictEqual(versions['dcf.firstparty.local-agent'], '1.0.0-rc.2-local-agent.7');
-assert.strictEqual(versions['dcf.firstparty.local-agent-dialogue'], '1.0.0-rc.2-local-agent-dialogue.26');
+assert.strictEqual(versions['dcf.firstparty.local-agent-dialogue'], '1.0.0-rc.2-local-agent-dialogue.27');
 
 const changedHashes = Object.fromEntries(index.units.filter((unit) => ['dcf.firstparty.plugin-manager', 'dcf.firstparty.local-agent', 'dcf.firstparty.local-agent-dialogue'].includes(unit.id)).map((unit) => [unit.id, unit.hash]));
 console.log(JSON.stringify({
