@@ -9,114 +9,107 @@ Use this file when changing, diagnosing, releasing or migrating DCF.
 3. `docs/architecture-current.md`
 4. `docs/dcf-basic-consensus-prompt.md`
 5. `docs/adr/status-index.md`
-6. the relevant current ADR
-7. source, tests, open issues/PRs and generated verification evidence
+6. relevant current ADRs
+7. source, tests, open issues/comments, recent commits and generated evidence
 
-The repository is the durable project memory. A handoff prompt identifies the current boundary; it must not replace reading the repository.
+The repository is the durable project memory. Handoffs provide leads, not truth.
 
 ## Maintainer role
 
-The maintainer is not a message relay or a patch dispatcher. It must understand the user's purpose, inspect the real system, form a judgment, coordinate implementation, review the resulting change and carry the work through runtime acceptance.
+Understand the user value, inspect the actual owning layer, form a judgment, implement a coherent change and carry it to the strongest available evidence. The user is the final experiential judge, not a routine tester, log copier, session-ID carrier or dependency manager.
 
-The user is the product owner and final experiential judge, not the routine test runner, log copier, session-ID carrier or dependency manager. Ask the user only for facts that DCF and its tools cannot observe reliably.
+## Value and ownership discipline
 
-## Value discipline
+DCF exists to absorb complexity before it reaches the user. Before changing code, identify:
 
-DCF is personal cognitive infrastructure jointly maintained by the user and AI. It exists to absorb complexity before that complexity reaches the user.
+- who declares Desired;
+- which layer owns Committed;
+- which sources only provide Observed;
+- which component may reconcile or advance state.
 
-Internally independent plugins must still appear as one complete product. A change that adds repeated installation, manual copying, dependency judgment, version selection, staged acceptance, routine log reading or multi-round trial-and-error is a product regression even when the internal architecture looks cleaner.
+Do not infer user intent from the current page, current directory, old memory or incidental message order. Unproven delivery, recovery, workspace identity or activation stays unknown/unverified/unroutable/failed with evidence.
 
-Prefer one complete candidate and one meaningful acceptance over many partial patches and many user-operated checks. Normal success should be quiet. Failure should preserve control, recovery and enough bounded evidence for the AI to continue.
-
-AI judgment and deterministic tools have different jobs. Judgment identifies the real problem and chooses the intervention. Repeatable facts should then be turned into tools, tests or structured evidence. Passing a format check, token assertion or CI workflow is not a substitute for product correctness.
-
-## Current invariants
+## Current control-plane invariants
 
 - one Chrome extension is the only user installation;
-- the static base contains no normal product feature;
-- every feature is an independently stored self-contained plugin;
-- every plugin version is immutable and SHA-256 verified;
-- every plugin has its own USER_SCRIPT world and registration;
-- candidate/current/LKG are exact combinations;
-- candidates commit only after complete startup evidence;
-- failure restores LKG and leaves minimal evidence;
-- plugin data is generic and namespaced by plugin ID;
+- the static base contains no ordinary product feature;
+- every feature is an independently stored self-contained CodeUnit;
+- CodeUnit identity is `unit_id + content_hash`;
+- semantic versions are release labels and may not be reused for different content;
+- DesiredSnapshot is explicit and durable;
+- ObservedRuntime never directly overwrites Committed;
+- Current and LKG commit only after dedicated Canary proof and registration verification;
+- Stable advances only through explicit acceptance evidence;
+- `loaded / ready / degraded / failed` are distinct;
+- required failure blocks a candidate; optional failure does not bind the whole product;
+- existing-page migration happens after commit and cannot roll Current back;
+- PageRuntime refresh/reload creates new observation, not a guessed continuation;
 - static recovery never depends on Shell or plugin manager;
-- plugin updates pull from the fixed GitHub personal index;
-- base updates are built from GitHub and distributed through a non-public Chrome Web Store workflow;
-- data continuity covers DCF Next and Chrome rc.1 only.
+- generic plugin data is not a substitute for host-owned control facts;
+- data continuity covers DCF Next and Chrome rc.1.
 
-## Failure and control discipline
+## Modification radius
 
-Do not collapse task execution, control availability, result delivery and module health into one status.
+### L1 — one module
 
-- A task may fail while status and cancel remain available.
-- Result delivery may wait or degrade while control intake continues.
-- A single malformed artifact or failed ACK must not stop later artifacts.
-- Only an initialization or core-dependency failure may become module-fatal.
-- Normal transport waits are not failures.
-- Recovery, diagnosis and abort paths should survive as far as the underlying platform permits.
+A local AI may iterate on selectors, module data, UI, internal transitions and unit tests inside one plugin.
 
-For long-running work, the ability to observe, steer and stop the task is part of correctness. A system that can start work but loses its control surface under pressure has not completed the feature.
+### L2 — explicit interface pair
+
+A local AI may modify both sides of a clear request/response or serialization contract and add contract tests.
+
+### L3 — control plane
+
+Stop local patching and redesign when the change alters fact ownership, Desired/Committed semantics, Current/LKG/Stable, shared durable state, transaction, lease, recovery, workspace identity, permissions, or spreads through multiple independent modules.
+
+After an L3 design is established, L1/L2 implementation and real-environment retest may return to the local AI within the declared radius.
 
 ## Change workflow
 
-1. Identify the user value and the actual broken boundary before choosing a code location.
-2. Gather runtime evidence from the owning layer. Source inspection generates hypotheses; it does not establish browser or external-runtime causes.
-3. Decide whether the change belongs to the static base, one plugin, data migration or build/release tooling.
-4. Keep ordinary feature changes inside one plugin directory and do not add a platform layer for a hypothetical future need.
-5. Prepare the complete source change in an isolated branch/worktree.
-6. Add behavior tests that exercise the real state transition, not only source strings or schema tokens.
-7. Run `npm run verify:chrome`, then repository `npm run verify` before publication.
-8. Produce one atomic business change. CI may verify it; CI must not become a remote patching machine or a substitute development environment.
-9. Review the diff against the value goal, failure boundaries and user friction, not only against the task wording.
-10. Update ADR/current state/architecture when a durable decision or live boundary changes.
-11. Perform real-browser acceptance for claims that depend on ChatGPT, Chrome, extension lifecycle or external services.
+1. Read the current branch and live issue comments; do not reuse old HEAD or failure reports as permanent facts.
+2. Identify the shared prerequisite before fixing multiple symptoms.
+3. Separate observed, hypothesized, implemented_unverified, runtime_verified and behavior_passed.
+4. Modify source and generated release inputs together; do not hand-edit only the published index.
+5. Add behavior tests for state transitions, repetition, delay, restart and failure—not only source-string checks.
+6. Run `npm run verify:chrome`, then `npm run verify` when the legacy line is affected.
+7. Produce one semantic commit. CI verifies it; CI is not a remote patching machine.
+8. Update ADR/current-state/architecture when ownership or durable semantics change.
+9. Use real Chrome/ChatGPT evidence before claiming activation, migration, delivery, recovery or external-service behavior.
+10. Promote Stable only with an exact evidence reference.
 
-## Plugin rules
+## CodeUnit and release rules
 
-A plugin is one self-contained built JavaScript file. It may use a source build tool, but runtime does not resolve npm packages. Plugins must own their primary data and UI, clean up the previous instance on replacement, and must not import another plugin's source.
+- Source plus declarative metadata is the only release input.
+- Build generates hash, `content_id`, official index, version ledger, build manifest and verification summary.
+- A published `unit_id + semantic_version` with changed content is a build failure.
+- Historical collisions remain evidence; never rewrite them into a single false identity.
+- Snapshot references content hash, never an ambiguous version lookup.
+- Runtime may read legacy v1/v2 index/state during migration but writes v3 control state.
 
-Shell is a normal plugin. It may expose a thin DOM mounting convention, but must not become a business SDK or a condition for static recovery.
+## Activation rules
 
-When a plugin has concurrent responsibilities, give them explicit state and evidence rather than a shared mutable label. Background delivery must be a bounded, persistent, non-blocking state machine; one waiting item must not monopolize unrelated control or critical results.
+- Use a dedicated inactive Canary, not all user pages, to prove a candidate.
+- `loaded` is the minimum synchronous execution and exact-identity observation; stronger modules may require `ready`.
+- A normal data-restore or optional enhancement failure should become degraded when core ability remains usable.
+- Registration commits after proof; existing page migration follows commit.
+- A failed migration becomes stale/reload_required and preserves Current.
+- Service Worker restart reruns reconcile from Desired/Observed/Committed; it does not replay a historical procedure.
 
-## Update rules
+## Evidence rules
 
-Remote plugin code is accepted only from the fixed raw GitHub origin when index identity, plugin identity, version and SHA-256 agree. It enters the normal candidate path.
+Evidence must distinguish detection, exact identity, execution, runtime state, registration, commit and page migration. ActivationRecord and ReconcileRecord must be bounded and traceable to snapshot, operation and page identity.
 
-The Chrome base is not self-replaced from GitHub. GitHub Actions produces the verified ZIP and, once one-time Chrome Web Store credentials are configured, submits it through the official API. Do not require recurring local reloads.
-
-An immutable plugin whose content changes must receive a new version. Never repair a published version by silently changing its hash.
-
-## Validation and evidence
-
-`npm run verify:chrome` must cover pure-base boundaries, plugin independence, hashes, unique worlds, snapshots, GitHub install/update, startup evidence, rollback, extension-update reconstruction, DCF Next/rc.1 continuity, dark static pages, recovery and deterministic packaging.
-
-When browser facts can be observed by the owning plugin, provide one explicit action or automatic evidence surface that gathers a privacy-bounded structured report. Do not ask the user to transcribe logs or confirm those facts one by one. The report may change only the state being tested, must disclose that change, and must never include conversation text, hidden reasoning, credentials or complete sensitive payloads.
-
-Evidence must distinguish at least:
-
-- whether an artifact was detected;
-- whether a control command was consumed;
-- whether its side effect succeeded;
-- whether the resulting artifact entered the outbox;
-- whether it was actually delivered;
-- whether the underlying task is still active or terminal.
-
-The user should be asked only for irreducibly experiential judgments or external effects that DCF cannot observe reliably. Never report a real-browser pass, cancellation, delivery or Chrome Web Store publication without direct evidence.
+Do not ask the user to transcribe logs. Provide one structured evidence surface owned by the layer that can observe the fact. Never claim real-browser pass, delivery, cancellation, workspace match or store publication without direct evidence.
 
 ## Stop conditions
 
-Stop and return to the value goal when:
+Return to the value goal when:
 
-- independent plugin updates require rebuilding the extension;
-- normal base updates require repeated local loading;
-- recovery depends on a dynamic plugin;
-- DCF Next data cannot be preserved;
-- language-ammo automation is reduced;
-- a task can continue while its control surface is lost;
-- a waiting or delivery failure can disable later control commands;
-- the proposed mechanism asks the user to carry evidence between tools;
-- tests prove implementation shape but not the claimed behavior;
-- the mechanism adds more user friction than it removes.
+- a business failure blocks the survival core;
+- page migration can roll back a proven candidate;
+- a version label silently changes content;
+- a page or external directory becomes the source of user intent;
+- unknown is converted into success;
+- each new failure requires another numbered patch or recovery branch;
+- an implementation-shape test is used as product proof;
+- the user is asked to carry evidence between tools.
