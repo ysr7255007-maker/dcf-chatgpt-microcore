@@ -16,10 +16,6 @@
     if (type === 'host.check_updates') return H.checkRemoteUpdates('user');
     if (type === 'host.check_base_update') return H.checkBaseUpdate();
     if (type === 'host.check_all_updates') return { ok: true, plugins: await H.checkRemoteUpdates('user'), base: await H.checkBaseUpdate() };
-    if (type === 'diagnostic') {
-      await H.mutate(async (state) => C.appendEvidence(state, { type: 'diagnostic', plugin_id: String(message.plugin_id || ''), event: String(message.event || ''), detail: message.detail ? JSON.stringify(message.detail) : '', at: new Date().toISOString() }));
-      return { ok: true };
-    }
     if (type === 'host.diagnostics') {
       const state = await H.storageGet();
       let scripts = []; let available = true;
