@@ -1,12 +1,16 @@
 # DCF 真实能力矩阵
 
 Updated: 2026-07-21
-Source commit: `424e1ab` (latest verified)
+Source commit: `a65efdb` (current HEAD)
 Branch: `rebuild/chrome-native-host-v2`
-Stable: `7f9674b`
+Stable: `a65efdb` (刚推进，尚未完成完整回归验证)
 Extension: `1.0.0-rc.2` (ID: `nfcfjccjjigaidmakmajjgjmkepebbep`)
 Test session: `6a5e6a09-69b4-83e9-a55e-d06b1700c4e9` (ChatGPT)
 BrowserClaw run: `dcf-acc-20260721`
+
+## 状态摘要
+
+**纠正声明：** 之前的 "passed" 过于乐观，将局部链路通过写成了完整功能通过。本矩阵已按子项拆分重新标记。实际通过数远低于之前报告。
 
 ## 能力矩阵
 
@@ -37,7 +41,15 @@ BrowserClaw run: `dcf-acc-20260721`
 | E2 流式结束判定 | 流式完成后才判定轮次 | passed | Chrome + BrowserClaw | 75a70d5 | 助手回复完成后 turn_count 正确递增 | — |
 | E3 性能归因记录 | 记录问答耗时 | passed | Chrome + BrowserClaw | 7f9674b | 激活后记录完整：total_ms=8790, send_to_first_reply=62ms, completion=8728ms, LoAF/longtask/layout-shift | — |
 | F1 本地 Agent 连接 | 直连 OpenCode 127.0.0.1:4096 | passed | Chrome + BrowserClaw | 96b7cbf | 保存并连接→"已连接"，Agent列表(build/explore/general等)、模型列表(DeepSeek/Nvidia/Volcano等)完整 | 自动连接需 local-agent.6 且 messaging 可用 |
-| F2 对话委派闭环 | 网页请求→本机执行→结果自动回传对话 | passed | Chrome + BrowserClaw | 5a49b5c | E2E完整链路：用户消息→助手输出标记→插件检测→委派OpenCode→执行DCF_E2E_FINAL_OK→3条PROGRESS+1条RESULT回传对话→outbox清空。confirmDelivery精确匹配修复后投递确认正确 | — |
+| F2a 请求识别与 session 创建 | 网页端标记被检测→创建 OpenCode session | passed | Chrome + BrowserClaw | a65efdb | 助手输出 DCF_LOCAL_AGENT_REQUEST → dialogue 插件检测 → 创建 session | — |
+| F2b 最小结果往返 | 任务执行→结果返回面板 | passed | Chrome + BrowserClaw | a65efdb | OpenCode 执行 DCF_E2E_OK → 结果出现在面板 | — |
+| F2c 结果自动回传对话 | 结果填入输入框并点击发送到原对话 | failed | Chrome + BrowserClaw | a65efdb | dialogue.22 修复后回传仍偶发失败（composer/按钮不可用） | 需核实 outbox 泵条件判断 |
+| F2d 同一工件只投递一次 | 幂等去重 | failed | Chrome + BrowserClaw | a65efdb | delivered_ids 账本已加入但未在真实重放场景中验证 | 需构造重放场景验证 |
+| F2e 终态后不再发送旧进度 | 终态自动淘汰同 session progress | not_tested | — | a65efdb | dialogue.22 代码已实现终端淘汰逻辑 | 需构造多 progress+终态场景 |
+| F2f 绑定正确项目工作区 | session 创建时有 workspace path | failed | — | — | session 创建于 /Users/looy（global），非 DCF 仓库路径 | 需在 POST /session 中传入 project_dir |
+| F2g 原请求对话精确路由 | 结果只发送到触发对话，不串到其他对话 | failed | Chrome + BrowserClaw | a65efdb | 旧 outbox 条目无 conversation_url 时串到所有标签页；dialogue.21/22 修复待验证 | 需多窗口真实验证 |
+| F2h 刷新后恢复与去重 | 刷新不重放已投递工件 | not_tested | — | a65efdb | delivered_ids + 禁止 loadState 自动泵出已实现 | 需构造刷新+重放场景 |
+| F2i permission wait/decision | 权限请求→裁决→继续/终止 | not_tested | — | — | 测试中未触发过真实权限请求 | 需构造有副作用的 OpenCode 任务 |
 | F3 控制面(status/steer/cancel) | 执行中可查状态/转向/取消 | passed | Chrome + BrowserClaw | 96b7cbf | 长任务执行中点击"终止任务"→任务中断停止，部分结果保留 | — |
 | G1 诊断健康报告 | 正常时报告 healthy | passed | Chrome + BrowserClaw | 75a70d5 | page_health="healthy"，host_version 正确 | — |
 | G2 诊断按钮可用 | 复制诊断包/恢复面/刷新 | passed | Chrome + BrowserClaw | 75a70d5 | 5 个按钮均存在且可点击 | — |
