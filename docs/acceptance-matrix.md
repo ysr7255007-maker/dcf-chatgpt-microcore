@@ -1,9 +1,9 @@
 # DCF 真实能力矩阵
 
 Updated: 2026-07-21
-Source commit: `a65efdb` (current HEAD)
+Source commit: `2f6991f` (current HEAD)
 Branch: `rebuild/chrome-native-host-v2`
-Stable: `a65efdb` (刚推进，尚未完成完整回归验证)
+Stable: `2f6991f` (已验证 dialogue.25 F2c 回传通过)
 Extension: `1.0.0-rc.2` (ID: `nfcfjccjjigaidmakmajjgjmkepebbep`)
 Test session: `6a5e6a09-69b4-83e9-a55e-d06b1700c4e9` (ChatGPT)
 BrowserClaw run: `dcf-acc-20260721`
@@ -43,9 +43,9 @@ BrowserClaw run: `dcf-acc-20260721`
 | F1 本地 Agent 连接 | 直连 OpenCode 127.0.0.1:4096 | passed | Chrome + BrowserClaw | 96b7cbf | 保存并连接→"已连接"，Agent列表(build/explore/general等)、模型列表(DeepSeek/Nvidia/Volcano等)完整 | 自动连接需 local-agent.6 且 messaging 可用 |
 | F2a 请求识别与 session 创建 | 网页端标记被检测→创建 OpenCode session | passed | Chrome + BrowserClaw | a65efdb | 助手输出 DCF_LOCAL_AGENT_REQUEST → dialogue 插件检测 → 创建 session | — |
 | F2b 最小结果往返 | 任务执行→结果返回面板 | passed | Chrome + BrowserClaw | a65efdb | OpenCode 执行 DCF_E2E_OK → 结果出现在面板 | — |
-| F2c 结果自动回传对话 | 结果填入输入框并点击发送到原对话 | failed | Chrome + BrowserClaw | a65efdb | dialogue.22 修复后回传仍偶发失败（composer/按钮不可用） | 需核实 outbox 泵条件判断 |
-| F2d 同一工件只投递一次 | 幂等去重 | failed | Chrome + BrowserClaw | a65efdb | delivered_ids 账本已加入但未在真实重放场景中验证 | 需构造重放场景验证 |
-| F2e 终态后不再发送旧进度 | 终态自动淘汰同 session progress | not_tested | — | a65efdb | dialogue.22 代码已实现终端淘汰逻辑 | 需构造多 progress+终态场景 |
+| F2c 结果自动回传对话 | 结果填入输入框并点击发送到原对话 | passed | Chrome + BrowserClaw | 2f6991f | dialogue.25 验证通过：RESULT 含 DCF_LOCAL_AGENT_RESULT 出现在对话中，exactly 1 条无重复，outbox 清空 | — |
+| F2d 同一工件只投递一次 | 幂等去重 | implemented_unverified | Chrome + BrowserClaw | 2f6991f | delivered_ids 账本已实现，代码检查通过，但未完成重放场景行为验收 | 需行为验收 |
+| F2e 终态后不再发送旧进度 | 终态自动淘汰同 session progress | implemented_unverified | — | 2f6991f | persist 过滤 + completed_requests 检查 + 泵中跳过已实现，代码检查通过 | 需行为验收 |
 | F2f 绑定正确项目工作区 | session 创建时有 workspace path | failed | — | — | session 创建于 /Users/looy（global），非 DCF 仓库路径 | 需在 POST /session 中传入 project_dir |
 | F2g 原请求对话精确路由 | 结果只发送到触发对话，不串到其他对话 | failed | Chrome + BrowserClaw | a65efdb | 旧 outbox 条目无 conversation_url 时串到所有标签页；dialogue.21/22 修复待验证 | 需多窗口真实验证 |
 | F2h 刷新后恢复与去重 | 刷新不重放已投递工件 | not_tested | — | a65efdb | delivered_ids + 禁止 loadState 自动泵出已实现 | 需构造刷新+重放场景 |
