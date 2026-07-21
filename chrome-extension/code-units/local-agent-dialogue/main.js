@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.local-agent-dialogue';
-  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.25';
+  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.26';;
   const LOCAL_AGENT_ID = 'dcf.firstparty.local-agent';
   const PANEL_ID = 'dcf-panel-local-agent';
   const SHELL_ID = 'dcf-chrome-shell-host';
@@ -1336,9 +1336,30 @@
     state.status = '服务已连接，正在创建会话';
     render();
     const sessionBody = { title: requestData.title };
+    // Determine target workspace: project workspace takes priority over opencode cwd
+    let workspacePath = '';
     try {
-      const pathResp = await optional('/path', config);
-      if (pathResp.ok && pathResp.data && pathResp.data.path) sessionBody.workdir = String(pathResp.data.path);
+      const projResp = await optional('/project/current', config);
+      if (projResp.ok && projResp.data) {
+        workspacePath = String(projResp.data.worktree || projResp.data.path || projResp.data.root || '');
+      }
+    } catch (_) {}
+    if (!workspacePath) {
+      try {
+        const pathResp = await optional('/path', config);
+        if (pathResp.ok && pathResp.data && pathResp.data.path) workspacePath = String(pathResp.data.path);
+      } catch (_) {}
+    }
+    if (workspacePath) sessionBody.workdir = workspacePath;
+    state.control_plane.workdir = workspacePath;
+    // Fetch git context for evidence
+    try {
+      const vcsResp = await optional('/vcs', config);
+      if (vcsResp.ok && vcsResp.data) {
+        state.control_plane.branch = String(vcsResp.data.branch || vcsResp.data.ref || vcsResp.data.head || '');
+        state.control_plane.head = String(vcsResp.data.current_commit || vcsResp.data.commit || '');
+        state.control_plane.remote = String(vcsResp.data.remote || '');
+      }
     } catch (_) {}
     const session = await request('/session', { config, method: 'POST', body: sessionBody });
     const session_id = sessionId(session);
