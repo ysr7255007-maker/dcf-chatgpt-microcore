@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.local-agent-dialogue';
-  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.22';
+  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.23';
   const LOCAL_AGENT_ID = 'dcf.firstparty.local-agent';
   const PANEL_ID = 'dcf-panel-local-agent';
   const SHELL_ID = 'dcf-chrome-shell-host';
@@ -1330,7 +1330,12 @@
     state.stage = 'creating';
     state.status = '服务已连接，正在创建会话';
     render();
-    const session = await request('/session', { config, method: 'POST', body: { title: requestData.title } });
+    const sessionBody = { title: requestData.title };
+    try {
+      const pathResp = await optional('/path', config);
+      if (pathResp.ok && pathResp.data && pathResp.data.path) sessionBody.workdir = String(pathResp.data.path);
+    } catch (_) {}
+    const session = await request('/session', { config, method: 'POST', body: sessionBody });
     const session_id = sessionId(session);
     if (!session_id) throw new Error('OpenCode 未返回 session ID');
     const body = { parts: [{ type: 'text', text: requestData.task }] };
