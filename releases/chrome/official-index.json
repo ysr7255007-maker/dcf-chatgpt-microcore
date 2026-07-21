@@ -144,7 +144,7 @@
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/backup/main.js",
       "default_enabled": true,
       "description": "独立插件数据的一键备份与恢复。",
-      "hash": "e629fef2d3f7366686675b8a735fcc48c085daf5939f4ae7f4e0baf63f41ba30",
+      "hash": "3d354c37183a8a4eb4640ae7d04f0c94c7c0ec1d8457dfc210391faf06b7ea34",
       "host_api": "2",
       "id": "dcf.firstparty.backup",
       "matches": [
@@ -155,7 +155,7 @@
       "required": true,
       "run_at": "document_idle",
       "title": "备份恢复",
-      "version": "1.0.0-rc.2-backup.1",
+      "version": "1.0.0-rc.2-backup.2",
       "world_id": "dcf-firstparty-backup"
     },
     {
