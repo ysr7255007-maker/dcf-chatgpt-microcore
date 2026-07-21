@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.local-agent-dialogue';
-  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.24';
+  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.25';
   const LOCAL_AGENT_ID = 'dcf.firstparty.local-agent';
   const PANEL_ID = 'dcf-panel-local-agent';
   const SHELL_ID = 'dcf-chrome-shell-host';
@@ -206,7 +206,7 @@
         completed_commands: state.completed_commands.slice(-100),
         completed_requests: state.completed_requests.slice(-200),
         delivered_ids: state.delivered_ids.slice(-200),
-        outbox: outbox.items.slice(-5),
+        outbox: outbox.items.filter((item) => !(item.id.includes('progress.v1') && !item.id.includes('ack:'))).slice(-5),
         active_task: activeJob ? {
           request_id: activeJob.request.id, session_id: activeJob.session_id,
           state: state.stage, seq: state.control_plane.seq,
@@ -1045,6 +1045,12 @@
   function sendArtifact(text, forceSend = false) {
     const id = outboxId(text);
     if (state.delivered_ids.includes(id)) return true;
+    // Check if this result is for a session already completed
+    const isResult = text.includes('result.v1');
+    if (isResult && state.completed_requests.length) {
+      const sessionId = outboxSessionId(id);
+      if (sessionId && state.completed_requests.includes(sessionId)) return true;
+    }
     const existing = outbox.items.find((item) => item.id === id && item.state !== 'delivered');
     if (existing) {
       if (existing.id.includes('progress.v1') && !existing.id.includes('ack:')) { existing.text = text; existing.created_at = Date.now(); }
@@ -1052,7 +1058,6 @@
     }
     const entry = { id, text, force_send: forceSend, state: 'queued', created_at: Date.now(), attempts: 0, baseline_users: -1, conversation_url: location.pathname };
     const isProgress = entry.id.includes('progress.v1') && !entry.id.includes('ack:');
-    const isResult = entry.id.includes('result.v1');
     // Terminal result: drop all pending progress for this session
     if (isResult) {
       const sessionId = outboxSessionId(entry.id);
@@ -1074,7 +1079,6 @@
       if (outbox.items.length >= 8) { entry.state = 'recoverable_failure'; entry.error = 'outbox_full'; markDeliveryDegraded('outbox_full'); }
     }
     outbox.items.push(entry);
-    // Only persist critical entries, not transient progress
     if (!isProgress) persist().catch(() => {});
     scheduleOutboxPump();
     return true;
@@ -1105,6 +1109,11 @@
         if (entry.state === 'recoverable_failure' && entry.attempts > 3) continue;
         if (entry.conversation_url && entry.conversation_url !== location.pathname) continue;
         if (state.delivered_ids.includes(entry.id)) continue;
+        // If a progress entry's session is already completed, skip it
+        if (entry.id.includes('progress.v1') && state.completed_requests.length) {
+          const sessionId = outboxSessionId(entry.id);
+          if (sessionId && state.completed_requests.includes(sessionId)) continue;
+        }
         const target = composer();
         if (!target) { entry.state = 'composer_unavailable'; markDeliveryDegraded('composer_unavailable'); continue; }
         const currentVal = composerValue(target).trim();
@@ -1493,7 +1502,7 @@
     if (action === 'ctl-cancel' && activeJob) { await executeControl({ kind: 'control', command: 'cancel', command_id: `ctl-ui-${hash(activeJob.request.id)}-${Date.now()}`, request_id: activeJob.request.id, session_id: activeJob.session_id }); return; }
     if (action === 'ctl-cancel-cp' && activeJob) { await executeControl({ kind: 'control', command: 'cancel_after_checkpoint', command_id: `ctl-ui-${hash(activeJob.request.id)}-${Date.now()}`, request_id: activeJob.request.id, session_id: activeJob.session_id }); return; }
     if (action !== 'return') return;
-    const pending = outbox.items.find((item) => item.state === 'awaiting_manual_send' || item.state === 'click_unconfirmed' || item.state === 'recoverable_failure');
+    const pending = outbox.items.find((item) => item.state === 'queued' || item.state === 'awaiting_manual_send' || item.state === 'click_unconfirmed' || item.state === 'recoverable_failure');
     if (!pending && !pendingArtifact) { state.status = '当前没有待回传工件'; render(); return; }
     const entry = pending || outbox.items.find((item) => item.text === pendingArtifact);
     if (!entry) { state.status = '当前没有待回传工件'; render(); return; }
@@ -1505,7 +1514,12 @@
       await persist().catch(() => {});
       await clickSend();
       const confirmed = await confirmDelivery(entry);
-      if (confirmed) { entry.state = 'delivered'; outbox.items = outbox.items.filter((item) => item.id !== entry.id); await persist().catch(() => {}); }
+      if (confirmed) {
+        entry.state = 'delivered';
+        state.delivered_ids = [...state.delivered_ids, entry.id].slice(-200);
+        outbox.items = outbox.items.filter((item) => item.id !== entry.id);
+        await persist().catch(() => {});
+      }
       else { entry.state = 'click_unconfirmed'; state.status = '点击后未确认投递，保留工件'; }
     } else { entry.state = 'awaiting_manual_send'; }
     pendingArtifact = '';
