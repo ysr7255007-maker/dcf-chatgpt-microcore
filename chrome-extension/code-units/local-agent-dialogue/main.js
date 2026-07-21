@@ -50,6 +50,9 @@
       return result;
     });
   };
+  const trace = (tag, obj) => {
+    try { window.__dcf_trace = window.__dcf_trace || []; window.__dcf_trace.push({ tag, at: Date.now(), data: JSON.parse(JSON.stringify(obj)) }); } catch(_) {}
+  };
 
   let destroyed = false;
   let activeJob = null;
@@ -194,6 +197,8 @@
   }
 
   function persist() {
+  const p1Outbox = outbox.items.filter((item) => !(item.id.includes("progress.v1") && !item.id.includes("ack:"))).slice(-5);
+  trace("P1_persist_payload", {outbox_count: p1Outbox.length, items: p1Outbox.map(item => ({id: item.id.substring(0,50), conversation_url: item.conversation_url, state: item.state}))});
     return host({
       type: 'plugin.data.set',
       plugin_id: UNIT_ID,
@@ -1079,7 +1084,8 @@
       if (outbox.items.length >= 8) { entry.state = 'recoverable_failure'; entry.error = 'outbox_full'; markDeliveryDegraded('outbox_full'); }
     }
     outbox.items.push(entry);
-    if (!isProgress) persist().catch(() => {});
+    trace("P0_sendArtifact_pushed", {id: entry.id, conversation_url: entry.conversation_url, state: entry.state, isProgress, isResult: text.includes("result.v1"), has_url: !!entry.conversation_url, entry_keys: Object.keys(entry)});
+    if (!isProgress) persist().then(() => { trace("P4_persist_resolved", {artifact_id: entry.id.substring(0,50)}); }).catch(() => {});
     scheduleOutboxPump();
     return true;
   }
