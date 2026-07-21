@@ -3,22 +3,19 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const childProcess = require('child_process');
+const { stable, applyReleaseLedger, contentId } = require('./code-unit-release');
 
 const root = path.resolve(__dirname, '..');
 const sourceRoot = path.join(root, 'chrome-extension');
 const distRoot = path.join(root, 'dist');
 const extensionRoot = path.join(distRoot, 'dcf-chrome-extension');
 const releaseRoot = path.join(root, 'releases', 'chrome');
-const VERSION_NAME = '1.0.0-rc.2';
+const VERSION_NAME = '1.0.0-rc.3';
 const DEFAULT_REF = process.env.DCF_PLUGIN_INDEX_REF || 'rebuild/chrome-native-host-v2';
 const RAW_ROOT = `https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/${DEFAULT_REF}`;
+const LEDGER_FILE = path.join(releaseRoot, 'code-unit-version-ledger.json');
 
 function sha256(value) { return crypto.createHash('sha256').update(value).digest('hex'); }
-function stable(value) {
-  if (Array.isArray(value)) return value.map(stable);
-  if (!value || typeof value !== 'object') return value;
-  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, stable(value[key])]));
-}
 function writeJson(filename, value) {
   fs.mkdirSync(path.dirname(filename), { recursive: true });
   fs.writeFileSync(filename, `${JSON.stringify(stable(value), null, 2)}\n`);
@@ -63,23 +60,37 @@ const specs = [
 const units = specs.map((spec) => {
   const relative = `chrome-extension/code-units/${spec.folder}/main.js`;
   const code = fs.readFileSync(path.join(root, relative), 'utf8');
+  const hash = sha256(Buffer.from(code, 'utf8'));
   return {
     id: spec.id,
     version: declaredUnitVersion(code, spec.id),
+    content_id: contentId(hash),
     title: spec.title,
     description: spec.description,
-    hash: sha256(Buffer.from(code, 'utf8')),
+    hash,
     code_url: `${RAW_ROOT}/${relative}`,
     matches: ['https://chatgpt.com/*', 'https://chat.openai.com/*'],
     run_at: 'document_idle',
     world_id: worldId(spec.id),
-    host_api: '2',
+    host_api: '3',
     phase: spec.phase,
     required: true,
-    default_enabled: true
+    default_enabled: true,
+    activation_requirement: 'loaded'
   };
 });
-const index = { schema: 'dcf.plugin_index.v1', version: VERSION_NAME, defaults: units.map((unit) => unit.id), units };
+
+const priorLedger = fs.existsSync(LEDGER_FILE) ? JSON.parse(fs.readFileSync(LEDGER_FILE, 'utf8')) : null;
+const ledger = applyReleaseLedger(priorLedger, units);
+writeJson(LEDGER_FILE, ledger);
+
+const index = {
+  schema: 'dcf.plugin_index.v2',
+  version: VERSION_NAME,
+  identity: 'unit_id+content_hash',
+  defaults: units.map((unit) => unit.id),
+  units
+};
 writeJson(path.join(releaseRoot, 'official-index.json'), index);
 writeJson(path.join(extensionRoot, 'config.json'), {
   schema: 'dcf.chrome.config.v1',
@@ -89,13 +100,16 @@ writeJson(path.join(extensionRoot, 'config.json'), {
 });
 
 const summary = {
-  schema: 'dcf.chrome.build.summary.v2',
+  schema: 'dcf.chrome.build.summary.v3',
   version: VERSION_NAME,
   plugin_index_ref: DEFAULT_REF,
   manifest_version: manifest.manifest_version,
   minimum_chrome_version: manifest.minimum_chrome_version,
   permissions: manifest.permissions,
-  plugins: units.map(({ id, version, hash, phase, world_id, code_url }) => ({ id, version, hash, phase, world_id, code_url })),
+  control_plane: 'desired-observed-committed-reconcile',
+  plugins: units.map(({ id, version, content_id, hash, phase, world_id, code_url, activation_requirement }) => ({
+    id, version, content_id, hash, phase, world_id, code_url, activation_requirement
+  })),
   extension_files: []
 };
 function walk(directory, prefix = '') {
@@ -107,7 +121,34 @@ function walk(directory, prefix = '') {
   }
 }
 walk(extensionRoot);
+summary.source_tree_digest = sha256(Buffer.from(JSON.stringify(stable({
+  plugins: summary.plugins,
+  control_plane_files: [
+    'manifest.template.json',
+    'src/core.js',
+    'src/background.js',
+    'src/host-state.js',
+    'src/host-runtime.js',
+    'src/host-product.js',
+    'src/host-main.js'
+  ].map((relative) => ({
+    path: relative,
+    sha256: sha256(fs.readFileSync(path.join(sourceRoot, relative)))
+  }))
+})), 'utf8'));
 writeJson(path.join(distRoot, 'verification-summary.json'), summary);
+writeJson(path.join(releaseRoot, 'build-manifest.json'), {
+  schema: 'dcf.chrome.release.manifest.v1',
+  version: VERSION_NAME,
+  source_ref: DEFAULT_REF,
+  source_tree_digest: summary.source_tree_digest,
+  plugin_index_schema: index.schema,
+  plugin_index_identity: index.identity,
+  control_plane: summary.control_plane,
+  units: summary.plugins.map(({ id, version, content_id, hash, activation_requirement }) => ({
+    id, version, content_id, hash, activation_requirement
+  }))
+});
 
 const fixedTime = new Date('2020-01-01T00:00:00.000Z');
 const zipFiles = [];
@@ -116,11 +157,23 @@ function normalizeTimes(directory, prefix = '') {
     const absolute = path.join(directory, name);
     const relative = path.posix.join(prefix, name);
     if (fs.statSync(absolute).isDirectory()) normalizeTimes(absolute, relative);
-    else { fs.utimesSync(absolute, fixedTime, fixedTime); zipFiles.push(path.posix.join('dcf-chrome-extension', relative)); }
+    else {
+      fs.utimesSync(absolute, fixedTime, fixedTime);
+      zipFiles.push(path.posix.join('dcf-chrome-extension', relative));
+    }
   }
   fs.utimesSync(directory, fixedTime, fixedTime);
 }
 normalizeTimes(extensionRoot);
 const zipPath = path.join(distRoot, `dcf-chrome-extension-${VERSION_NAME}.zip`);
 childProcess.execFileSync('zip', ['-X', '-q', zipPath, ...zipFiles], { cwd: distRoot });
-console.log(JSON.stringify({ ok: true, version: VERSION_NAME, plugin_index_ref: DEFAULT_REF, extension_dir: path.relative(root, extensionRoot), zip: path.relative(root, zipPath), plugins: units.length, extension_files: summary.extension_files.length }, null, 2));
+console.log(JSON.stringify({
+  ok: true,
+  version: VERSION_NAME,
+  plugin_index_ref: DEFAULT_REF,
+  extension_dir: path.relative(root, extensionRoot),
+  zip: path.relative(root, zipPath),
+  plugins: units.length,
+  extension_files: summary.extension_files.length,
+  source_tree_digest: summary.source_tree_digest
+}, null, 2));
