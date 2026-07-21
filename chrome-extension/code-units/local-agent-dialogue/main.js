@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.local-agent-dialogue';
-  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.25';
+  const UNIT_VERSION = '1.0.0-rc.2-local-agent-dialogue.25-diagnostics.1';
   const LOCAL_AGENT_ID = 'dcf.firstparty.local-agent';
   const PANEL_ID = 'dcf-panel-local-agent';
   const SHELL_ID = 'dcf-chrome-shell-host';
@@ -49,6 +49,10 @@
       if (!result || result.ok === false) throw new Error(result?.error || 'DCF host rejected request');
       return result;
     });
+  };
+  const diagId = () => String(Math.random()).slice(2, 10);
+  const diag = (event, detail) => {
+    host({ type: 'diagnostic', plugin_id: UNIT_ID, event, detail: Object.assign({ d: diagId(), t: Date.now() }, detail) }).catch(() => {});
   };
 
   let destroyed = false;
@@ -131,6 +135,7 @@
     state.last_session_id = String(data.last_session_id || '');
     state.last_terminal = data.last_terminal && typeof data.last_terminal === 'object' ? data.last_terminal : null;
     const currentPath = location.pathname;
+    diag("loadState_filter", {raw_count: raw.length, filtered_count: outbox.items.length, staleCount, currentPath: location.pathname, raw_urls: raw.map(item => ({url: item.conversation_url || "(missing)", state: item.state}))});
     const raw = Array.isArray(data.outbox) ? data.outbox : [];
     outbox.items = raw.filter((item) => item && item.text && item.state !== 'delivered' && item.conversation_url === currentPath).slice(-8);
     const staleCount = raw.filter((item) => item && (!item.conversation_url || item.conversation_url !== currentPath) && item.state !== 'delivered').length;
@@ -1044,12 +1049,12 @@
 
   function sendArtifact(text, forceSend = false) {
     const id = outboxId(text);
-    if (state.delivered_ids.includes(id)) return true;
+    if (state.delivered_ids.includes(id)) { diag("sendArtifact_skipped_delivered", {id: hash(id).slice(0,6)}); return true; }
     // Check if this result is for a session already completed
     const isResult = text.includes('result.v1');
     if (isResult && state.completed_requests.length) {
       const sessionId = outboxSessionId(id);
-      if (sessionId && state.completed_requests.includes(sessionId)) return true;
+      if (sessionId && state.completed_requests.includes(sessionId)) { diag("sendArtifact_skipped_completed", {requestId: hash(id).slice(0,6), sessionId}); return true; }
     }
     const existing = outbox.items.find((item) => item.id === id && item.state !== 'delivered');
     if (existing) {
@@ -1079,6 +1084,7 @@
       if (outbox.items.length >= 8) { entry.state = 'recoverable_failure'; entry.error = 'outbox_full'; markDeliveryDegraded('outbox_full'); }
     }
     outbox.items.push(entry);
+    diag("sendArtifact_pushed", {id: hash(id).slice(0,8), isProgress, isResult, has_url: !!entry.conversation_url, url: entry.conversation_url || "", state: entry.state, outbox_count: outbox.items.length});
     if (!isProgress) persist().catch(() => {});
     scheduleOutboxPump();
     return true;
@@ -1131,6 +1137,7 @@
           await clickSend();
           const confirmed = await confirmDelivery(entry);
           if (confirmed) {
+          diag("pump_confirm_result", {id: hash(entry.id).slice(0,8), confirmed, delivered_ids_before: state.delivered_ids.length, outbox_before: outbox.items.length});
             entry.state = 'delivered';
             state.delivered_ids = [...state.delivered_ids, entry.id].slice(-200);
             outbox.items = outbox.items.filter((item) => item.id !== entry.id);
@@ -1181,10 +1188,10 @@
         if (requestId && !nodeText.includes(requestId)) continue;
         if (seqOrRest && /^\d+$/.test(seqOrRest) && !nodeText.includes(`"seq": ${seqOrRest}`) && !nodeText.includes(`"seq":${seqOrRest}`)) continue;
         if (sessionId && nodeText.includes('session_id') && !nodeText.includes(sessionId)) continue;
-        return true;
+        { diag("confirmDelivery_true", {id: hash(entry.id).slice(0,8), baseline: entry.baseline_users, nodeText: userNodes[i].innerText.substring(0,80)}); return true; }
       }
     }
-    return false;
+    { diag("confirmDelivery_false", {id: hash(entry.id).slice(0,8), baseline: entry.baseline_users, user_count: (document.querySelectorAll("[data-message-author-role=user]").length)}); return false; }
   }
 
   async function returnPermissionRequest(job, permission, snap) {
