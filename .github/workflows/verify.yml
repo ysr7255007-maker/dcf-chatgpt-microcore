@@ -2,35 +2,96 @@ name: DCF Verify
 
 on:
   pull_request:
+    paths:
+      - 'chrome-extension/**'
+      - 'src/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'package.json'
   push:
-    branches:
-      - main
+    branches: [main]
+    paths:
+      - 'chrome-extension/**'
+      - 'src/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'package.json'
 
 permissions:
   contents: read
 
 jobs:
-  verify:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      chrome: ${{ steps.filter.outputs.chrome }}
+      legacy: ${{ steps.filter.outputs.legacy }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            chrome:
+              - 'chrome-extension/**'
+              - 'tests/chrome-*'
+              - 'scripts/build-chrome-extension.js'
+              - 'scripts/validate-json.js'
+              - 'releases/chrome/**'
+              - 'package.json'
+            legacy:
+              - 'src/**'
+              - 'tests/dcf-*'
+              - 'scripts/build-userscript.js'
+              - 'dcf-chatgpt-microcore.user.js'
+              - 'dcf-chatgpt-microcore.meta.js'
+              - 'package.json'
+
+  verify-chrome:
+    needs: changes
+    if: needs.changes.outputs.chrome == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Run repository verification
-        id: verify
+      - name: Verify chrome scope
         shell: bash
         run: |
           set +e
-          npm run verify 2>&1 | tee verify.log
+          npm run verify:chrome 2>&1 | tee verify-chrome.log
           status=${PIPESTATUS[0]}
-          echo "exit_code=${status}" >> "$GITHUB_OUTPUT"
           exit "$status"
-      - name: Upload verification evidence
+      - name: Upload chrome verification evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: dcf-verify-log-${{ github.run_id }}
-          path: verify.log
+          name: dcf-verify-chrome-${{ github.run_id }}
+          path: verify-chrome.log
+          if-no-files-found: error
+
+  verify-legacy:
+    needs: changes
+    if: needs.changes.outputs.legacy == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify legacy scope
+        shell: bash
+        run: |
+          set +e
+          npm run verify:legacy 2>&1 | tee verify-legacy.log
+          status=${PIPESTATUS[0]}
+          exit "$status"
+      - name: Upload legacy verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dcf-verify-legacy-${{ github.run_id }}
+          path: verify-legacy.log
           if-no-files-found: error
       - run: node --check dcf-chatgpt-microcore.user.js

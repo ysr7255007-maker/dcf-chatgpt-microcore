@@ -1,0 +1,19 @@
+#!/bin/sh
+# DCF pre-push gate: run full verification before allowing push.
+# Keeps direct-push workflow; blocks only when verification fails.
+# CI verify.yml remains the server-side safety net.
+
+echo "[dcf pre-push] Running npm run verify ..."
+npm run verify
+status=$?
+
+if [ $status -ne 0 ]; then
+  echo ""
+  echo "[dcf pre-push] ❌ Verification FAILED (exit $status). Push blocked."
+  echo "[dcf pre-push] Fix the issues above before pushing."
+  echo "[dcf pre-push] Note: --no-verify bypass is blocked by the push guard (npm run install:guard)."
+  exit 1
+fi
+
+echo "[dcf pre-push] ✅ Verification passed. Proceeding with push."
+exit 0
