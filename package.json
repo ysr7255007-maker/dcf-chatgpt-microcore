@@ -3,6 +3,8 @@
   "version": "0.18.2",
   "private": true,
   "scripts": {
+    "prepare": "node scripts/install-hooks.js",
+    "install:guard": "node scripts/install-push-guard.js",
     "build": "npm run build:chrome",
     "build:chrome": "node scripts/build-chrome-extension.js",
     "build:legacy": "node scripts/build-userscript.js",
@@ -12,6 +14,7 @@
     "verify": "npm run verify:chrome && npm run verify:legacy",
     "verify:chrome": "npm run build:chrome && npm run test:chrome && node --check dist/dcf-chrome-extension/src/background.js && node scripts/validate-json.js dist/dcf-chrome-extension/config.json releases/chrome/official-index.json releases/chrome/build-manifest.json releases/chrome/code-unit-version-ledger.json dist/release-manifest.json dist/verification-summary.json",
     "verify:legacy": "npm run build:legacy && npm run test:legacy && node --check dcf-chatgpt-microcore.user.js",
+    "doctor": "node scripts/doctor.js",
     "publish:chrome": "node scripts/publish-chrome-web-store.js"
   },
   "devDependencies": {}
