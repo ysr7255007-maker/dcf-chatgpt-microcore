@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>G6 Surface — DCF Patch Management</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+        background: #f4f5f7; color: #24292f; line-height: 1.55;
+    }
+
+    .offline-banner {
+        position: fixed; top: 0; left: 0; right: 0;
+        background: #cf222e; color: #fff;
+        text-align: center; padding: 8px;
+        font-size: 13px; font-weight: 600;
+        z-index: 10000; display: none;
+    }
+    .offline-banner.visible { display: block; }
+
+    .container {
+        display: flex; margin: 12px auto; max-width: 1560px;
+        gap: 12px; padding: 0 16px; align-items: flex-start;
+    }
+
+    .nav-panel {
+        width: 210px; min-width: 180px; position: sticky; top: 12px;
+        background: #fff; border: 1px solid #e1e4e8;
+        border-radius: 8px; overflow: hidden;
+    }
+    .nav-header { padding: 16px; }
+    .nav-title { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+    .nav-links a {
+        display: block; padding: 7px 10px;
+        color: #0969da; text-decoration: none;
+        font-size: 13px; border-radius: 6px; margin-bottom: 2px;
+    }
+    .nav-links a:hover { background: #f0f6fc; }
+    .health-line { font-size: 12px; color: #656d76; margin-top: 10px; }
+    .health-dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:#d0d7de; margin-right:5px; }
+    .health-dot.up { background: #2da44e; }
+    .health-dot.down { background: #cf222e; }
+
+    .main-panel { flex: 1; min-width: 0; display: grid; grid-template-columns: 1fr; gap: 12px; }
+
+    /* Header */
+    .g6-header {
+        background: #fff; border: 1px solid #e1e4e8;
+        border-radius: 8px; padding: 14px 16px;
+        display: flex; align-items: center; justify-content: space-between;
+    }
+    .g6-header h1 { font-size: 18px; font-weight: 700; }
+    .g6-header-actions { display: flex; gap: 8px; align-items: center; }
+
+    /* Environment health panel */
+    .env-health-panel {
+        background: #fff; border: 1px solid #e1e4e8;
+        border-radius: 8px; padding: 10px 16px;
+        display: flex; align-items: center; gap: 12px; font-size: 13px;
+    }
+    .env-health-panel .label { color: #656d76; font-weight: 600; }
+
+    /* Status filter tabs */
+    .filter-tabs {
+        background: #fff; border: 1px solid #e1e4e8;
+        border-radius: 8px; padding: 6px 8px;
+        display: flex; gap: 4px; flex-wrap: wrap; align-items: center;
+    }
+    .filter-tab {
+        padding: 5px 12px; border: 1px solid transparent;
+        border-radius: 6px; cursor: pointer; font-size: 12px;
+        font-weight: 600; background: #f6f8fa; color: #24292f;
+        white-space: nowrap;
+    }
+    .filter-tab:hover { background: #eaeef2; }
+    .filter-tab.active {
+        background: #0969da; color: #fff; border-color: #0969da;
+    }
+    .filter-tab .tab-count {
+        display: inline-block; font-size: 10px;
+        background: rgba(0,0,0,0.1); padding: 0 5px; border-radius: 8px;
+        margin-left: 4px; min-width: 16px; text-align: center;
+    }
+    .filter-tab.active .tab-count { background: rgba(255,255,255,0.3); }
+
+    /* Patch list + detail split */
+    .content-split {
+        display: grid; grid-template-columns: 1fr 420px; gap: 12px;
+    }
+    @media (max-width: 1100px) {
+        .content-split { grid-template-columns: 1fr; }
+    }
+
+    .panel {
+        background: #fff; border: 1px solid #e1e4e8;
+        border-radius: 8px; padding: 14px 16px;
+    }
+    .panel h3 {
+        font-size: 14px; font-weight: 700; margin-bottom: 10px;
+        display: flex; align-items: center; justify-content: space-between;
+    }
+    .panel-badge {
+        background: #8250df; color: #fff;
+        font-size: 11px; padding: 2px 8px; border-radius: 10px;
+    }
+    .empty-honest {
+        font-size: 12px; color: #656d76; background: #f6f8fa;
+        border: 1px dashed #d0d7de; border-radius: 6px; padding: 10px 12px;
+    }
+
+    /* Patch cards */
+    .patch-list { max-height: 700px; overflow-y: auto; }
+    .patch-card {
+        border: 1px solid #e1e4e8; border-left: 3px solid #d0d7de;
+        border-radius: 6px; padding: 10px 12px; margin-bottom: 8px;
+        background: #fafbfc; cursor: pointer; transition: border-color 120ms;
+    }
+    .patch-card:hover { border-color: #8250df; background: #faf7ff; }
+    .patch-card.selected { border-color: #0969da; background: #f0f6fc; }
+    .patch-card.st-proposed { border-left-color: #d0d7de; }
+    .patch-card.st-validated { border-left-color: #0969da; }
+    .patch-card.st-active { border-left-color: #2da44e; }
+    .patch-card.st-needs_revalidation { border-left-color: #d29922; }
+    .patch-card.st-reverted { border-left-color: #cf222e; }
+    .patch-card.st-superseded { border-left-color: #8250df; }
+
+    .patch-card-header {
+        display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 4px;
+    }
+    .patch-card-title { font-weight: 600; font-size: 13px; word-break: break-word; flex: 1; }
+    .patch-badge {
+        font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 8px;
+        white-space: nowrap; border: 1px solid;
+    }
+    .patch-card-desc {
+        font-size: 12px; color: #57606a; margin: 4px 0;
+        overflow: hidden; text-overflow: ellipsis;
+        display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    }
+    .patch-card-meta {
+        font-size: 11px; color: #656d76; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 4px;
+    }
+    .patch-card-env { margin-top: 4px; }
+    .patch-card-actions { display: flex; gap: 4px; margin-top: 8px; flex-wrap: wrap; }
+
+    /* Detail panel */
+    .detail-panel { max-height: 700px; overflow-y: auto; }
+    .detail-panel h3 { font-size: 14px; font-weight: 700; margin-bottom: 10px; }
+    .detail-section { margin-bottom: 10px; }
+    .detail-section label {
+        display: block; font-size: 11px; color: #656d76;
+        margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .detail-section > div { font-size: 13px; }
+    .detail-section pre {
+        background: #f6f8fa; border: 1px solid #e1e4e8; border-radius: 4px;
+        padding: 8px; font-size: 11px; overflow-x: auto; white-space: pre-wrap; word-break: break-word;
+    }
+    .detail-actions { margin-top: 12px; display: flex; gap: 6px; flex-wrap: wrap; }
+
+    /* Modals */
+    .modal-overlay {
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.5); z-index: 9999;
+        display: none; align-items: center; justify-content: center;
+    }
+    .modal-overlay.visible { display: flex; }
+    .modal {
+        background: #fff; border-radius: 8px; padding: 20px;
+        max-width: 580px; width: 92%; max-height: 84vh; overflow-y: auto;
+        box-shadow: 0 12px 48px rgba(0,0,0,0.24);
+    }
+    .modal h3 { font-size: 16px; font-weight: 700; margin-bottom: 12px; }
+    .form-group { margin-bottom: 12px; }
+    label { display: block; font-size: 12px; color: #656d76; margin-bottom: 4px; }
+    input[type="text"], input[type="number"], select, textarea {
+        width: 100%; padding: 8px 10px; border: 1px solid #d0d7de;
+        border-radius: 6px; font-size: 13px; font-family: inherit;
+    }
+    textarea { resize: vertical; }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+    .result-box {
+        font-size: 12px; border-radius: 6px; padding: 10px 12px;
+        margin-top: 8px; display: none; white-space: pre-wrap; word-break: break-word;
+        font-family: ui-monospace, SFMono-Regular, monospace;
+    }
+    .result-box.ok { display: block; background: #f0fff4; border: 1px solid #2da44e; color: #1a7f37; }
+    .result-box.err { display: block; background: #fff1f0; border: 1px solid #cf222e; color: #cf222e; }
+
+    .patch-select-list { max-height: 190px; overflow-y: auto; margin: 6px 0; }
+    .patch-select-item {
+        display: flex; align-items: flex-start; gap: 8px;
+        padding: 8px; border: 1px solid #e1e4e8;
+        border-radius: 4px; margin-bottom: 4px; cursor: pointer; font-size: 12px;
+    }
+    .patch-select-item:hover { background: #f6f8fa; }
+    .patch-select-item.selected { background: #e1dff7; border-color: #8250df; }
+    .patch-select-item input[type="radio"] { margin-top: 3px; width: auto; }
+
+    .mono { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px; }
+    .hint { font-size: 11px; color: #656d76; margin-top: 4px; }
+
+    button {
+        padding: 5px 12px; border: none; border-radius: 6px;
+        cursor: pointer; font-size: 12px; font-weight: 600;
+        background: #0969da; color: #fff;
+    }
+    button:hover:not(:disabled) { opacity: 0.9; }
+    button:disabled { background: #d0d7de; color:#8c959f; cursor: not-allowed; }
+    button.secondary { background: #f6f8fa; color: #24292f; border: 1px solid #d0d7de; }
+    button.green { background: #2da44e; }
+    button.purple { background: #8250df; }
+    button.red { background: #cf222e; }
+    button.blue { background: #0969da; }
+
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #f6f8fa; }
+    ::-webkit-scrollbar-thumb { background: #adbac7; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div id="offlineBanner" class="offline-banner">⚠ Companion 当前离线 · 自动重连中...</div>
+
+<div class="container">
+    <aside class="nav-panel">
+        <div class="nav-header">
+            <div class="nav-title">🧩 DCF G6 Surface</div>
+            <div style="font-size:12px;color:#656d76;margin-bottom:8px;">个人软件修改管理：提议→验证→激活→回退/废弃</div>
+            <div class="nav-links">
+                <a href="g2-dashboard.html">← G2 Dashboard</a>
+                <a href="g4-lifecycle.html">← G4 Lifecycle</a>
+            </div>
+            <div class="health-line"><span id="healthDot" class="health-dot"></span><span id="healthText">连接中…</span></div>
+        </div>
+    </aside>
+
+    <section class="main-panel">
+        <!-- Header -->
+        <div class="g6-header">
+            <h1>DCF Patch Management</h1>
+            <div class="g6-header-actions">
+                <span id="globalHealthIndicator"></span>
+                <button class="blue" id="proposeBtn">+ 提议新补丁</button>
+                <button class="secondary" id="refreshBtn">刷新</button>
+            </div>
+        </div>
+
+        <!-- Environment Health Panel -->
+        <div class="env-health-panel">
+            <span class="label">环境健康状态：</span>
+            <span id="envHealthContent"><span class="empty-honest">加载中…</span></span>
+        </div>
+
+        <!-- Status filter tabs -->
+        <div class="filter-tabs" id="filterTabs">
+            <span class="filter-tab active" data-status="all">全部 <span class="tab-count" id="count-all">0</span></span>
+            <span class="filter-tab" data-status="proposed">提议中 <span class="tab-count" id="count-proposed">0</span></span>
+            <span class="filter-tab" data-status="validated">已验证 <span class="tab-count" id="count-validated">0</span></span>
+            <span class="filter-tab" data-status="active">已激活 <span class="tab-count" id="count-active">0</span></span>
+            <span class="filter-tab" data-status="needs_revalidation">需重新验证 <span class="tab-count" id="count-needs_revalidation">0</span></span>
+            <span class="filter-tab" data-status="reverted">已回退 <span class="tab-count" id="count-reverted">0</span></span>
+            <span class="filter-tab" data-status="superseded">已废弃 <span class="tab-count" id="count-superseded">0</span></span>
+        </div>
+
+        <!-- Patch list + detail split -->
+        <div class="content-split">
+            <div class="panel">
+                <h3><span>补丁列表</span> <span id="patchListCount" class="panel-badge">0</span></h3>
+                <div id="patchList" class="patch-list">
+                    <div class="empty-honest">加载中…</div>
+                </div>
+            </div>
+            <div class="panel detail-panel">
+                <h3><span>补丁详情</span></h3>
+                <div id="patchDetail">
+                    <div class="empty-honest">选择左侧补丁查看详情</div>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+
+<!-- Propose modal -->
+<div id="proposeModal" class="modal-overlay">
+    <div class="modal">
+        <h3>提议新补丁</h3>
+        <div class="form-group">
+            <label>标题 title（必填）：</label>
+            <input type="text" id="proposeTitle" placeholder="简短描述补丁目的">
+        </div>
+        <div class="form-group">
+            <label>描述 description（可选）：</label>
+            <textarea id="proposeDescription" rows="2" placeholder="更详细的补丁说明"></textarea>
+        </div>
+        <div class="form-group">
+            <label>补丁内容 patch_body_json（必填，stringified JSON）：</label>
+            <textarea id="proposeBody" rows="6" placeholder='{"file":"example.js","change":"..."}'></textarea>
+        </div>
+        <div class="modal-actions">
+            <button class="secondary" id="cancelProposeBtn">取消</button>
+            <button class="blue" id="confirmProposeBtn" disabled>提交提议</button>
+        </div>
+        <div id="proposeResult" class="result-box"></div>
+    </div>
+</div>
+
+<!-- Validate modal -->
+<div id="validateModal" class="modal-overlay">
+    <div class="modal">
+        <h3>验证补丁</h3>
+        <div id="validatePatchInfo" style="font-size:13px;background:#f6f8fa;border-radius:6px;padding:8px 10px;margin-bottom:12px;"></div>
+        <div class="form-group">
+            <label>验证者 validated_by（必填）：</label>
+            <input type="text" id="validateBy" placeholder="例如 looy 或 claude-code">
+        </div>
+        <div class="form-group">
+            <label>验证备注 validation_notes_json（可选，JSON）：</label>
+            <textarea id="validateNotes" rows="4" placeholder='{"checked":true,"score":0.95,"notes":"..."}'></textarea>
+        </div>
+        <div class="modal-actions">
+            <button class="secondary" id="cancelValidateBtn">取消</button>
+            <button class="green" id="confirmValidateBtn" disabled>确认验证</button>
+        </div>
+        <div id="validateResult" class="result-box"></div>
+    </div>
+</div>
+
+<!-- Revert modal -->
+<div id="revertModal" class="modal-overlay">
+    <div class="modal">
+        <h3>回退补丁</h3>
+        <div id="revertPatchInfo" style="font-size:13px;background:#f6f8fa;border-radius:6px;padding:8px 10px;margin-bottom:12px;"></div>
+        <div class="form-group">
+            <label>回退者 reverted_by（必填）：</label>
+            <input type="text" id="revertBy" placeholder="例如 looy">
+        </div>
+        <div class="form-group">
+            <label>回退原因 revert_reason（可选）：</label>
+            <textarea id="revertReason" rows="3" placeholder="为什么需要回退？"></textarea>
+        </div>
+        <div class="modal-actions">
+            <button class="secondary" id="cancelRevertBtn">取消</button>
+            <button class="red" id="confirmRevertBtn" disabled>确认回退</button>
+        </div>
+        <div id="revertResult" class="result-box"></div>
+    </div>
+</div>
+
+<!-- Supersede modal -->
+<div id="supersedeModal" class="modal-overlay">
+    <div class="modal">
+        <h3>废弃补丁（被另一补丁替代）</h3>
+        <div id="supersedePatchInfo" style="font-size:13px;background:#f6f8fa;border-radius:6px;padding:8px 10px;margin-bottom:12px;"></div>
+        <div class="form-group">
+            <label>选择替代补丁（superseded_by_patch_id，必选）：</label>
+            <div id="supersedeSelectList" class="patch-select-list"><div class="empty-honest">加载中…</div></div>
+        </div>
+        <div class="modal-actions">
+            <button class="secondary" id="cancelSupersedeBtn">取消</button>
+            <button class="purple" id="confirmSupersedeBtn" disabled>确认废弃</button>
+        </div>
+        <div id="supersedeResult" class="result-box"></div>
+    </div>
+</div>
+
+<!-- Revalidate modal -->
+<div id="revalidateModal" class="modal-overlay">
+    <div class="modal">
+        <h3>重新验证补丁</h3>
+        <div id="revalidatePatchInfo" style="font-size:13px;background:#f6f8fa;border-radius:6px;padding:8px 10px;margin-bottom:12px;"></div>
+        <div class="form-group">
+            <label>验证结果 validation_result（必选）：</label>
+            <select id="revalidateResultSelect">
+                <option value="">选择结果…</option>
+                <option value="valid">有效 (valid) → 回到 validated</option>
+                <option value="invalid">无效 (invalid) → 回到 proposed</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>验证者 validated_by（可选）：</label>
+            <input type="text" id="revalidateBy" placeholder="例如 looy">
+        </div>
+        <div class="modal-actions">
+            <button class="secondary" id="cancelRevalidateBtn">取消</button>
+            <button class="green" id="confirmRevalidateBtn" disabled>确认重新验证</button>
+        </div>
+        <div id="revalidateResult" class="result-box"></div>
+    </div>
+</div>
+
+<script src="g6-patches-core.js"></script>
+<script>
+'use strict';
+const CORE = window.DCF_G6_CORE;
+const COMPANION_URL = 'http://127.0.0.1:8472';
+
+const $ = (id) => document.getElementById(id);
+
+// ──────────────────────────────────────────────────────────────
+// State
+// ──────────────────────────────────────────────────────────────
+let allPatches = [];
+let statusFilter = 'all';
+let selectedPatchId = null;
+
+// Modal state
+let validatePatchId = null;
+let revertPatchId = null;
+let supersedePatchId = null;
+let supersedeSelectedReplacement = null;
+let revalidatePatchId = null;
+
+// ──────────────────────────────────────────────────────────────
+// Health polling (3s)
+// ──────────────────────────────────────────────────────────────
+async function pollHealth() {
+    const res = await CORE.rpc('GET', '/rpc/health', undefined, COMPANION_URL);
+    const up = res.ok;
+    $('offlineBanner').classList.toggle('visible', !up);
+    $('healthDot').className = 'health-dot ' + (up ? 'up' : 'down');
+    $('healthText').textContent = up ? 'Companion 在线 (8472)' : 'Companion 离线';
+    return up;
+}
+setInterval(pollHealth, 3000);
+
+// ──────────────────────────────────────────────────────────────
+// Rendering
+// ──────────────────────────────────────────────────────────────
+function renderFilterCounts() {
+    const counts = CORE.countByStatus(allPatches);
+    $('count-all').textContent = counts.all;
+    $('count-proposed').textContent = counts.proposed;
+    $('count-validated').textContent = counts.validated;
+    $('count-active').textContent = counts.active;
+    $('count-needs_revalidation').textContent = counts.needs_revalidation;
+    $('count-reverted').textContent = counts.reverted;
+    $('count-superseded').textContent = counts.superseded;
+}
+
+function renderEnvHealthPanel() {
+    // Derive overall environment health from all patches
+    let worstHealth = 'healthy';
+    let lastChecked = null;
+    const priority = { healthy: 0, unknown: 1, degraded: 2, unhealthy: 3 };
+    for (const p of allPatches) {
+        const h = p.environment_health || 'unknown';
+        if (priority[h] > priority[worstHealth]) worstHealth = h;
+        if (p.health_checked_at && (!lastChecked || p.health_checked_at > lastChecked)) {
+            lastChecked = p.health_checked_at;
+        }
+    }
+    if (allPatches.length === 0) {
+        $('envHealthContent').innerHTML = '<span class="empty-honest">暂无补丁数据</span>';
+        $('globalHealthIndicator').innerHTML = '';
+    } else {
+        $('envHealthContent').innerHTML = CORE.buildHealthIndicator(worstHealth, lastChecked);
+        $('globalHealthIndicator').innerHTML = CORE.buildHealthIndicator(worstHealth, null);
+    }
+}
+
+function renderPatchList() {
+    const filtered = CORE.filterByStatus(allPatches, statusFilter);
+    const list = $('patchList');
+    $('patchListCount').textContent = filtered.length;
+
+    if (filtered.length === 0) {
+        list.innerHTML = '<div class="empty-honest">暂无补丁。点击「+ 提议新补丁」创建。</div>';
+        return;
+    }
+    list.innerHTML = filtered.map(p => {
+        const cardHtml = CORE.formatPatchCard(p);
+        return cardHtml.replace('class="patch-card', 'class="patch-card' + (p.patch_id === selectedPatchId ? ' selected' : ''));
+    }).join('');
+
+    // Wire up card click + action buttons
+    list.querySelectorAll('.patch-card').forEach(card => {
+        const patchId = card.dataset.patchId;
+        card.addEventListener('click', (e) => {
+            if (e.target.tagName === 'BUTTON') return;
+            selectedPatchId = patchId;
+            renderPatchDetail();
+            renderPatchList();
+        });
+        card.querySelectorAll('.patch-action').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                handleAction(btn.dataset.action, btn.dataset.patchId);
+            });
+        });
+    });
+}
+
+function renderPatchDetail() {
+    const detail = $('patchDetail');
+    if (!selectedPatchId) {
+        detail.innerHTML = '<div class="empty-honest">选择左侧补丁查看详情</div>';
+        return;
+    }
+    const patch = allPatches.find(p => p.patch_id === selectedPatchId);
+    if (!patch) {
+        detail.innerHTML = '<div class="empty-honest">补丁未找到</div>';
+        return;
+    }
+    detail.innerHTML = CORE.formatPatchDetail(patch);
+    detail.querySelectorAll('.patch-action').forEach(btn => {
+        btn.addEventListener('click', () => handleAction(btn.dataset.action, btn.dataset.patchId));
+    });
+}
+
+function renderAll() {
+    renderFilterCounts();
+    renderEnvHealthPanel();
+    renderPatchList();
+    renderPatchDetail();
+}
+
+// ──────────────────────────────────────────────────────────────
+// Action dispatch
+// ──────────────────────────────────────────────────────────────
+function handleAction(action, patchId) {
+    const patch = allPatches.find(p => p.patch_id === patchId);
+    if (!patch) return;
+    selectedPatchId = patchId;
+    renderPatchDetail();
+
+    switch (action) {
+        case 'validate':
+            openValidateModal(patchId);
+            break;
+        case 'activate':
+            doActivate(patchId);
+            break;
+        case 'deactivate':
+            doDeactivate(patchId);
+            break;
+        case 'revert':
+            openRevertModal(patchId);
+            break;
+        case 'supersede':
+            openSupersedeModal(patchId);
+            break;
+        case 'revalidate_valid':
+            openRevalidateModal(patchId, 'valid');
+            break;
+        case 'revalidate_invalid':
+            openRevalidateModal(patchId, 'invalid');
+            break;
+    }
+}
+
+// ──────────────────────────────────────────────────────────────
+// Data refresh
+// ──────────────────────────────────────────────────────────────
+async function refreshPatches() {
+    const res = await CORE.fetchPatches(COMPANION_URL, { include_environment: true });
+    if (res.ok) {
+        allPatches = res.patches;
+    } else {
+        allPatches = [];
+        $('patchList').innerHTML = '<div class="empty-honest">加载失败：' + CORE.esc(res.failure.message) + '</div>';
+    }
+    renderAll();
+}
+
+// ──────────────────────────────────────────────────────────────
+// Propose modal
+// ──────────────────────────────────────────────────────────────
+$('proposeBtn').addEventListener('click', () => {
+    $('proposeTitle').value = '';
+    $('proposeDescription').value = '';
+    $('proposeBody').value = '';
+    $('proposeResult').className = 'result-box';
+    $('confirmProposeBtn').disabled = true;
+    $('proposeModal').classList.add('visible');
+});
+
+function updateProposeConfirm() {
+    const title = $('proposeTitle').value.trim();
+    const body = $('proposeBody').value.trim();
+    $('confirmProposeBtn').disabled = !(title && body);
+}
+$('proposeTitle').addEventListener('input', updateProposeConfirm);
+$('proposeBody').addEventListener('input', updateProposeConfirm);
+$('cancelProposeBtn').addEventListener('click', () => $('proposeModal').classList.remove('visible'));
+
+$('confirmProposeBtn').addEventListener('click', async () => {
+    const box = $('proposeResult');
+    const res = await CORE.proposePatch(COMPANION_URL, {
+        title: $('proposeTitle').value.trim(),
+        description: $('proposeDescription').value.trim() || undefined,
+        patch_body_json: $('proposeBody').value.trim()
+    });
+    if (res.ok) {
+        showResult(box, true, '提议成功\npatch_id=' + res.result.patch_id + '\nevent_id=' + res.result.event_id + '\n状态=' + res.result.patch_status);
+        await refreshPatches();
+        setTimeout(() => $('proposeModal').classList.remove('visible'), 1200);
+    } else {
+        showResult(box, false, '提议失败（HTTP ' + res.status + '）：' + res.failure.message);
+    }
+});
+
+// ──────────────────────────────────────────────────────────────
+// Validate modal
+// ──────────────────────────────────────────────────────────────
+function openValidateModal(patchId) {
+    validatePatchId = patchId;
+    const patch = allPatches.find(p => p.patch_id === patchId);
+    $('validatePatchInfo').innerHTML = patch
+        ? '补丁：<code class="mono">' + CORE.esc(CORE.shortId(patchId, 12)) + '…</code><br>标题：<strong>' + CORE.esc(patch.title || '(无)') + '</strong>'
+        : 'patch_id: ' + CORE.esc(patchId);
+    $('validateBy').value = '';
+    $('validateNotes').value = '';
+    $('validateResult').className = 'result-box';
+    $('confirmValidateBtn').disabled = true;
+    $('validateModal').classList.add('visible');
+}
+
+$('validateBy').addEventListener('input', () => {
+    $('confirmValidateBtn').disabled = $('validateBy').value.trim().length === 0;
+});
+$('cancelValidateBtn').addEventListener('click', () => $('validateModal').classList.remove('visible'));
+
+$('confirmValidateBtn').addEventListener('click', async () => {
+    const box = $('validateResult');
+    const notes = $('validateNotes').value.trim();
+    const res = await CORE.validatePatch(COMPANION_URL, {
+        patch_id: validatePatchId,
+        validated_by: $('validateBy').value.trim(),
+        validation_notes_json: notes || undefined
+    });
+    if (res.ok) {
+        showResult(box, true, '验证成功\npatch_id=' + res.result.patch_id + '\n状态=' + res.result.patch_status + '\n验证者=' + res.result.validated_by);
+        await refreshPatches();
+        setTimeout(() => $('validateModal').classList.remove('visible'), 1200);
+    } else {
+        showResult(box, false, '验证失败（HTTP ' + res.status + '）：' + res.failure.message);
+    }
+});
+
+// ──────────────────────────────────────────────────────────────
+// Activate / Deactivate (direct, no modal)
+// ──────────────────────────────────────────────────────────────
+async function doActivate(patchId) {
+    const res = await CORE.activatePatch(COMPANION_URL, { patch_id: patchId });
+    if (res.ok) {
+        await refreshPatches();
+    } else {
+        alert('激活失败（HTTP ' + res.status + '）：' + res.failure.message);
+    }
+}
+
+async function doDeactivate(patchId) {
+    const res = await CORE.deactivatePatch(COMPANION_URL, { patch_id: patchId });
+    if (res.ok) {
+        await refreshPatches();
+    } else {
+        alert('停用失败（HTTP ' + res.status + '）：' + res.failure.message);
+    }
+}
+
+// ──────────────────────────────────────────────────────────────
+// Revert modal
+// ──────────────────────────────────────────────────────────────
+function openRevertModal(patchId) {
+    revertPatchId = patchId;
+    const patch = allPatches.find(p => p.patch_id === patchId);
+    $('revertPatchInfo').innerHTML = patch
+        ? '补丁：<code class="mono">' + CORE.esc(CORE.shortId(patchId, 12)) + '…</code><br>标题：<strong>' + CORE.esc(patch.title || '(无)') + '</strong><br>当前状态：' + CORE.esc(patch.patch_status)
+        : 'patch_id: ' + CORE.esc(patchId);
+    $('revertBy').value = '';
+    $('revertReason').value = '';
+    $('revertResult').className = 'result-box';
+    $('confirmRevertBtn').disabled = true;
+    $('revertModal').classList.add('visible');
+}
+
+$('revertBy').addEventListener('input', () => {
+    $('confirmRevertBtn').disabled = $('revertBy').value.trim().length === 0;
+});
+$('cancelRevertBtn').addEventListener('click', () => $('revertModal').classList.remove('visible'));
+
+$('confirmRevertBtn').addEventListener('click', async () => {
+    const box = $('revertResult');
+    const res = await CORE.revertPatch(COMPANION_URL, {
+        patch_id: revertPatchId,
+        reverted_by: $('revertBy').value.trim(),
+        revert_reason: $('revertReason').value.trim() || undefined
+    });
+    if (res.ok) {
+        showResult(box, true, '回退成功\npatch_id=' + res.result.patch_id + '\n状态=' + res.result.patch_status + '\n回退者=' + res.result.reverted_by);
+        await refreshPatches();
+        setTimeout(() => $('revertModal').classList.remove('visible'), 1200);
+    } else {
+        showResult(box, false, '回退失败（HTTP ' + res.status + '）：' + res.failure.message);
+    }
+});
+
+// ──────────────────────────────────────────────────────────────
+// Supersede modal
+// ──────────────────────────────────────────────────────────────
+function openSupersedeModal(patchId) {
+    supersedePatchId = patchId;
+    supersedeSelectedReplacement = null;
+    const patch = allPatches.find(p => p.patch_id === patchId);
+    $('supersedePatchInfo').innerHTML = patch
+        ? '当前补丁：<code class="mono">' + CORE.esc(CORE.shortId(patchId, 12)) + '…</code><br>标题：<strong>' + CORE.esc(patch.title || '(无)') + '</strong>'
+        : 'patch_id: ' + CORE.esc(patchId);
+    $('supersedeResult').className = 'result-box';
+    $('confirmSupersedeBtn').disabled = true;
+
+    // Populate replacement candidates (validated or active patches, excluding self)
+    const candidates = allPatches.filter(p =>
+        p.patch_id !== patchId &&
+        (p.patch_status === 'validated' || p.patch_status === 'active' || p.patch_status === 'proposed')
+    );
+    const listEl = $('supersedeSelectList');
+    if (candidates.length === 0) {
+        listEl.innerHTML = '<div class="empty-honest">无可用的替代补丁（需至少一个 proposed/validated/active 状态的补丁）</div>';
+    } else {
+        listEl.innerHTML = candidates.map(p => `
+            <label class="patch-select-item" data-patch-id="${CORE.esc(p.patch_id)}">
+                <input type="radio" name="superSel" value="${CORE.esc(p.patch_id)}">
+                <span>
+                    <strong>${CORE.esc(p.title || '(无标题)')}</strong><br>
+                    <span class="mono">${CORE.esc(CORE.shortId(p.patch_id, 12))}…</span> · ${CORE.esc(p.patch_status)}
+                </span>
+            </label>`).join('');
+        listEl.querySelectorAll('.patch-select-item').forEach(el => {
+            el.querySelector('input').addEventListener('change', () => {
+                listEl.querySelectorAll('.patch-select-item').forEach(x => x.classList.remove('selected'));
+                el.classList.add('selected');
+                supersedeSelectedReplacement = el.dataset.patchId;
+                $('confirmSupersedeBtn').disabled = false;
+            });
+        });
+    }
+    $('supersedeModal').classList.add('visible');
+}
+
+$('cancelSupersedeBtn').addEventListener('click', () => $('supersedeModal').classList.remove('visible'));
+
+$('confirmSupersedeBtn').addEventListener('click', async () => {
+    const box = $('supersedeResult');
+    if (!supersedeSelectedReplacement) {
+        showResult(box, false, '请选择替代补丁');
+        return;
+    }
+    const res = await CORE.supersedePatch(COMPANION_URL, {
+        patch_id: supersedePatchId,
+        superseded_by_patch_id: supersedeSelectedReplacement
+    });
+    if (res.ok) {
+        showResult(box, true, '废弃成功\npatch_id=' + res.result.patch_id + '\n状态=' + res.result.patch_status + '\n被替代=' + res.result.superseded_by);
+        await refreshPatches();
+        setTimeout(() => $('supersedeModal').classList.remove('visible'), 1200);
+    } else {
+        showResult(box, false, '废弃失败（HTTP ' + res.status + '）：' + res.failure.message);
+    }
+});
+
+// ──────────────────────────────────────────────────────────────
+// Revalidate modal
+// ──────────────────────────────────────────────────────────────
+function openRevalidateModal(patchId, defaultResult) {
+    revalidatePatchId = patchId;
+    const patch = allPatches.find(p => p.patch_id === patchId);
+    $('revalidatePatchInfo').innerHTML = patch
+        ? '补丁：<code class="mono">' + CORE.esc(CORE.shortId(patchId, 12)) + '…</code><br>标题：<strong>' + CORE.esc(patch.title || '(无)') + '</strong><br>当前状态：' + CORE.esc(patch.patch_status)
+        : 'patch_id: ' + CORE.esc(patchId);
+    $('revalidateResultSelect').value = defaultResult || '';
+    $('revalidateBy').value = '';
+    $('revalidateResult').className = 'result-box';
+    $('confirmRevalidateBtn').disabled = !defaultResult;
+    $('revalidateModal').classList.add('visible');
+}
+
+$('revalidateResultSelect').addEventListener('change', () => {
+    $('confirmRevalidateBtn').disabled = $('revalidateResultSelect').value === '';
+});
+$('cancelRevalidateBtn').addEventListener('click', () => $('revalidateModal').classList.remove('visible'));
+
+$('confirmRevalidateBtn').addEventListener('click', async () => {
+    const box = $('revalidateResult');
+    const result = $('revalidateResultSelect').value;
+    if (!result) { showResult(box, false, '请选择验证结果'); return; }
+    const res = await CORE.revalidatePatch(COMPANION_URL, {
+        patch_id: revalidatePatchId,
+        validation_result: result,
+        validated_by: $('revalidateBy').value.trim() || undefined
+    });
+    if (res.ok) {
+        showResult(box, true, '重新验证成功\npatch_id=' + res.result.patch_id + '\n状态=' + res.result.patch_status + '\n结果=' + res.result.validation_result);
+        await refreshPatches();
+        setTimeout(() => $('revalidateModal').classList.remove('visible'), 1200);
+    } else {
+        showResult(box, false, '重新验证失败（HTTP ' + res.status + '）：' + res.failure.message);
+    }
+});
+
+// ──────────────────────────────────────────────────────────────
+// Filter tabs
+// ──────────────────────────────────────────────────────────────
+$('filterTabs').addEventListener('click', (e) => {
+    const tab = e.target.closest('.filter-tab');
+    if (!tab) return;
+    document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    statusFilter = tab.dataset.status;
+    renderPatchList();
+});
+
+// ──────────────────────────────────────────────────────────────
+// Helpers
+// ──────────────────────────────────────────────────────────────
+function showResult(el, ok, text) {
+    el.className = 'result-box ' + (ok ? 'ok' : 'err');
+    el.textContent = text;
+}
+
+$('refreshBtn').addEventListener('click', async () => {
+    $('refreshBtn').disabled = true;
+    await refreshPatches();
+    $('refreshBtn').disabled = false;
+});
+
+// ──────────────────────────────────────────────────────────────
+// Init
+// ──────────────────────────────────────────────────────────────
+(async function init() {
+    await pollHealth();
+    await refreshPatches();
+    // Auto-refresh every 10s
+    setInterval(refreshPatches, 10000);
+})();
+</script>
+</body>
+</html>
