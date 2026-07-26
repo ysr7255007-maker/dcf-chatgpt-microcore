@@ -101,8 +101,8 @@ archive/control-plane-reconcile-rc3  -> fc186df
 Published remote result:
 
 ```text
-main                                      -> ce95ecb2268894712607886948638b910123b35b
-main tree                                 -> 6d3df42af1b70cad3c5726003cca179dc8fa21b7
+P0 main cutover commit                    -> ce95ecb2268894712607886948638b910123b35b
+verified P0 tree                          -> 6d3df42af1b70cad3c5726003cca179dc8fa21b7
 work/seed-p0-unification-20260726         -> ce95ecb2268894712607886948638b910123b35b
 archive/old-world-baseline                -> bdaaad474880667f927c0affc22755db36f712c3
 archive/vision-reweaving-exploration      -> 2fa7fc0f544fd7fea50f5e05c7d56a9990a08ac3
@@ -110,7 +110,7 @@ archive/control-plane-reconcile-rc3       -> fc186dfc906d52e51eb06677d935098c407
 stable                                    -> 4f1f9a20cc410b9c929d8615fd161aab9ec8a32f
 ```
 
-`main@ce95ecb` is a two-parent merge of `05eebb4` and `2fa7fc0`. Its tree is byte-identical to the locally verified P0 tree. The available GitHub write surface did not expose annotated-tag creation, so remote archive branches provide equivalent immutable checkpoints while the annotated tag names remain local. No remote tag is claimed.
+The P0 cutover commit `ce95ecb` is a two-parent merge of `05eebb4` and `2fa7fc0`. Its tree is byte-identical to the locally verified P0 tree. Evidence-only child commits may advance `main` without changing this cutover identity. The available GitHub write surface did not expose annotated-tag creation, so remote archive branches provide equivalent immutable checkpoints while the annotated tag names remain local. No remote tag is claimed.
 
 ## Unavailable local-only artifacts
 
