@@ -22,17 +22,14 @@ const COMPANION_BASE = 'http://127.0.0.1:8472';
 /**
  * Path to the existing DCF Surface dashboard page.
  *
- * Resolved from this file (packages/desktop-electron/src/main.js):
- *   src/ -> desktop-electron/ -> packages/ -> project root -> seed/surface/
- *
- * Note: the task brief specified `path.join(__dirname, '../../seed/surface/...')`,
- * but that only resolves correctly from the package.json directory. Since we use
- * `__dirname` (the src/ directory), one additional `../` is required to reach
- * the project root. This keeps `npm start` able to actually load the page.
+ * In development (npm start): resolves from src/ -> desktop-electron/ -> packages/ -> root -> seed/surface/
+ * In packaged app: resolves from process.resourcesPath/seed/surface/ (extraResources config)
  *
  * @type {string}
  */
-const SURFACE_HTML = path.join(__dirname, '../../../seed/surface/g2-dashboard.html');
+const SURFACE_HTML = app.isPackaged
+  ? path.join(process.resourcesPath, 'seed', 'surface', 'g2-dashboard.html')
+  : path.join(__dirname, '../../../seed/surface/g2-dashboard.html');
 
 /** @type {BrowserWindow|null} */
 let mainWindow = null;

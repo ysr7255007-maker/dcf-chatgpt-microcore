@@ -5,9 +5,37 @@
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder"
+    "build": "electron-builder --mac",
+    "build:dir": "electron-builder --mac --dir"
+  },
+  "build": {
+    "appId": "com.dcf.surface",
+    "productName": "DCF Surface",
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "identity": null
+    },
+    "files": [
+      "src/**/*",
+      "README.md"
+    ],
+    "extraResources": [
+      {
+        "from": "../../seed/surface",
+        "to": "seed/surface"
+      }
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    }
   },
   "devDependencies": {
-    "electron": "^30.0.0"
+    "electron": "^30.0.0",
+    "electron-builder": "^24.9.0"
   }
 }
