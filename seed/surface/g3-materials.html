@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>G3 Surface — 材料代谢（修订候选）</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+        background: #f4f5f7; color: #24292f; line-height: 1.6;
+        height: 100vh; overflow: hidden;
+    }
+
+    .offline-banner {
+        position: fixed; top: 0; left: 0; right: 0;
+        background: #cf222e; color: #fff;
+        text-align: center; padding: 8px;
+        font-size: 13px; font-weight: 600;
+        z-index: 10000; display: none;
+    }
+    .offline-banner.visible { display: block; }
+
+    .container {
+        display: flex; height: calc(100vh - 20px);
+        margin: 10px auto; max-width: 1280px;
+        gap: 12px; padding: 0 16px;
+    }
+
+    .sidebar {
+        width: 360px; min-width: 300px;
+        background: #fff; border: 1px solid #e1e4e8;
+        border-radius: 8px; display: flex; flex-direction: column;
+        overflow: hidden;
+    }
+    .sidebar-header {
+        padding: 16px; border-bottom: 1px solid #e1e4e8; background: #fafbfc;
+    }
+    .sidebar-title {
+        font-size: 16px; font-weight: 700; margin-bottom: 6px;
+        display: flex; align-items: center; gap: 8px;
+    }
+    .sidebar-title b { color: #8250df; }
+    .sub { font-size: 12px; color: #656d76; margin-bottom: 4px; }
+    .sub a { color: #0969da; text-decoration: none; }
+    .sidebar-content { flex: 1; overflow-y: auto; padding: 12px; }
+
+    .main-panel {
+        flex: 1; min-width: 0; overflow-y: auto;
+        display: flex; flex-direction: column; gap: 12px;
+    }
+    .panel {
+        background: #fff; border: 1px solid #e1e4e8;
+        border-radius: 8px; padding: 14px 16px;
+    }
+    .panel h3 {
+        font-size: 14px; font-weight: 700; margin-bottom: 10px;
+        display: flex; align-items: center; gap: 8px;
+    }
+    .panel h3 .step {
+        background: #8250df; color: #fff; border-radius: 10px;
+        font-size: 11px; padding: 2px 8px;
+    }
+    .hint { font-size: 12px; color: #656d76; margin-bottom: 8px; }
+
+    button {
+        padding: 7px 14px; border: none; border-radius: 6px;
+        cursor: pointer; font-size: 13px; font-weight: 600;
+        background: #0969da; color: #fff;
+    }
+    button:hover { opacity: 0.9; }
+    button:disabled { background: #d0d7de; cursor: not-allowed; }
+    button.secondary { background: #f6f8fa; color: #24292f; border: 1px solid #d0d7de; }
+    button.purple { background: #8250df; }
+    button.green { background: #2da44e; }
+    input[type=text], select {
+        padding: 7px 10px; border: 1px solid #d0d7de; border-radius: 6px;
+        font-size: 13px; background: #fff;
+    }
+    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+    .row label { font-size: 12px; color: #656d76; }
+
+    /* 材料卡片（左栏） */
+    .material-item {
+        border: 1px solid #e1e4e8; border-radius: 6px;
+        padding: 10px 12px; margin-bottom: 8px; cursor: pointer;
+    }
+    .material-item:hover { border-color: #8250df; background: #faf7ff; }
+    .material-item.selected { border-color: #8250df; background: #f3ecff; box-shadow: 0 0 0 2px rgba(130, 80, 223, 0.2); }
+    .material-item .mid { font-family: ui-monospace, monospace; font-size: 12px; font-weight: 700; }
+    .material-item .mmeta { font-size: 11px; color: #656d76; margin-top: 2px; word-break: break-all; }
+
+    /* 四态徽章 */
+    .state-badge {
+        display: inline-block; font-size: 11px; font-weight: 700;
+        padding: 2px 8px; border-radius: 10px;
+    }
+    .st-ai_proposed { background: #ddf4ff; color: #0969da; }
+    .st-user_tentative { background: #fff8c5; color: #9a6700; }
+    .st-user_confirmed { background: #dafbe1; color: #1a7f37; }
+    .st-reality_verified { background: #fbefff; color: #8250df; }
+    .st-none { background: #f6f8fa; color: #656d76; }
+
+    /* 四态链条 */
+    .state-chain { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+    .state-chain .chip {
+        font-size: 12px; padding: 4px 10px; border-radius: 12px;
+        background: #f6f8fa; color: #656d76; border: 1px solid #e1e4e8;
+    }
+    .state-chain .chip.current { background: #8250df; color: #fff; border-color: #8250df; font-weight: 700; }
+    .state-chain .arrow { color: #8b949e; font-size: 12px; }
+
+    /* 消息列表 */
+    .msg-item {
+        border: 1px solid #e1e4e8; border-radius: 6px;
+        padding: 8px 10px; margin-bottom: 6px; display: flex; gap: 8px;
+        font-size: 12px; align-items: flex-start;
+    }
+    .msg-item.picked { border-color: #0969da; background: #f0f6fc; }
+    .msg-item .mtext {
+        white-space: pre-wrap; word-break: break-word;
+        max-height: 72px; overflow: hidden; flex: 1;
+    }
+    .msg-item .mmeta { font-size: 11px; color: #656d76; font-family: ui-monospace, monospace; }
+
+    /* 事件列表 */
+    .event-row {
+        font-size: 12px; border-left: 3px solid #d0d7de;
+        padding: 4px 8px; margin-bottom: 4px; background: #fafbfc;
+        word-break: break-all;
+    }
+    .event-row code { font-family: ui-monospace, monospace; font-size: 11px; }
+    .event-row.rejected { border-left-color: #cf222e; background: #fff1f0; }
+
+    /* 结果框：成功绿 / 拒绝红（如实、不隐藏） */
+    .result-box {
+        font-size: 12px; border-radius: 6px; padding: 10px 12px;
+        margin-top: 8px; display: none; white-space: pre-wrap; word-break: break-word;
+        font-family: ui-monospace, monospace;
+    }
+    .result-box.ok { display: block; background: #f0fff4; border: 1px solid #2da44e; color: #1a7f37; }
+    .result-box.err { display: block; background: #fff1f0; border: 1px solid #cf222e; color: #cf222e; }
+
+    /* 冲突文本：全量呈现，绝不截断 */
+    .conflict-pre {
+        display: none; margin-top: 8px; padding: 12px;
+        background: #fff8f8; border: 1px solid #cf222e; border-radius: 6px;
+        font-family: ui-monospace, monospace; font-size: 12px;
+        white-space: pre-wrap; word-break: break-all;
+        max-height: 320px; overflow-y: auto;
+    }
+    .conflict-pre.visible { display: block; }
+
+    .modal-overlay {
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.5); z-index: 9999;
+        display: none; align-items: center; justify-content: center;
+    }
+    .modal-overlay.visible { display: flex; }
+    .modal {
+        background: #fff; border-radius: 8px; padding: 20px;
+        max-width: 560px; width: 90%; max-height: 80vh; overflow-y: auto;
+        box-shadow: 0 12px 48px rgba(0,0,0,0.24);
+    }
+    .modal h3 { font-size: 16px; font-weight: 700; margin-bottom: 12px; }
+    .modal pre {
+        background: #f6f8fa; border: 1px solid #e1e4e8; border-radius: 6px;
+        padding: 12px; overflow-x: auto; font-size: 12px; margin-bottom: 16px;
+        white-space: pre-wrap; word-break: break-word;
+    }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+    .loading { text-align: center; color: #656d76; padding: 24px; font-size: 13px; }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #f6f8fa; }
+    ::-webkit-scrollbar-thumb { background: #adbac7; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div id="offlineBanner" class="offline-banner">⚠ Companion 当前离线 · 自动重连中...</div>
+
+<div class="container">
+    <!-- 左栏：材料列表 + 导出 -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-title">🧬 <b>G3 Surface</b> — 材料代谢</div>
+            <div class="sub">数据来源：<span id="companionUrl"></span></div>
+            <div class="sub"><a href="g2-dashboard.html">← 返回 G2 全域对话回看</a></div>
+            <div class="row" style="margin-top:8px;">
+                <button id="refreshMaterialsBtn" class="secondary">刷新材料列表</button>
+            </div>
+        </div>
+        <div class="sidebar-content">
+            <div id="materialsList"><div class="loading">正在加载材料投影…</div></div>
+            <div style="border-top:1px solid #e1e4e8;margin-top:12px;padding-top:12px;">
+                <div class="hint">导出（自解释 Markdown + JSONL）</div>
+                <div class="row">
+                    <input type="text" id="exportDirInput" placeholder="output_dir（留空=~/.dcf/exports）" style="flex:1;">
+                </div>
+                <button id="exportBtn" class="purple">导出全部材料</button>
+                <div id="exportResult" class="result-box"></div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- 右栏：标记 → 四态 → 同步 -->
+    <section class="main-panel">
+        <!-- ① 标记修订候选 -->
+        <div class="panel">
+            <h3><span class="step">①</span> 从已入库 assistant 回复中标记修订候选</h3>
+            <div class="hint">
+                人工标记，不自动注入：搜索 companion 已采集的 ChatGPT assistant 回复，选择一条，
+                标记为某材料实体的修订候选（初始归属 <b>ai_proposed</b>，source_ref = 该消息 event_id）。
+            </div>
+            <div class="row">
+                <input type="text" id="msgSearchInput" placeholder="关键词搜索已入库消息 (FTS5)…" style="flex:1;">
+                <button id="msgSearchBtn">搜索 assistant 回复</button>
+            </div>
+            <div id="msgList"></div>
+            <div class="row" style="margin-top:8px;">
+                <label>目标材料实体：</label>
+                <select id="entitySelect">
+                    <option value="__new__">＋ 新建材料实体（生成新 EntityID）</option>
+                </select>
+                <button id="markBtn" class="green">标记为修订候选</button>
+            </div>
+            <div id="markResult" class="result-box"></div>
+        </div>
+
+        <!-- ② 材料详情 + 四态迁移 -->
+        <div class="panel">
+            <h3><span class="step">②</span> 材料详情 · 候选列表 · 四态迁移</h3>
+            <div id="detailEmpty" class="hint">在左栏选择一个材料实体查看候选与四态状态。</div>
+            <div id="detailBody" style="display:none;">
+                <div class="row">
+                    <span style="font-family:ui-monospace,monospace;font-size:12px;font-weight:700;" id="detailEntityId"></span>
+                    <span id="detailStateBadge" class="state-badge st-none">—</span>
+                </div>
+                <div class="state-chain" id="stateChain"></div>
+                <div class="hint" id="detailProjectionMeta"></div>
+                <div class="row">
+                    <label>迁移到：</label>
+                    <select id="toStateSelect"></select>
+                    <input type="text" id="evidenceInput" placeholder="evidence_ref（可选）" style="width:200px;">
+                    <button id="transitionBtn" class="purple">执行四态迁移</button>
+                    <button id="launchBtn" class="green">发射到对话（含修订指令模板）</button>
+                </div>
+                <div id="transitionResult" class="result-box"></div>
+                <div class="hint" style="margin-top:10px;">该材料的事件链（append-only，含被拒绝的迁移请求）：</div>
+                <div id="eventsList"></div>
+            </div>
+        </div>
+
+        <!-- ③ GitHub 同步 -->
+        <div class="panel">
+            <h3><span class="step">③</span> GitHub 同步（候选分支 dcf/candidates，永不覆盖用户正本）</h3>
+            <div class="hint">
+                推荐路径：<b>先 pull 建同步基点，再 push</b>。冲突（409）时冲突文本将全量如实呈现，绝不自动覆盖；
+                gh 不可用（503）时如实显示 local-only。无基点直接 push 属于用户手动决策路径。
+            </div>
+            <div class="row">
+                <label>remote：</label>
+                <input type="text" id="ghRemote" placeholder="owner/repo 或本地 bare 仓库路径" style="flex:1;">
+            </div>
+            <div class="row">
+                <label>file_path：</label>
+                <input type="text" id="ghFilePath" placeholder="仓库内用户正本路径，如 notes/topic.md" style="flex:1;">
+            </div>
+            <div class="row">
+                <button id="ghSyncBtn" class="green">先 pull 后 push（推荐）</button>
+                <button id="ghPullBtn" class="secondary">仅 pull（建基点/回流检测）</button>
+                <button id="ghPushBtn" class="secondary">仅 push（无基点将如实报冲突）</button>
+            </div>
+            <div id="ghResult" class="result-box"></div>
+            <pre id="conflictPre" class="conflict-pre"></pre>
+        </div>
+    </section>
+</div>
+
+<!-- 发射确认 Modal（与 G2 相同机制：modal 确认 + clipboard 复制） -->
+<div id="launchModal" class="modal-overlay">
+    <div class="modal">
+        <h3>准备发射到对话（附修订指令模板）</h3>
+        <p style="font-size:13px;color:#656d76;margin-bottom:12px;">
+            以下文案将复制到剪贴板，请粘贴到当前 ChatGPT 对话框：
+        </p>
+        <pre id="launchPayload"></pre>
+        <div class="modal-actions">
+            <button class="secondary" id="cancelLaunchBtn">取消</button>
+            <button class="green" id="confirmLaunchBtn">复制并关闭</button>
+        </div>
+    </div>
+</div>
+
+<script src="g3-materials-core.js"></script>
+<script>
+'use strict';
+
+const CORE = window.DCF_G3_CORE;
+
+// COMPANION_URL：默认 8472，可用 ?companion=http://127.0.0.1:xxxx 覆盖（验证用）
+const params = new URLSearchParams(location.search);
+const COMPANION_URL = params.get('companion') || 'http://127.0.0.1:8472';
+document.getElementById('companionUrl').textContent = COMPANION_URL;
+
+const el = id => document.getElementById(id);
+const offlineBanner = el('offlineBanner');
+
+function esc(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[c]);
+}
+
+// UI state
+let isOnline = true;
+let projections = [];          // /rpc/material/query 全量投影
+let selectedEntityId = null;
+let assistantMessages = [];    // 搜索出的可标记消息
+let pickedMessageEventId = null;
+let pendingLaunchText = null;
+
+/**
+ * RPC：返回 { ok, status, result, failure }，非 2xx 不 throw，
+ * 由调用方如实呈现（409 冲突文本 / 503 local-only / 400 拒绝原因）。
+ */
+async function rpc(method, path, payload) {
+    const opts = { method };
+    if (payload !== undefined) {
+        opts.headers = { 'Content-Type': 'application/json' };
+        opts.body = JSON.stringify(payload);
+    }
+    const res = await fetch(COMPANION_URL + path, opts);
+    let body = null;
+    try { body = await res.json(); } catch (_) { body = null; }
+    if (res.ok && body && !body.error) {
+        return { ok: true, status: res.status, result: body.result };
+    }
+    return { ok: false, status: res.status, failure: CORE.parseRpcFailure(res.status, body) };
+}
+
+function showResult(boxId, ok, text) {
+    const box = el(boxId);
+    box.className = 'result-box ' + (ok ? 'ok' : 'err');
+    box.textContent = text;
+}
+
+/**
+ * 材料列表（/rpc/material/query 全量投影）
+ */
+async function loadMaterials() {
+    const listEl = el('materialsList');
+    try {
+        const res = await rpc('GET', '/rpc/material/query');
+        if (!res.ok) {
+            listEl.innerHTML = '<div class="loading">加载失败：' + esc(res.failure.message) + '</div>';
+            return;
+        }
+        projections = res.result.projections || [];
+        renderMaterials();
+        renderEntityOptions();
+    } catch (err) {
+        listEl.innerHTML = '<div class="loading">加载失败：' + esc(err.message) + '</div>';
+    }
+}
+
+function renderMaterials() {
+    const listEl = el('materialsList');
+    if (projections.length === 0) {
+        listEl.innerHTML = '<div class="loading">暂无材料实体。<br>在右侧 ① 标记一条 assistant 回复即可创建。</div>';
+        return;
+    }
+    let html = '<div class="hint">材料实体（' + projections.length + '）· 事件计数见详情</div>';
+    projections.forEach(p => {
+        const state = p.attribution_state || 'none';
+        html += '<div class="material-item' + (p.entity_id === selectedEntityId ? ' selected' : '') + '" data-entity-id="' + esc(p.entity_id) + '">';
+        html += '<div class="mid">' + esc(p.entity_id) + '</div>';
+        html += '<div class="mmeta"><span class="state-badge st-' + esc(state) + '">' + esc(CORE.ATTRIBUTION_LABELS[state] || state) + '</span>';
+        html += ' · sha256 ' + esc(CORE.shortId(p.latest_candidate_sha256, 12) || '—') + '</div>';
+        html += '<div class="mmeta">source_ref: ' + esc(p.source_ref || '—') + '</div>';
+        html += '</div>';
+    });
+    listEl.innerHTML = html;
+    listEl.querySelectorAll('.material-item').forEach(item => {
+        item.addEventListener('click', () => selectMaterial(item.getAttribute('data-entity-id')));
+    });
+}
+
+function renderEntityOptions() {
+    const sel = el('entitySelect');
+    const current = sel.value;
+    sel.innerHTML = '<option value="__new__">＋ 新建材料实体（生成新 EntityID）</option>';
+    projections.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.entity_id;
+        opt.textContent = p.entity_id + '（' + (CORE.ATTRIBUTION_LABELS[p.attribution_state] || p.attribution_state || '—') + '）';
+        sel.appendChild(opt);
+    });
+    if ([...sel.options].some(o => o.value === current)) sel.value = current;
+}
+
+/**
+ * ① 搜索已入库 assistant 回复
+ */
+async function searchAssistantMessages() {
+    const kw = el('msgSearchInput').value.trim();
+    const listEl = el('msgList');
+    if (!kw) {
+        listEl.innerHTML = '<div class="loading">请输入关键词（搜索 companion 已采集的消息）</div>';
+        return;
+    }
+    listEl.innerHTML = '<div class="loading">正在搜索…</div>';
+    const res = await rpc('GET', '/rpc/events/query?q=' + encodeURIComponent(kw) + '&limit=200');
+    if (!res.ok) {
+        listEl.innerHTML = '<div class="loading">搜索失败：' + esc(res.failure.message) + '</div>';
+        return;
+    }
+    assistantMessages = CORE.extractAssistantMessages(res.result.events || []);
+    pickedMessageEventId = null;
+    if (assistantMessages.length === 0) {
+        listEl.innerHTML = '<div class="loading">没有匹配的 assistant 回复（只有 assistant 消息可标记为修订候选）</div>';
+        return;
+    }
+    let html = '';
+    assistantMessages.forEach(m => {
+        html += '<label class="msg-item" data-event-id="' + esc(m.event_id) + '">';
+        html += '<input type="radio" name="msgPick" value="' + esc(m.event_id) + '">';
+        html += '<div style="flex:1;">';
+        html += '<div class="mmeta">event ' + esc(CORE.shortId(m.event_id, 16)) + '… · ' + esc(m.created_at || '') + (m.conversation_path ? ' · ' + esc(m.conversation_path) : '') + '</div>';
+        html += '<div class="mtext">' + esc(m.text) + '</div>';
+        html += '</div></label>';
+    });
+    listEl.innerHTML = html;
+    listEl.querySelectorAll('input[name="msgPick"]').forEach(r => {
+        r.addEventListener('change', () => {
+            pickedMessageEventId = r.value;
+            listEl.querySelectorAll('.msg-item').forEach(i => i.classList.remove('picked'));
+            r.closest('.msg-item').classList.add('picked');
+        });
+    });
+}
+
+/**
+ * ① 标记为修订候选（POST /rpc/material/revision，默认 ai_proposed）
+ */
+async function markCandidate() {
+    if (!pickedMessageEventId) {
+        showResult('markResult', false, '请先在上方选择一条 assistant 回复');
+        return;
+    }
+    const message = assistantMessages.find(m => m.event_id === pickedMessageEventId);
+    if (!message) {
+        showResult('markResult', false, '选中的消息已不在列表中，请重新搜索');
+        return;
+    }
+    const choice = el('entitySelect').value;
+    const entityId = choice === '__new__' ? CORE.generateULID() : choice;
+    let payload;
+    try {
+        payload = CORE.buildRevisionPayload({ entityId, message });
+    } catch (err) {
+        showResult('markResult', false, err.message);
+        return;
+    }
+    const res = await rpc('POST', '/rpc/material/revision', payload);
+    if (res.ok) {
+        showResult('markResult', true,
+            '✅ 已标记为修订候选\nentity_id: ' + entityId +
+            '\nevent_id: ' + res.result.event_id +
+            '\ncandidate_sha256: ' + res.result.candidate_sha256 +
+            '\nsource_ref(消息 event_id): ' + message.event_id +
+            '\nassertion_attribution: ai_proposed');
+        await loadMaterials();
+        await selectMaterial(entityId);
+    } else {
+        showResult('markResult', false, '❌ 标记被拒绝（HTTP ' + res.status + '）\n' + res.failure.message);
+    }
+}
+
+/**
+ * ② 材料详情：投影 + 事件链 + 四态迁移控件
+ */
+async function selectMaterial(entityId) {
+    selectedEntityId = entityId;
+    renderMaterials();
+    const res = await rpc('GET', '/rpc/material/query?entity_id=' + encodeURIComponent(entityId));
+    if (!res.ok) {
+        el('detailEmpty').style.display = 'block';
+        el('detailEmpty').textContent = '详情加载失败：' + res.failure.message;
+        el('detailBody').style.display = 'none';
+        return;
+    }
+    const { projection, events } = res.result;
+    el('detailEmpty').style.display = 'none';
+    el('detailBody').style.display = 'block';
+    el('detailEntityId').textContent = entityId;
+
+    const state = projection ? projection.attribution_state : null;
+    const badge = el('detailStateBadge');
+    badge.className = 'state-badge st-' + (state || 'none');
+    badge.textContent = state ? (CORE.ATTRIBUTION_LABELS[state] + ' (' + state + ')') : '（尚无投影）';
+
+    // 四态链条
+    let chain = '';
+    CORE.ATTRIBUTION_STATES.forEach((s, i) => {
+        if (i > 0) chain += '<span class="arrow">→</span>';
+        chain += '<span class="chip' + (s === state ? ' current' : '') + '">' + esc(CORE.ATTRIBUTION_LABELS[s]) + '<br>' + esc(s) + '</span>';
+    });
+    el('stateChain').innerHTML = chain;
+
+    el('detailProjectionMeta').textContent = projection
+        ? ('latest_candidate_sha256: ' + (projection.latest_candidate_sha256 || '—') +
+           ' · source_ref: ' + (projection.source_ref || '—'))
+        : '该实体暂无投影（尚无有效候选事件）';
+
+    // 迁移目标：列出除当前态外的所有态；倒退由 companion 拒绝并如实显示
+    const toSel = el('toStateSelect');
+    toSel.innerHTML = '';
+    const forward = state ? CORE.forwardStates(state) : [];
+    CORE.ATTRIBUTION_STATES.filter(s => s !== state).forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s;
+        opt.textContent = (forward.includes(s) ? '' : '⚠︎(倒退，将被拒绝) ') + CORE.ATTRIBUTION_LABELS[s] + ' (' + s + ')';
+        toSel.appendChild(opt);
+    });
+    if (forward.length > 0) toSel.value = forward[0];
+
+    // 事件链
+    const evEl = el('eventsList');
+    if (!events || events.length === 0) {
+        evEl.innerHTML = '<div class="loading">暂无事件</div>';
+    } else {
+        let html = '';
+        events.forEach(e => {
+            const p = CORE.parsePayload(e.payload_json) || {};
+            const rejected = e.event_type === 'material.attribution.transition_rejected';
+            html += '<div class="event-row' + (rejected ? ' rejected' : '') + '">';
+            html += '<code>' + esc(e.event_type) + '</code> · ' + esc(e.created_at || '');
+            if (e.event_type === 'material.revision_candidate.created') {
+                html += '<br>候选 sha256 ' + esc(CORE.shortId(p.candidate_sha256, 12)) + ' · source_ref(消息 event_id): <code>' + esc(p.source_ref || '') + '</code>';
+            } else if (e.event_type === 'material.attribution.transitioned') {
+                html += '<br>' + esc(p.from_state) + ' → ' + esc(p.to_state) + (p.evidence_ref ? ' · evidence: ' + esc(p.evidence_ref) : '');
+            } else if (rejected) {
+                html += '<br>被拒绝的请求：' + esc(p.requested_from_state) + ' → ' + esc(p.requested_to_state) + '<br>原因：' + esc(p.reason || '');
+            } else if (e.event_type.indexOf('material.sync.') === 0) {
+                html += '<br>remote: ' + esc(p.remote || '') + (p.branch ? ' · branch: ' + esc(p.branch) : '') + (p.candidate_path ? ' · ' + esc(p.candidate_path) : '');
+            }
+            html += '</div>';
+        });
+        evEl.innerHTML = html;
+    }
+}
+
+/**
+ * ② 四态迁移（倒退拒绝如实显示，不隐藏）
+ */
+async function doTransition() {
+    if (!selectedEntityId) return;
+    const proj = projections.find(p => p.entity_id === selectedEntityId);
+    const fromState = proj ? proj.attribution_state : null;
+    if (!fromState) {
+        showResult('transitionResult', false, '该实体尚无投影状态，无法迁移');
+        return;
+    }
+    const payload = CORE.buildAttributionPayload({
+        entityId: selectedEntityId,
+        fromState,
+        toState: el('toStateSelect').value,
+        evidenceRef: el('evidenceInput').value.trim() || null
+    });
+    const res = await rpc('POST', '/rpc/material/attribution', payload);
+    if (res.ok) {
+        showResult('transitionResult', true,
+            '✅ 迁移成功：' + res.result.from_state + ' → ' + res.result.to_state +
+            '\nevent_id: ' + res.result.event_id);
+    } else {
+        // 拒绝原因逐字呈现；拒绝本身已作为事件入库（见下方事件链）
+        showResult('transitionResult', false,
+            '❌ 迁移被拒绝（HTTP ' + res.status + '）\n' + res.failure.message +
+            '\n（该拒绝已作为 material.attribution.transition_rejected 事件入库）');
+    }
+    await loadMaterials();
+    await selectMaterial(selectedEntityId);
+}
+
+/**
+ * ② 发射（现有机制：modal 确认 + clipboard 复制；文案附修订指令模板）
+ */
+function prepareLaunch() {
+    if (!selectedEntityId) return;
+    const proj = projections.find(p => p.entity_id === selectedEntityId);
+    if (!proj || typeof proj.latest_candidate_body !== 'string') {
+        showResult('transitionResult', false, '该材料暂无候选正文，无法发射');
+        return;
+    }
+    pendingLaunchText = CORE.buildLaunchText({ entityId: selectedEntityId, body: proj.latest_candidate_body });
+    el('launchPayload').textContent = pendingLaunchText;
+    el('launchModal').classList.add('visible');
+}
+
+async function launchToClipboard() {
+    if (!pendingLaunchText) return;
+    try {
+        await navigator.clipboard.writeText(pendingLaunchText);
+        el('launchModal').classList.remove('visible');
+        alert('✅ 已复制到剪贴板！请粘贴到当前 ChatGPT 对话框。');
+        pendingLaunchText = null;
+    } catch (err) {
+        alert('❌ 剪贴板写入失败：' + err.message);
+    }
+}
+
+/**
+ * ③ GitHub 同步
+ */
+function ghInputs() {
+    const remote = el('ghRemote').value.trim();
+    const filePath = el('ghFilePath').value.trim();
+    if (!selectedEntityId) {
+        showResult('ghResult', false, '请先在左栏选择一个材料实体');
+        return null;
+    }
+    if (!remote || !filePath) {
+        showResult('ghResult', false, '请填写 remote 与 file_path');
+        return null;
+    }
+    return { remote, entity_id: selectedEntityId, file_path: filePath };
+}
+
+function renderGhFailure(prefix, failure) {
+    el('conflictPre').classList.remove('visible');
+    if (failure.conflictText != null) {
+        // 冲突文本全量如实呈现，绝不自动覆盖
+        showResult('ghResult', false,
+            prefix + '（HTTP ' + failure.status + '）\n' + failure.message +
+            '\nconflict_event_id: ' + (failure.conflictEventId || '—') +
+            '\n冲突文本全文如下（diff3 标记逐字保留），请人工决策：');
+        const pre = el('conflictPre');
+        pre.textContent = failure.conflictText;
+        pre.classList.add('visible');
+    } else if (failure.localOnly) {
+        showResult('ghResult', false,
+            prefix + '（HTTP 503 · local-only）\n' + failure.message +
+            '\ngh CLI 不可用或未认证：GitHub 同步暂不可用，其余功能不受影响。');
+    } else {
+        showResult('ghResult', false, prefix + '（HTTP ' + failure.status + '）\n' + failure.message);
+    }
+}
+
+async function ghPull() {
+    const base = ghInputs();
+    if (!base) return null;
+    const res = await rpc('POST', '/rpc/sync/github/pull', base);
+    if (res.ok) {
+        const r = res.result;
+        showResult('ghResult', true,
+            '✅ pull 完成\nexists: ' + r.exists + ' · changed: ' + r.changed +
+            '\nremote_sha256: ' + (r.remote_sha256 || '—') +
+            '\nlast_sync_sha256: ' + (r.last_sync_sha256 || '—') +
+            (r.pull_event_id ? '\npull_event_id: ' + r.pull_event_id + '（远端变更已入库为 material.sync.pulled_back）' : ''));
+        el('conflictPre').classList.remove('visible');
+        return res;
+    }
+    renderGhFailure('❌ pull 失败', res.failure);
+    return res;
+}
+
+async function ghPush() {
+    const base = ghInputs();
+    if (!base) return null;
+    const res = await rpc('POST', '/rpc/sync/github/push', base);
+    if (res.ok) {
+        const r = res.result;
+        showResult('ghResult', true,
+            '✅ push 完成（用户正本未被改动）\npushed: ' + r.pushed +
+            '\nbranch: ' + r.branch +
+            '\ncandidate_path: ' + r.candidate_path +
+            '\nmerged_sha256: ' + r.merged_sha256 +
+            '\ncommit_sha: ' + (r.commit_sha || '—') +
+            '\nsync_event_id: ' + (r.sync_event_id || '—'));
+        el('conflictPre').classList.remove('visible');
+        if (selectedEntityId) await selectMaterial(selectedEntityId);
+        return res;
+    }
+    renderGhFailure('❌ push 未执行', res.failure);
+    if (selectedEntityId) await selectMaterial(selectedEntityId);
+    return res;
+}
+
+/**
+ * 推荐路径：先 pull（建同步基点/回流检测），成功后 push。
+ * pull 阶段失败则如实停在 pull 的结果，不继续 push。
+ */
+async function ghPullThenPush() {
+    const pullRes = await ghPull();
+    if (!pullRes || !pullRes.ok) return;
+    const pullSummary = '① pull：exists=' + pullRes.result.exists + ', changed=' + pullRes.result.changed +
+        (pullRes.result.pull_event_id ? '（回流已入库）' : '');
+    const pushRes = await ghPush();
+    if (pushRes && pushRes.ok) {
+        showResult('ghResult', true,
+            '✅ 先 pull 后 push 完成\n' + pullSummary +
+            '\n② push：branch=' + pushRes.result.branch +
+            ' · candidate_path=' + pushRes.result.candidate_path +
+            '\n用户正本未被改动；候选只进入 dcf/candidates 分支。');
+    } else if (pushRes && !pushRes.ok) {
+        // push 阶段失败：ghPush 已如实渲染（含 409 冲突全文），补充 pull 摘要
+        const box = el('ghResult');
+        box.textContent = pullSummary + '\n' + box.textContent;
+    }
+}
+
+/**
+ * 导出
+ */
+async function doExport() {
+    const outputDir = el('exportDirInput').value.trim();
+    const payload = outputDir ? { output_dir: outputDir } : {};
+    const res = await rpc('POST', '/rpc/export', payload);
+    if (res.ok) {
+        const s = res.result.stats || {};
+        showResult('exportResult', true,
+            '✅ 导出完成\nexport_path: ' + res.result.export_path +
+            '\nevents: ' + s.eventCount + ' · projections: ' + s.projectionCount +
+            ' · NOT_OBSERVE 过滤: ' + s.notObserveFiltered);
+    } else {
+        showResult('exportResult', false, '❌ 导出失败（HTTP ' + res.status + '）\n' + res.failure.message);
+    }
+}
+
+/**
+ * 在线状态轮询（与 G2 一致：2s）
+ */
+async function checkOnlineStatus() {
+    try {
+        const res = await rpc('GET', '/rpc/health');
+        if (!res.ok) throw new Error(res.failure.message);
+        if (!isOnline) {
+            isOnline = true;
+            offlineBanner.classList.remove('visible');
+            await loadMaterials();
+        }
+    } catch (err) {
+        if (isOnline) {
+            isOnline = false;
+            offlineBanner.classList.add('visible');
+        }
+    }
+}
+
+// 事件绑定
+el('refreshMaterialsBtn').addEventListener('click', loadMaterials);
+el('msgSearchBtn').addEventListener('click', searchAssistantMessages);
+el('msgSearchInput').addEventListener('keydown', e => { if (e.key === 'Enter') searchAssistantMessages(); });
+el('markBtn').addEventListener('click', markCandidate);
+el('transitionBtn').addEventListener('click', doTransition);
+el('launchBtn').addEventListener('click', prepareLaunch);
+el('cancelLaunchBtn').addEventListener('click', () => {
+    el('launchModal').classList.remove('visible');
+    pendingLaunchText = null;
+});
+el('confirmLaunchBtn').addEventListener('click', launchToClipboard);
+el('ghSyncBtn').addEventListener('click', ghPullThenPush);
+el('ghPullBtn').addEventListener('click', ghPull);
+el('ghPushBtn').addEventListener('click', ghPush);
+el('exportBtn').addEventListener('click', doExport);
+
+// 初始化
+loadMaterials();
+checkOnlineStatus();
+setInterval(checkOnlineStatus, 2000);
+</script>
+</body>
+</html>

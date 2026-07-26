@@ -1,0 +1,41 @@
+{
+  "captured_at": "2026-07-26T06:56:58.215Z",
+  "conversation_key": "chatgpt.com/c/6a65aeb1-f3a0-83e8-be02-d8018d60ee8f",
+  "source_id": "JMJSY1FGQJ25Z1BW9HVFWJ7B8G",
+  "flush1": {
+    "inserted": 2,
+    "total": 2,
+    "duplicated": 0
+  },
+  "flush2_duplicate_redelivery": {
+    "inserted": 0,
+    "total": 2,
+    "duplicated": 2
+  },
+  "query_readback": [
+    {
+      "event_id": "GB8T0KYBH0SDFGB3MEKAR77320",
+      "source_id": "JMJSY1FGQJ25Z1BW9HVFWJ7B8G",
+      "event_type": "conversation.message.sent",
+      "payload_json": "{\"role\":\"user\",\"message_id\":\"b5762024-9519-4722-8a99-c7cf2b91992a\",\"text\":\"DCF selector verification ping\",\"conversation_path\":\"/c/6a65aeb1-f3a0-83e8-be02-d8018d60ee8f\",\"observed_at\":\"2026-07-26T06:56:13.989Z\"}",
+      "sha256": null,
+      "created_at": "2026-07-26T06:56:13.989Z",
+      "sequence_number": 1
+    },
+    {
+      "event_id": "5775X0G0X70J020B1BDKHMSNGA",
+      "source_id": "JMJSY1FGQJ25Z1BW9HVFWJ7B8G",
+      "event_type": "conversation.message.received",
+      "payload_json": "{\"role\":\"assistant\",\"message_id\":\"676d261c-9c75-412b-88b1-2daa3d4bd7a9\",\"text\":\"DCF selector verification pong\",\"conversation_path\":\"/c/6a65aeb1-f3a0-83e8-be02-d8018d60ee8f\",\"observed_at\":\"2026-07-26T06:56:13.989Z\"}",
+      "sha256": null,
+      "created_at": "2026-07-26T06:56:13.989Z",
+      "sequence_number": 2
+    }
+  ],
+  "db_stats": {
+    "event_count": 4,
+    "boundary_count": 2,
+    "db_path": "/tmp/dcf-bclaw-verify.db",
+    "mock_mode": false
+  }
+}

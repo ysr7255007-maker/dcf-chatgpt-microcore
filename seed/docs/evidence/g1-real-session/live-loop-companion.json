@@ -1,0 +1,35 @@
+{
+  "timestamp": "2026-07-26T06:42:28.757Z",
+  "source_id": "01KYEJJAQKNN4T009X86PWWR16",
+  "events": [
+    {
+      "event_id": "01KYEJJAQKBH012BGHPHF7657M",
+      "sequence_number": null,
+      "event_type": "conversation.message.sent",
+      "payload": {
+        "role": "user",
+        "message_id": "msg1JUEIIANJUSER",
+        "text": "DCF selector verification ping",
+        "conversation_path": "/new",
+        "observed_at": "2026-07-26T06:42:28.723Z"
+      }
+    },
+    {
+      "event_id": "01KYEJJAQWNJ6G6CY2VBEN4D5B",
+      "sequence_number": null,
+      "event_type": "conversation.message.received",
+      "payload": {
+        "role": "assistant",
+        "message_id": "msg1JUEIIANJASSISTANT",
+        "text": "Selectors verified in DOM structure.",
+        "conversation_path": "/new",
+        "observed_at": "2026-07-26T06:42:28.732Z"
+      }
+    }
+  ],
+  "idempotency_test": {
+    "same_event_id_twice": true,
+    "only_inserted_once": true
+  },
+  "conclusion": "Companion-only smoke test (synthetic events, no browser involved): ingest -> db -> query -> idempotency OK. Real-session live loop evidence is in live-loop-real-session.json"
+}
