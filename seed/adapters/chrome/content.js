@@ -24,6 +24,14 @@
         return location.host + location.pathname;
     }
 
+    // G4 explicit binding: the platform conversation id is the /c/{id} path
+    // segment. Extraction is literal — when the path carries no /c/{id}
+    // (home page, new chat) the field is honestly null, never guessed.
+    function extractConversationId(pathname) {
+        const m = /^\/c\/([^\/?#]+)/.exec(pathname || '');
+        return m ? m[1] : null;
+    }
+
     // message_id -> { text, stableCount, sentFinal }
     const tracked = new Map();
     let currentKey = conversationKey();
@@ -129,6 +137,7 @@
                 role: role,
                 message_id: messageId,
                 text: text,
+                conversation_id: extractConversationId(location.pathname),
                 conversation_path: location.pathname,
                 observed_at: new Date().toISOString()
             }

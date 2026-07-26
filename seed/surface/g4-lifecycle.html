@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>G4 Surface — 核心生命循环</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+        background: #f4f5f7; color: #24292f; line-height: 1.55;
+    }
+
+    .offline-banner {
+        position: fixed; top: 0; left: 0; right: 0;
+        background: #cf222e; color: #fff;
+        text-align: center; padding: 8px;
+        font-size: 13px; font-weight: 600;
+        z-index: 10000; display: none;
+    }
+    .offline-banner.visible { display: block; }
+
+    .container {
+        display: flex; margin: 12px auto; max-width: 1560px;
+        gap: 12px; padding: 0 16px; align-items: flex-start;
+    }
+
+    .nav-panel {
+        width: 210px; min-width: 180px; position: sticky; top: 12px;
+        background: #fff; border: 1px solid #e1e4e8;
+        border-radius: 8px; overflow: hidden;
+    }
+    .nav-header { padding: 16px; }
+    .nav-title { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+    .nav-links a {
+        display: block; padding: 7px 10px;
+        color: #0969da; text-decoration: none;
+        font-size: 13px; border-radius: 6px; margin-bottom: 2px;
+    }
+    .nav-links a:hover { background: #f0f6fc; }
+    .health-line { font-size: 12px; color: #656d76; margin-top: 10px; }
+    .health-dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:#d0d7de; margin-right:5px; }
+    .health-dot.up { background: #2da44e; }
+    .health-dot.down { background: #cf222e; }
+
+    .main-panel { flex: 1; min-width: 0; display: grid; grid-template-columns: 1fr; gap: 12px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    @media (max-width: 1200px) { .grid-4 { grid-template-columns: repeat(2, 1fr); } }
+
+    .panel {
+        background: #fff; border: 1px solid #e1e4e8;
+        border-radius: 8px; padding: 14px 16px;
+        max-height: 460px; overflow-y: auto;
+    }
+    .panel h3 {
+        font-size: 14px; font-weight: 700; margin-bottom: 10px;
+        display: flex; align-items: center; justify-content: space-between;
+        position: sticky; top: -14px; background:#fff; padding: 4px 0;
+    }
+    .panel-badge {
+        background: #8250df; color: #fff;
+        font-size: 11px; padding: 2px 8px; border-radius: 10px;
+    }
+    .empty-honest {
+        font-size: 12px; color: #656d76; background: #f6f8fa;
+        border: 1px dashed #d0d7de; border-radius: 6px; padding: 10px 12px;
+    }
+
+    .rec-card {
+        border: 1px solid #e1e4e8; border-radius: 6px;
+        padding: 10px 12px; margin-bottom: 8px;
+    }
+    .rec-card:hover { border-color: #8250df; background: #faf7ff; }
+    .rec-text { font-size: 13px; font-weight: 600; margin-bottom: 4px; word-break: break-word; }
+    .rec-reasoning {
+        font-size: 11px; color: #57606a; background: #f6f8fa;
+        padding: 6px 8px; border-radius: 4px; margin: 6px 0;
+        white-space: pre-wrap; word-break: break-word;
+    }
+    .rec-meta { font-size: 11px; color: #656d76; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .priority-chip {
+        display: inline-block; font-size: 10px;
+        padding: 2px 7px; border-radius: 8px;
+        background: #e1dff7; color: #40326e; font-weight: 700;
+    }
+    .rec-actions { display: flex; gap: 6px; margin-top: 8px; }
+
+    .task-item {
+        border: 1px solid #e1e4e8; border-left: 3px solid #d0d7de;
+        border-radius: 6px; padding: 8px 10px; margin-bottom: 8px;
+        background: #fafbfc; font-size: 12px;
+    }
+    .task-item.st-completed { border-left-color: #2da44e; }
+    .task-item.st-failed { border-left-color: #cf222e; }
+    .task-item.st-in_progress { border-left-color: #d29922; }
+    .task-item.st-accepted { border-left-color: #0969da; }
+    .task-item.st-proposed { border-left-color: #8250df; }
+    .task-head { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 4px; }
+    .task-objective { font-weight: 600; font-size: 13px; word-break: break-word; }
+    .state-badge {
+        font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 8px;
+        background: #eaeef2; color: #57606a; white-space: nowrap;
+    }
+    .state-badge.st-proposed { background:#e1dff7; color:#40326e; }
+    .state-badge.st-accepted { background:#ddf4ff; color:#0550ae; }
+    .state-badge.st-in_progress { background:#fff8c5; color:#7d4e00; }
+    .state-badge.st-completed { background:#dafbe1; color:#1a7f37; }
+    .state-badge.st-failed { background:#ffebe9; color:#cf222e; }
+    .task-binding { font-size: 11px; color: #57606a; margin: 3px 0; word-break: break-all; }
+    .task-controls { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; align-items: center; }
+    .task-controls select, .task-controls input {
+        padding: 4px 6px; border: 1px solid #d0d7de; border-radius: 4px; font-size: 11px;
+    }
+    .task-controls button { padding: 4px 10px; font-size: 11px; }
+
+    .modal-overlay {
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.5); z-index: 9999;
+        display: none; align-items: center; justify-content: center;
+    }
+    .modal-overlay.visible { display: flex; }
+    .modal {
+        background: #fff; border-radius: 8px; padding: 20px;
+        max-width: 580px; width: 92%; max-height: 84vh; overflow-y: auto;
+        box-shadow: 0 12px 48px rgba(0,0,0,0.24);
+    }
+    .modal h3 { font-size: 16px; font-weight: 700; margin-bottom: 12px; }
+    .form-group { margin-bottom: 12px; }
+    label { display: block; font-size: 12px; color: #656d76; margin-bottom: 4px; }
+    input[type="text"], input[type="number"], select, textarea {
+        width: 100%; padding: 8px 10px; border: 1px solid #d0d7de;
+        border-radius: 6px; font-size: 13px; font-family: inherit;
+    }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+    .result-box {
+        font-size: 12px; border-radius: 6px; padding: 10px 12px;
+        margin-top: 8px; display: none; white-space: pre-wrap; word-break: break-word;
+        font-family: ui-monospace, SFMono-Regular, monospace;
+    }
+    .result-box.ok { display: block; background: #f0fff4; border: 1px solid #2da44e; color: #1a7f37; }
+    .result-box.err { display: block; background: #fff1f0; border: 1px solid #cf222e; color: #cf222e; }
+
+    .session-list { max-height: 190px; overflow-y: auto; margin: 6px 0; }
+    .session-item {
+        display: flex; align-items: flex-start; gap: 8px;
+        padding: 8px; border: 1px solid #e1e4e8;
+        border-radius: 4px; margin-bottom: 4px; cursor: pointer; font-size: 12px;
+    }
+    .session-item:hover { background: #f6f8fa; }
+    .session-item.selected { background: #e1dff7; border-color: #8250df; }
+    .session-item input[type="radio"] { margin-top: 3px; width: auto; }
+    .mono { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px; }
+    .hint { font-size: 11px; color: #656d76; margin-top: 4px; }
+
+    button {
+        padding: 7px 14px; border: none; border-radius: 6px;
+        cursor: pointer; font-size: 13px; font-weight: 600;
+        background: #0969da; color: #fff;
+    }
+    button:hover:not(:disabled) { opacity: 0.9; }
+    button:disabled { background: #d0d7de; color:#8c959f; cursor: not-allowed; }
+    button.secondary { background: #f6f8fa; color: #24292f; border: 1px solid #d0d7de; }
+    button.green { background: #2da44e; }
+    button.purple { background: #8250df; }
+    button.red { background: #cf222e; }
+
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #f6f8fa; }
+    ::-webkit-scrollbar-thumb { background: #adbac7; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div id="offlineBanner" class="offline-banner">⚠ Companion 当前离线 · 自动重连中...</div>
+
+<div class="container">
+    <aside class="nav-panel">
+        <div class="nav-header">
+            <div class="nav-title">🧬 DCF G4 Surface</div>
+            <div style="font-size:12px;color:#656d76;margin-bottom:8px;">核心生命循环：材料→卡片→火花→推荐→任务→回灌</div>
+            <div class="nav-links">
+                <a href="g2-dashboard.html">← G2 Dashboard</a>
+                <a href="g3-materials.html">← G3 Materials</a>
+            </div>
+            <div class="health-line"><span id="healthDot" class="health-dot"></span><span id="healthText">连接中…</span></div>
+        </div>
+    </aside>
+
+    <section class="main-panel">
+        <!-- 四类浮现分离展示：卡片 / 火花 / 推荐 / 任务 -->
+        <div class="grid-4">
+            <div class="panel" id="cardsPanel">
+                <h3><span>卡片</span> <span id="cardsCount" class="panel-badge">0</span></h3>
+                <div id="cardsList">
+                    <div class="empty-honest">
+                        暂无卡片。G4 初期没有卡片生产者，且 companion 未提供
+                        cards_projection 查询端点（诚实空态，详见
+                        g4-adapter-surface-v0.md 遗留 unknown）。
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel" id="sparksPanel">
+                <h3><span>火花</span> <span id="sparksCount" class="panel-badge">0</span></h3>
+                <div id="sparksList">
+                    <div class="empty-honest">
+                        暂无火花。G4 初期没有火花生产者，且 companion 未提供
+                        sparks_projection 查询端点（诚实空态，详见
+                        g4-adapter-surface-v0.md 遗留 unknown）。
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel" id="recPanel">
+                <h3><span>推荐（待处理）</span> <span id="pendingCount" class="panel-badge">0</span></h3>
+                <div id="pendingList"><div class="empty-honest">加载中…</div></div>
+                <div id="pendingResult" class="result-box"></div>
+            </div>
+
+            <div class="panel" id="taskPanel">
+                <h3><span>任务队列（五态）</span> <span id="taskCount" class="panel-badge">0</span></h3>
+                <div id="taskList"><div class="empty-honest">加载中…</div></div>
+                <div id="taskResult" class="result-box"></div>
+            </div>
+        </div>
+
+        <div class="grid-2">
+            <!-- 回灌：任务 → 材料 attribution 转移链 -->
+            <div class="panel" id="backpropPanel" style="max-height:none;">
+                <h3><span>回灌：材料归因转移链</span></h3>
+                <div class="hint" style="margin-bottom:8px;">
+                    经 /rpc/events/ingest 提交 task.result_recorded / task.failure_recorded /
+                    task.insight_changed，携带 feedback_to_materials，companion 自动生成
+                    material.attribution.transitioned 链。目标态由事件类型决定（服务端权威）。
+                </div>
+                <div class="form-group">
+                    <label>目标任务：</label>
+                    <select id="bpTaskSelect"><option value="">选择任务…</option></select>
+                </div>
+                <div class="form-group">
+                    <label>回灌入口（三入口）：</label>
+                    <select id="bpKind">
+                        <option value="result_recorded">任务完成结果记录 (task.result_recorded)</option>
+                        <option value="failure_recorded">任务失败记录 (task.failure_recorded)</option>
+                        <option value="insight_changed">洞察变更 (task.insight_changed)</option>
+                    </select>
+                    <div class="hint">服务端派生目标归因态：<b id="bpTargetState">reality_verified</b></div>
+                </div>
+                <div class="form-group">
+                    <label>目标材料（来自 /rpc/material/query）：</label>
+                    <select id="bpMaterial"><option value="">选择目标材料…</option></select>
+                </div>
+                <button class="green" id="bpSubmitBtn">提交回灌</button>
+                <div id="bpResult" class="result-box"></div>
+            </div>
+
+            <!-- 手动创建推荐（G4 初期推荐生产者是用户/AI 手动提出） -->
+            <div class="panel" id="createRecPanel" style="max-height:none;">
+                <h3><span>新建推荐（手动提出）</span></h3>
+                <div class="hint" style="margin-bottom:8px;">
+                    无专用 RPC：经 /rpc/events/ingest 提交 recommendation.proposed 事件
+                    （source_id = recommendation_id，来源理由留在事件 payload 中可回查）。
+                </div>
+                <div class="form-group">
+                    <label>来源实体类型：</label>
+                    <select id="recSourceType">
+                        <option value="card">卡片 (card)</option>
+                        <option value="spark">火花 (spark)</option>
+                        <option value="task">任务 (task)</option>
+                        <option value="system">系统 (system)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>来源实体 ID（ULID；留空则生成新 ID）：</label>
+                    <input type="text" id="recSourceId" class="mono" placeholder="26 位 ULID，可留空">
+                </div>
+                <div class="form-group">
+                    <label>建议内容 recommendation_text（必填）：</label>
+                    <textarea id="recText" rows="2" placeholder="具体的推荐描述"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>来源理由 source_reasoning（必填）：</label>
+                    <textarea id="recReasoning" rows="2" placeholder="为什么这个建议浮现？"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>来源材料 source_material_refs（必填，多选，来自 /rpc/material/query）：</label>
+                    <select id="recMaterialRefs" multiple size="4"></select>
+                    <div class="hint">按住 ⌘/Ctrl 多选。无材料时无法提交（如实约束）。</div>
+                </div>
+                <div class="form-group" style="display:flex;gap:8px;">
+                    <div style="flex:1;">
+                        <label>materiality_score (0-1)：</label>
+                        <input type="number" id="recScore" min="0" max="1" step="0.1" value="0.6">
+                    </div>
+                    <div style="flex:1;">
+                        <label>priority_level (1-9)：</label>
+                        <input type="number" id="recPriority" min="1" max="9" value="5">
+                    </div>
+                </div>
+                <button class="purple" id="recCreateBtn">提交推荐</button>
+                <div id="recCreateResult" class="result-box"></div>
+            </div>
+        </div>
+    </section>
+</div>
+
+<!-- 接住：显式绑定弹窗 -->
+<div id="acceptModal" class="modal-overlay">
+    <div class="modal">
+        <h3>接住推荐 → 显式绑定会话</h3>
+        <div id="acceptRecText" style="font-size:13px;background:#f6f8fa;border-radius:6px;padding:8px 10px;margin-bottom:12px;"></div>
+
+        <div class="form-group">
+            <label>方式一：从已采集会话中单选（/rpc/adapter/sessions，无默认选中）：</label>
+            <div id="sessionList" class="session-list"><div class="empty-honest">加载中…</div></div>
+        </div>
+
+        <div class="form-group">
+            <label>方式二：手动粘贴对话 URL（与方式一互斥，选一即清另一）：</label>
+            <input type="text" id="manualUrlInput" placeholder="https://chatgpt.com/c/…">
+        </div>
+
+        <div class="form-group">
+            <label>执行者 execution_agent（必填，人或 AI agent 名）：</label>
+            <input type="text" id="execAgent" placeholder="例如 looy 或 claude-code">
+        </div>
+
+        <div class="modal-actions">
+            <button class="secondary" id="cancelAcceptBtn">取消</button>
+            <button class="green" id="confirmAcceptBtn" disabled>确认绑定并接住</button>
+        </div>
+        <div id="acceptResult" class="result-box"></div>
+    </div>
+</div>
+
+<!-- 忽略：理由必填弹窗 -->
+<div id="dismissModal" class="modal-overlay">
+    <div class="modal">
+        <h3>忽略推荐（理由必填）</h3>
+        <div class="form-group">
+            <label>忽略理由：</label>
+            <textarea id="dismissReason" rows="3" placeholder="为什么忽略？（必填）"></textarea>
+        </div>
+        <div class="modal-actions">
+            <button class="secondary" id="cancelDismissBtn">取消</button>
+            <button class="red" id="confirmDismissBtn" disabled>确认忽略</button>
+        </div>
+        <div id="dismissResult" class="result-box"></div>
+    </div>
+</div>
+
+<script src="g4-lifecycle-core.js"></script>
+<script>
+'use strict';
+const CORE = window.DCF_G4_CORE;
+const COMPANION_URL = 'http://127.0.0.1:8472';
+
+const $ = (id) => document.getElementById(id);
+
+// ──────────────────────────────────────────────────────────────
+// State
+// ──────────────────────────────────────────────────────────────
+let recommendations = [];
+let tasks = [];
+let materials = [];
+const reasoningCache = new Map();   // recommendation_id -> proposed payload (event log truth)
+
+// Accept-modal state: explicit binding only, no defaults, no guessing
+let acceptRecId = null;
+let selectedSession = null;         // { conversation_id, conversation_url }
+let dismissRecId = null;
+
+// ──────────────────────────────────────────────────────────────
+// Health polling (2s)
+// ──────────────────────────────────────────────────────────────
+async function pollHealth() {
+    const res = await CORE.rpc('GET', '/rpc/health', undefined, COMPANION_URL);
+    const up = res.ok;
+    $('offlineBanner').classList.toggle('visible', !up);
+    $('healthDot').className = 'health-dot ' + (up ? 'up' : 'down');
+    $('healthText').textContent = up ? 'Companion 在线 (8472)' : 'Companion 离线';
+    return up;
+}
+setInterval(pollHealth, 2000);
+
+// ──────────────────────────────────────────────────────────────
+// Rendering: recommendations
+// ──────────────────────────────────────────────────────────────
+function renderRecommendations() {
+    const list = $('pendingList');
+    $('pendingCount').textContent = recommendations.length;
+    if (recommendations.length === 0) {
+        list.innerHTML = '<div class="empty-honest">暂无待处理推荐。可在下方「新建推荐」手动提出。</div>';
+        return;
+    }
+    list.innerHTML = recommendations.map(rec => {
+        const cached = reasoningCache.get(rec.recommendation_id);
+        const reasoning = cached
+            ? (cached.source_reasoning
+                ? CORE.esc(cached.source_reasoning)
+                : '（recommendation.proposed 事件未记录 source_reasoning）')
+            : '（回查事件日志中…）';
+        return `
+        <div class="rec-card" data-rec-id="${CORE.esc(rec.recommendation_id)}">
+            <div class="rec-text">${CORE.esc(rec.recommendation_text || '')}</div>
+            <div class="rec-reasoning">来源理由：${reasoning}</div>
+            <div class="rec-meta">
+                <span class="priority-chip">优先度 P${rec.priority_level ?? '?'}</span>
+                <span>score ${rec.materiality_score ?? '?'}</span>
+                <span>来源 ${CORE.esc(rec.source_entity_type || '?')}:${CORE.esc(CORE.shortId(rec.source_entity_id, 8))}…</span>
+                <span class="mono">${CORE.esc(CORE.shortId(rec.recommendation_id, 10))}…</span>
+            </div>
+            <div class="rec-actions">
+                <button class="green btn-accept">接住</button>
+                <button class="secondary btn-dismiss">忽略</button>
+            </div>
+        </div>`;
+    }).join('');
+
+    list.querySelectorAll('.rec-card').forEach(card => {
+        const recId = card.dataset.recId;
+        card.querySelector('.btn-accept').addEventListener('click', () => openAcceptModal(recId));
+        card.querySelector('.btn-dismiss').addEventListener('click', () => openDismissModal(recId));
+    });
+}
+
+// source_reasoning lives only in the proposed event payload (projection has
+// no such column); query it honestly from the append-only log, cached per id.
+async function hydrateReasoning() {
+    const missing = recommendations.filter(r => !reasoningCache.has(r.recommendation_id));
+    for (const rec of missing) {
+        const payload = await CORE.fetchRecommendationProvenance(rec.recommendation_id, COMPANION_URL);
+        reasoningCache.set(rec.recommendation_id, payload || {});
+    }
+    if (missing.length > 0) renderRecommendations();
+}
+
+// ──────────────────────────────────────────────────────────────
+// Rendering: task queue (five-state machine)
+// ──────────────────────────────────────────────────────────────
+function renderTasks() {
+    const list = $('taskList');
+    $('taskCount').textContent = tasks.length;
+    if (tasks.length === 0) {
+        list.innerHTML = '<div class="empty-honest">暂无任务。接住一条推荐即可物化任务。</div>';
+        return;
+    }
+    list.innerHTML = tasks.map(t => {
+        const st = t.current_status;
+        const stateOptions = CORE.TASK_STATES
+            .filter(s => s !== st)
+            .map(s => `<option value="${s}">→ ${CORE.TASK_STATE_LABELS[s]} (${s})</option>`)
+            .join('');
+        let progress = '';
+        const pj = CORE.parsePayload(t.progress_json);
+        if (pj) progress = JSON.stringify(pj);
+        return `
+        <div class="task-item st-${CORE.esc(st)}" data-task-id="${CORE.esc(t.task_id)}">
+            <div class="task-head">
+                <div class="task-objective">${CORE.esc(t.objective || '(无目标描述)')}</div>
+                <span class="state-badge st-${CORE.esc(st)}">${CORE.esc(CORE.TASK_STATE_LABELS[st] || st)}</span>
+            </div>
+            <div class="task-binding mono">task ${CORE.esc(CORE.shortId(t.task_id, 12))}… · 溯源 ${CORE.esc(CORE.shortId(t.source_ref || '', 10) || '—')}</div>
+            <div class="task-binding">绑定会话：<span class="mono">${CORE.esc(t.bound_conversation_id || '（未绑定 id）')}</span></div>
+            <div class="task-binding">会话 URL：<span class="mono bound-url">${CORE.esc(t.bound_conversation_url || '（未绑定 url）')}</span> · 执行者 ${CORE.esc(t.bound_execution_agent || '—')}</div>
+            <div class="task-binding">进度：<span class="mono">${CORE.esc(progress || '—')}</span> · 最近检查点：<span class="mono cp-pointer">${CORE.esc(t.checkpoint_event_id ? CORE.shortId(t.checkpoint_event_id, 12) + '…' : '—')}</span></div>
+            <div class="task-controls">
+                <select class="to-state"><option value="">推进到…</option>${stateOptions}</select>
+                <button class="btn-advance">推进</button>
+                <input type="text" class="cp-note" placeholder="检查点备注" style="width:110px;">
+                <button class="secondary btn-checkpoint">保存检查点</button>
+            </div>
+        </div>`;
+    }).join('');
+
+    list.querySelectorAll('.task-item').forEach(item => {
+        const taskId = item.dataset.taskId;
+        item.querySelector('.btn-advance').addEventListener('click', () => advanceTask(taskId, item));
+        item.querySelector('.btn-checkpoint').addEventListener('click', () => saveCheckpoint(taskId, item));
+    });
+}
+
+async function advanceTask(taskId, item) {
+    const task = tasks.find(t => t.task_id === taskId);
+    const toState = item.querySelector('.to-state').value;
+    const box = $('taskResult');
+    if (!task || !toState) {
+        showResult(box, false, '请选择目标状态');
+        return;
+    }
+    let payload;
+    try {
+        payload = CORE.buildTaskProgressionPayload(taskId, task.current_status, toState);
+    } catch (err) {
+        showResult(box, false, err.message);
+        return;
+    }
+    const res = await CORE.rpc('POST', '/rpc/task/status', payload, COMPANION_URL);
+    if (res.ok) {
+        showResult(box, true, `推进成功 ${task.current_status} → ${toState}\nevent_id=${res.result.event_id}`);
+        await refreshTasks();
+    } else {
+        // Honest regression display: rejected + rejection_event_id straight from error.data
+        const data = res.failure.body && res.failure.body.error && res.failure.body.error.data;
+        if (data && data.rejected) {
+            showResult(box, false,
+                `倒退被拒绝（HTTP ${res.status}）：${res.failure.message}\n` +
+                `rejected=true\nrejection_event_id=${data.rejection_event_id}\n` +
+                `（拒绝本身已作为 task.transition_rejected 事件入库）`);
+        } else {
+            showResult(box, false, `推进失败（HTTP ${res.status}）：${res.failure.message}`);
+        }
+    }
+}
+
+async function saveCheckpoint(taskId, item) {
+    const note = item.querySelector('.cp-note').value.trim();
+    const box = $('taskResult');
+    let payload;
+    try {
+        payload = CORE.buildCheckpointPayload(
+            taskId, CORE.generateULID(), 'manual',
+            JSON.stringify({ note: note || null, saved_at: new Date().toISOString() })
+        );
+    } catch (err) {
+        showResult(box, false, err.message);
+        return;
+    }
+    const res = await CORE.rpc('POST', '/rpc/task/checkpoint', payload, COMPANION_URL);
+    if (res.ok) {
+        showResult(box, true, `检查点已保存 checkpoint_id=${res.result.checkpoint_id}\nevent_id=${res.result.event_id}`);
+        await refreshTasks();
+    } else {
+        showResult(box, false, `检查点保存失败（HTTP ${res.status}）：${res.failure.message}`);
+    }
+}
+
+// ──────────────────────────────────────────────────────────────
+// Accept modal: explicit binding (no default, no guessing)
+// ──────────────────────────────────────────────────────────────
+async function openAcceptModal(recId) {
+    acceptRecId = recId;
+    selectedSession = null;
+    $('manualUrlInput').value = '';
+    $('execAgent').value = '';
+    $('acceptResult').className = 'result-box';
+    $('confirmAcceptBtn').disabled = true;
+
+    const rec = recommendations.find(r => r.recommendation_id === recId);
+    $('acceptRecText').textContent = rec ? rec.recommendation_text : recId;
+    $('acceptModal').classList.add('visible');
+
+    const sessions = await CORE.fetchSessions(COMPANION_URL);
+    const listEl = $('sessionList');
+    if (sessions.length === 0) {
+        listEl.innerHTML = '<div class="empty-honest">暂无已采集会话（conversation.* 事件为空）。可用方式二手动粘贴对话 URL。</div>';
+    } else {
+        listEl.innerHTML = sessions.map(s => `
+            <label class="session-item" data-conv-id="${CORE.esc(s.conversation_id)}" data-conv-url="${CORE.esc(s.conversation_url || '')}">
+                <input type="radio" name="sessSel" value="${CORE.esc(s.conversation_id)}">
+                <span>
+                    <span class="mono">${CORE.esc(s.conversation_id)}</span><br>
+                    url: <span class="mono">${CORE.esc(s.conversation_url || '（适配器未上报 url）')}</span><br>
+                    adapter: ${CORE.esc(s.adapter || '—')} · 事件 ${s.event_count} · 最近 ${CORE.esc(s.last_seen || '—')}
+                </span>
+            </label>`).join('');
+        listEl.querySelectorAll('.session-item').forEach(el => {
+            el.querySelector('input').addEventListener('change', () => {
+                listEl.querySelectorAll('.session-item').forEach(x => x.classList.remove('selected'));
+                el.classList.add('selected');
+                selectedSession = {
+                    conversation_id: el.dataset.convId,
+                    conversation_url: el.dataset.convUrl || null
+                };
+                $('manualUrlInput').value = '';   // mutual exclusion, explicit choice
+                updateConfirmState();
+            });
+        });
+    }
+}
+
+function updateConfirmState() {
+    const manualUrl = $('manualUrlInput').value.trim();
+    const agent = $('execAgent').value.trim();
+    const hasBinding = !!selectedSession || manualUrl.length > 0;
+    $('confirmAcceptBtn').disabled = !(hasBinding && agent.length > 0);
+}
+
+$('manualUrlInput').addEventListener('input', () => {
+    if ($('manualUrlInput').value.trim()) {
+        selectedSession = null;
+        document.querySelectorAll('#sessionList input[type=radio]').forEach(r => { r.checked = false; });
+        document.querySelectorAll('#sessionList .session-item').forEach(x => x.classList.remove('selected'));
+    }
+    updateConfirmState();
+});
+$('execAgent').addEventListener('input', updateConfirmState);
+$('cancelAcceptBtn').addEventListener('click', () => $('acceptModal').classList.remove('visible'));
+
+$('confirmAcceptBtn').addEventListener('click', async () => {
+    const box = $('acceptResult');
+    const manualUrl = $('manualUrlInput').value.trim();
+    const bindingContext = {
+        execution_agent: $('execAgent').value.trim(),
+        user_confirmed_at: new Date().toISOString()
+    };
+    if (selectedSession) {
+        bindingContext.conversation_id = selectedSession.conversation_id;
+        bindingContext.conversation_url = selectedSession.conversation_url || null;
+    } else {
+        bindingContext.conversation_url = manualUrl;
+    }
+    let payload;
+    try {
+        payload = CORE.buildAcceptPayload(acceptRecId, bindingContext);
+    } catch (err) {
+        showResult(box, false, err.message);
+        return;
+    }
+    const res = await CORE.rpc('POST', '/rpc/recommendation/accept', payload, COMPANION_URL);
+    if (res.ok) {
+        showResult(box, true,
+            `已接住 → 物化任务\ntask_id=${res.result.task_id}\n` +
+            `task_event_id=${res.result.task_event_id}\n` +
+            `binding: conversation_id=${bindingContext.conversation_id || '（无，手动 URL 绑定）'} url=${bindingContext.conversation_url || '—'}`);
+        await refreshAll();
+    } else {
+        showResult(box, false, `接住失败（HTTP ${res.status}）：${res.failure.message}`);
+    }
+});
+
+// ──────────────────────────────────────────────────────────────
+// Dismiss modal: reason required
+// ──────────────────────────────────────────────────────────────
+function openDismissModal(recId) {
+    dismissRecId = recId;
+    $('dismissReason').value = '';
+    $('confirmDismissBtn').disabled = true;
+    $('dismissResult').className = 'result-box';
+    $('dismissModal').classList.add('visible');
+}
+$('dismissReason').addEventListener('input', () => {
+    $('confirmDismissBtn').disabled = $('dismissReason').value.trim().length === 0;
+});
+$('cancelDismissBtn').addEventListener('click', () => $('dismissModal').classList.remove('visible'));
+$('confirmDismissBtn').addEventListener('click', async () => {
+    const reason = $('dismissReason').value.trim();
+    const box = $('dismissResult');
+    if (!reason) { showResult(box, false, '理由必填'); return; }
+    const res = await CORE.rpc('POST', '/rpc/recommendation/dismiss',
+        CORE.buildDismissPayload(dismissRecId, reason), COMPANION_URL);
+    if (res.ok) {
+        showResult(box, true, `已忽略 event_id=${res.result.event_id}\nreason=${res.result.reason}`);
+        await refreshRecommendations();
+    } else {
+        showResult(box, false, `忽略失败（HTTP ${res.status}）：${res.failure.message}`);
+    }
+});
+
+// ──────────────────────────────────────────────────────────────
+// Back-propagation panel (three entries)
+// ──────────────────────────────────────────────────────────────
+const BP_TARGET_BY_KIND = {
+    result_recorded: 'reality_verified',
+    failure_recorded: 'user_tentative',
+    insight_changed: 'user_tentative'
+};
+$('bpKind').addEventListener('change', () => {
+    $('bpTargetState').textContent = BP_TARGET_BY_KIND[$('bpKind').value];
+});
+
+$('bpSubmitBtn').addEventListener('click', async () => {
+    const box = $('bpResult');
+    const taskId = $('bpTaskSelect').value;
+    const kind = $('bpKind').value;
+    const materialId = $('bpMaterial').value;
+    if (!taskId) { showResult(box, false, '请选择目标任务'); return; }
+    if (!materialId) { showResult(box, false, '请选择目标材料'); return; }
+
+    const eventId = CORE.generateULID();
+    const payload = {
+        task_id: taskId,
+        feedback_to_materials: CORE.buildMaterialFeedbackBundle(materialId, BP_TARGET_BY_KIND[kind])
+    };
+    // Contract: result/failure events require evidence refs; without an
+    // external evidence event the envelope honestly self-references.
+    if (kind === 'result_recorded') payload.result_event_id = eventId;
+    if (kind === 'failure_recorded') payload.failure_path_event_id = eventId;
+
+    const res = await CORE.rpc('POST', '/rpc/events/ingest', {
+        event: {
+            event_id: eventId,
+            source_id: taskId,
+            event_type: 'task.' + kind,
+            payload_json: payload,
+            created_at: new Date().toISOString()
+        }
+    }, COMPANION_URL);
+
+    if (!res.ok) {
+        const data = res.failure.body && res.failure.body.error && res.failure.body.error.data;
+        showResult(box, false, `回灌被拒绝（HTTP ${res.status}）：${res.failure.message}` +
+            (data && data.rejected ? `\nrejected=true rejection_event_id=${data.rejection_event_id}` : ''));
+        return;
+    }
+
+    // Show the generated attribution chain straight from the event log
+    const q = await CORE.rpc('GET', '/rpc/events/query?source_id=' + encodeURIComponent(materialId) + '&limit=100', undefined, COMPANION_URL);
+    let chainText = '（链事件查询失败）';
+    if (q.ok) {
+        const chain = (q.result.events || []).filter(e => {
+            if (e.event_type !== 'material.attribution.transitioned') return false;
+            const p = CORE.parsePayload(e.payload_json);
+            return p && p.evidence_ref === eventId;
+        });
+        chainText = chain.length === 0
+            ? '生成链事件 0 条（空转/倒退被服务端诚实跳过）'
+            : chain.map(e => {
+                const p = CORE.parsePayload(e.payload_json) || {};
+                return `material.attribution.transitioned ${p.from_state} → ${p.to_state}\n  event_id=${e.event_id}\n  evidence_ref=${p.evidence_ref}\n  provenance=${JSON.stringify(p.provenance)}`;
+            }).join('\n');
+    }
+    showResult(box, true, `回灌事件已入库 event_id=${eventId} (task.${kind})\n── attribution 转移链 ──\n${chainText}`);
+    await refreshAll();
+});
+
+// ──────────────────────────────────────────────────────────────
+// Manual recommendation creation (via /rpc/events/ingest)
+// ──────────────────────────────────────────────────────────────
+$('recCreateBtn').addEventListener('click', async () => {
+    const box = $('recCreateResult');
+    const refs = Array.from($('recMaterialRefs').selectedOptions).map(o => o.value);
+    if (refs.length === 0) {
+        showResult(box, false, 'source_material_refs 必填：请至少选择一个来源材料');
+        return;
+    }
+    const sourceIdRaw = $('recSourceId').value.trim();
+    let envelope;
+    try {
+        envelope = CORE.buildRecommendationProposedEvent({
+            source_entity_type: $('recSourceType').value,
+            source_entity_id: sourceIdRaw || CORE.generateULID(),
+            recommendation_text: $('recText').value.trim(),
+            source_reasoning: $('recReasoning').value.trim(),
+            target_material_refs: refs,
+            materiality_score: parseFloat($('recScore').value),
+            priority_level: parseInt($('recPriority').value, 10)
+        });
+    } catch (err) {
+        showResult(box, false, err.message);
+        return;
+    }
+    const res = await CORE.rpc('POST', '/rpc/events/ingest', envelope, COMPANION_URL);
+    if (res.ok) {
+        const recId = envelope.event.payload_json.recommendation_id;
+        reasoningCache.set(recId, envelope.event.payload_json);
+        showResult(box, true, `推荐已提出 recommendation_id=${recId}\nevent_id=${res.result.event_id}`);
+        $('recText').value = '';
+        $('recReasoning').value = '';
+        await refreshRecommendations();
+    } else {
+        showResult(box, false, `提交失败（HTTP ${res.status}）：${res.failure.message}`);
+    }
+});
+
+// ──────────────────────────────────────────────────────────────
+// Refresh loops
+// ──────────────────────────────────────────────────────────────
+function showResult(el, ok, text) {
+    el.className = 'result-box ' + (ok ? 'ok' : 'err');
+    el.textContent = text;
+}
+
+async function refreshRecommendations() {
+    recommendations = await CORE.fetchRecommendations('pending', COMPANION_URL);
+    renderRecommendations();
+    hydrateReasoning();
+}
+
+async function refreshTasks() {
+    tasks = await CORE.fetchTasks(null, COMPANION_URL);
+    renderTasks();
+    // Backprop task select mirrors the queue
+    const sel = $('bpTaskSelect');
+    const prev = sel.value;
+    sel.innerHTML = '<option value="">选择任务…</option>' + tasks.map(t =>
+        `<option value="${CORE.esc(t.task_id)}">[${CORE.esc(t.current_status)}] ${CORE.esc(CORE.shortId(t.objective || t.task_id, 42))}</option>`
+    ).join('');
+    if (tasks.some(t => t.task_id === prev)) sel.value = prev;
+}
+
+async function refreshMaterials() {
+    materials = await CORE.fetchMaterials(200, COMPANION_URL);
+    const label = m => `${CORE.shortId(m.entity_id, 10)}… [${m.attribution_state}] ${CORE.shortId(m.latest_candidate_body || '', 30)}`;
+    const bp = $('bpMaterial');
+    const prevBp = bp.value;
+    bp.innerHTML = '<option value="">选择目标材料…</option>' + materials.map(m =>
+        `<option value="${CORE.esc(m.entity_id)}">${CORE.esc(label(m))}</option>`).join('');
+    if (materials.some(m => m.entity_id === prevBp)) bp.value = prevBp;
+    const refsSel = $('recMaterialRefs');
+    const prevRefs = new Set(Array.from(refsSel.selectedOptions).map(o => o.value));
+    refsSel.innerHTML = materials.map(m =>
+        `<option value="${CORE.esc(m.entity_id)}"${prevRefs.has(m.entity_id) ? ' selected' : ''}>${CORE.esc(label(m))}</option>`).join('');
+}
+
+async function refreshAll() {
+    await Promise.all([refreshRecommendations(), refreshTasks(), refreshMaterials()]);
+}
+
+(async function init() {
+    await pollHealth();
+    await refreshAll();
+})();
+</script>
+</body>
+</html>
