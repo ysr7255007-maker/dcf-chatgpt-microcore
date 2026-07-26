@@ -114,6 +114,35 @@
     }
     .task-controls button { padding: 4px 10px; font-size: 11px; }
 
+    /* G5: Task filter (agent selector) */
+    .task-filter { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 12px; }
+    .task-filter label { color: #57606a; }
+    .task-filter select { padding: 4px 8px; border: 1px solid #d0d7de; border-radius: 4px; font-size: 12px; min-width: 150px; }
+
+    /* G5: Audit event banners */
+    .audit-events-container { margin-top: 6px; }
+    .audit-banner { border-radius: 6px; padding: 8px 10px; margin-bottom: 4px; font-size: 11px; line-height: 1.45; } 
+    .audit-banner.overreach-critical { background: #ffebe9; border: 1px solid #cf222e; color: #cf222e; } 
+    .audit-banner.overreach-warning { background: #fff8c5; border: 1px solid #d29922; color: #7d4e00; } 
+    .audit-banner.expansion-pending { background: #fff8c5; border: 1px solid #d29922; color: #7d4e00; } 
+    .audit-banner.expansion-decided { background: #f6f8fa; border: 1px solid #d0d7de; color: #57606a; } 
+    .audit-banner.divergence { background: #ddf4ff; border: 1px solid #0969da; color: #0550ae; }
+    .audit-severity { font-weight: 700; font-size: 10px; padding: 1px 5px; border-radius: 3px; background: rgba(0,0,0,0.1); margin-right: 6px; vertical-align: middle; }
+    .audit-actions { display: flex; gap: 6px; margin-top: 4px; }
+    .audit-actions button { padding: 2px 8px; font-size: 10px; }
+
+    /* G5: Collapsible executor history */
+    .exec-history-section { margin-top: 6px; }
+    .exec-history-toggle { font-size: 11px; color: #0969da; cursor: pointer; user-select: none; display: inline-flex; align-items: center; gap: 4px; padding: 2px 0; }
+    .exec-history-toggle:hover { text-decoration: underline; }
+    .exec-history-toggle svg { width: 10px; height: 10px; transition: transform 150ms; }
+    .exec-history-body { margin-top: 4px; padding: 6px 8px; background: #f6f8fa; border-radius: 4px; font-size: 11px; max-height: 200px; overflow-y: auto; }
+    .exec-history-body.collapsed { display: none; }
+    .exec-history-entry { padding: 4px 0; border-bottom: 1px dashed #e1e4e8; line-height: 1.4; }
+    .exec-history-entry:last-child { border-bottom: none; }
+    .exec-history-entry.from-to { font-size: 10px; color: #57606a; margin-left: 4px; }
+    .exec-history-reason { color: #656d76; font-style: italic; }
+
     .modal-overlay {
         position: fixed; top: 0; left: 0; right: 0; bottom: 0;
         background: rgba(0,0,0,0.5); z-index: 9999;
@@ -220,6 +249,11 @@
 
             <div class="panel" id="taskPanel">
                 <h3><span>任务队列（五态）</span> <span id="taskCount" class="panel-badge">0</span></h3>
+                <!-- G5: Agent filter -->
+                <div class="task-filter">
+                    <label>执行者过滤：</label>
+                    <select id="agentFilter"><option value="">全部</option></select>
+                </div>
                 <div id="taskList"><div class="empty-honest">加载中…</div></div>
                 <div id="taskResult" class="result-box"></div>
             </div>
@@ -350,6 +384,35 @@
     </div>
 </div>
 
+<!-- G5: Rebind execution agent modal -->
+<div id="rebindModal" class="modal-overlay">
+    <div class="modal">
+        <h3>重绑执行者</h3>
+        <div id="rebindTaskInfo" style="font-size:13px;background:#f6f8fa;border-radius:6px;padding:8px 10px;margin-bottom:12px;"></div>
+        
+        <div class="form-group">
+            <label>新执行者 execution_agent（必填，人或 AI agent 名）：</label>
+            <input type="text" id="rebindAgent" placeholder="例如 looy 或 claude-code">
+        </div>
+        
+        <div class="form-group">
+            <label>对话 URL（可选，替换为新的对话路径）：</label>
+            <input type="text" id="rebindUrl" placeholder="https://chatgpt.com/c/…">
+        </div>
+        
+        <div class="form-group">
+            <label>重绑理由（可选）：</label>
+            <textarea id="rebindReason" rows="2" placeholder="为什么需要重新绑定？"></textarea>
+        </div>
+        
+        <div class="modal-actions">
+            <button class="secondary" id="cancelRebindBtn">取消</button>
+            <button class="purple" id="confirmRebindBtn" disabled>确认重绑</button>
+        </div>
+        <div id="rebindResult" class="result-box"></div>
+    </div>
+</div>
+
 <script src="g4-lifecycle-core.js"></script>
 <script>
 'use strict';
@@ -370,6 +433,10 @@ const reasoningCache = new Map();   // recommendation_id -> proposed payload (ev
 let acceptRecId = null;
 let selectedSession = null;         // { conversation_id, conversation_url }
 let dismissRecId = null;
+
+// G5: Rebind modal state
+let rebindTaskId = null;
+let agentFilterValue = '';          // current filter value
 
 // ──────────────────────────────────────────────────────────────
 // Health polling (2s)
@@ -465,11 +532,28 @@ function renderTasks() {
             <div class="task-binding">绑定会话：<span class="mono">${CORE.esc(t.bound_conversation_id || '（未绑定 id）')}</span></div>
             <div class="task-binding">会话 URL：<span class="mono bound-url">${CORE.esc(t.bound_conversation_url || '（未绑定 url）')}</span> · 执行者 ${CORE.esc(t.bound_execution_agent || '—')}</div>
             <div class="task-binding">进度：<span class="mono">${CORE.esc(progress || '—')}</span> · 最近检查点：<span class="mono cp-pointer">${CORE.esc(t.checkpoint_event_id ? CORE.shortId(t.checkpoint_event_id, 12) + '…' : '—')}</span></div>
+                        
+            <!-- G5: Audit events container (populated asynchronously) -->
+            <div class="audit-events-container" id="audit-${CORE.esc(t.task_id)}"></div>
+                        
+            <!-- G5: Executor history collapsible section -->
+            <div class="exec-history-section">
+                <div class="exec-history-toggle" data-task-id="${CORE.esc(t.task_id)}">
+                    <svg viewBox="0 0 10 10"><path d="M2 3 L6 7 L8 5" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+                    执行者历史（binding_history）
+                </div>
+                <div class="exec-history-body collapsed" id="history-${CORE.esc(t.task_id)}">
+                    <div style="color:#656d76;">加载历史记录…</div>
+                </div>
+            </div>
+                        
             <div class="task-controls">
                 <select class="to-state"><option value="">推进到…</option>${stateOptions}</select>
                 <button class="btn-advance">推进</button>
                 <input type="text" class="cp-note" placeholder="检查点备注" style="width:110px;">
                 <button class="secondary btn-checkpoint">保存检查点</button>
+                <!-- G5: Rebind button -->
+                <button class="secondary btn-rebind">重绑执行者</button>
             </div>
         </div>`;
     }).join('');
@@ -478,6 +562,21 @@ function renderTasks() {
         const taskId = item.dataset.taskId;
         item.querySelector('.btn-advance').addEventListener('click', () => advanceTask(taskId, item));
         item.querySelector('.btn-checkpoint').addEventListener('click', () => saveCheckpoint(taskId, item));
+        
+        // G5: Executor history toggle
+        const toggleBtn = item.querySelector('.exec-history-toggle');
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', () => toggleExecutorHistory(taskId));
+        }
+        
+        // G5: Rebind button
+        const rebindBtn = item.querySelector('.btn-rebind');
+        if (rebindBtn) {
+            rebindBtn.addEventListener('click', () => openRebindModal(taskId));
+        }
+        
+        // Start async audit events loading
+        hydrateAuditEvents(taskId);
     });
 }
 
@@ -659,6 +758,141 @@ $('confirmDismissBtn').addEventListener('click', async () => {
 });
 
 // ──────────────────────────────────────────────────────────────
+// G5: Audit events hydration (async)
+// ──────────────────────────────────────────────────────────────
+async function hydrateAuditEvents(taskId) {
+    try {
+        const events = await CORE.fetchTaskAuditEvents(taskId, COMPANION_URL);
+        renderAuditEvents(taskId, events);
+    } catch (err) {
+        console.error(`Failed to load audit events for ${taskId}:`, err);
+    }
+}
+
+function renderAuditEvents(taskId, events) {
+    const container = $(`audit-${taskId}`);
+    if (!container || events.length === 0) return;
+    
+    // Group by type, take most recent of each
+    const overreach = events.filter(e => e.event_type === 'task.overreach_detected');
+    const expansion = events.filter(e => e.event_type === 'task.privilege_expansion_requested');
+    const divergence = events.filter(e => e.event_type === 'task.value_divergence_reported');
+    
+    let html = '';
+    
+    // Overreach (most recent critical/warning)
+    const recentOverreach = overreach.sort((a,b) => new Date(b.created_at) - new Date(a.created_at))[0];
+    if (recentOverreach) {
+        const p = CORE.parsePayload(recentOverreach.payload_json) || {};
+        const severity = p.severity === 'critical' ? 'critical' : 'warning';
+        html += `<div class="audit-banner overreach-${severity}">`;
+        html += `<span class="audit-severity">${severity.toUpperCase()}</span>`;
+        html += `<strong>越权检测：</strong>${p.executed_action || '(无描述)'} <br/>`; 
+        html += `<small>目标：<code>${CORE.esc(p.objective || '?')}</code></small><br/>`;
+        if (severity === 'critical') html += `<small style="color:#b92629">⚠️ <strong>建议暂停任务，需人工审查。</strong></small>`;
+        html += `</div>`;
+    }
+    
+    // Expansion (show latest decision state only)
+    const recentExpansion = expansion.sort((a,b) => new Date(b.created_at) - new Date(a.created_at))[0];
+    let expansionIsPending = false;
+    if (recentExpansion) {
+        const p = CORE.parsePayload(recentExpansion.payload_json) || {};
+        expansionIsPending = p.user_decision === 'pending';
+        html += `<div class="audit-banner expansion-${expansionIsPending ? 'pending' : 'decided'}">`;
+        html += `<strong>扩权请求</strong>: ${p.current_boundary || '?'} → ${p.requested_boundary || '?'}`;
+        if (expansionIsPending) {
+            html += `<br/><small>理由：<em>${CORE.esc(p.justification || '?')}</em></small><br/>`;
+            html += `<div class="audit-actions">`;
+            html += `<button class="green btn-approve-expansion" data-task-id="${CORE.esc(taskId)}" data-event="${CORE.esc(recentExpansion.event_id)}">批准</button>`;
+            html += `<button class="red btn-deny-expansion" data-task-id="${CORE.esc(taskId)}" data-event="${CORE.esc(recentExpansion.event_id)}">拒绝</button>`;
+            html += `</div>`;
+        } else {
+            html += `<br/><small>决策：<span class="audit-severity">${p.user_decision}</span></small>`;
+        }
+        html += `</div>`;
+    }
+    
+    // Divergence (most recent)
+    const recentDivergence = divergence.sort((a,b) => new Date(b.created_at) - new Date(a.created_at))[0];
+    if (recentDivergence) {
+        const p = CORE.parsePayload(recentDivergence.payload_json) || {};
+        html += `<div class="audit-banner divergence">`;
+        html += `<strong>价值偏离提示</strong>: ${p.execution_divergence || '?'} <br/>`;
+        html += `<small>类别：<code>${CORE.esc(p.category || '?')}</code> | 报告人：<code>${CORE.esc(p.reported_by || '?')}</code></small>`;
+        html += `</div>`;
+    }
+    
+    container.innerHTML = html || '<div style="font-size:11px;color:#999;padding:6px 8px;">暂无审计事件</div>';
+    
+    // Wire up approve/deny buttons
+    if (expansionIsPending && recentExpansion) {
+        container.querySelectorAll('.btn-approve-expansion').forEach(btn => {
+            btn.addEventListener('click', () => handleExpansionDecision(taskId, recentExpansion, 'approved'));
+        });
+        container.querySelectorAll('.btn-deny-expansion').forEach(btn => {
+            btn.addEventListener('click', () => handleExpansionDecision(taskId, recentExpansion, 'denied'));
+        });
+    }
+}
+
+async function handleExpansionDecision(taskId, originalEvent, decision) {
+    const box = $('taskResult');
+    try {
+        const envelope = CORE.buildExpansionDecisionEvent(taskId, JSON.parse(originalEvent.payload_json), decision);
+        const res = await CORE.rpc('POST', '/rpc/events/ingest', envelope, COMPANION_URL);
+        if (res.ok) {
+            showResult(box, true, `已提交 ${decision} -> event_id=${res.result.event_id}`);
+            await hydrateAuditEvents(taskId);   // Refresh banner
+        } else {
+            showResult(box, false, `决策提交失败（HTTP ${res.status}）：${res.failure.message}`);
+        }
+    } catch (err) {
+        showResult(box, false, err.message);
+    }
+}
+
+// ──────────────────────────────────────────────────────────────
+// G5: Executor history collapsible
+// ──────────────────────────────────────────────────────────────
+async function toggleExecutorHistory(taskId) {
+    const body = $(`history-${taskId}`);
+    if (!body) return;
+    if (body.classList.contains('collapsed')) {
+        body.classList.remove('collapsed');
+        body.innerHTML = '<div style="color:#656d76;">加载历史记录…</div>';
+        try {
+            const history = await CORE.fetchBindingHistory(taskId, COMPANION_URL);
+            renderExecutorHistory(body, history);
+        } catch (err) {
+            body.innerHTML = '<div style="color:#cf222e;">加载失败：' + CORE.esc(err.message) + '</div>';
+        }
+    } else {
+        body.classList.add('collapsed');
+    }
+}
+
+function renderExecutorHistory(container, history) {
+    if (!Array.isArray(history) || history.length === 0) {
+        container.innerHTML = '<div style="color:#999;">尚未重绑过执行者</div>';
+        return;
+    }
+    container.innerHTML = history.map(h => {
+        const p = h.new_binding || {};
+        return `
+            <div class="exec-history-entry">
+                <div class="mono" style="color:#57606a">${h.rebind_timestamp || CORE.esc(h.created_at)}</div>
+                <div class="from-to">
+                    ${h.previous_agent || '(初始)'} → <strong>${CORE.esc(p.execution_agent || '?')}</strong>
+                </div>
+                ${p.conversation_url ? `<div style="font-size:10px;color:#999">会话：${CORE.esc(p.conversation_url)}</div>` : ''}
+                ${p.reason ? `<div class="exec-history-reason"><em>理由：${CORE.esc(p.reason)}</em></div>` : ''}
+            </div>
+        `;
+    }).join('');
+}
+
+// ──────────────────────────────────────────────────────────────
 // Back-propagation panel (three entries)
 // ──────────────────────────────────────────────────────────────
 const BP_TARGET_BY_KIND = {
@@ -779,8 +1013,10 @@ async function refreshRecommendations() {
 }
 
 async function refreshTasks() {
-    tasks = await CORE.fetchTasks(null, COMPANION_URL);
+    tasks = await CORE.fetchTasksWithFilter(agentFilterValue || null, null, null, COMPANION_URL);
     renderTasks();
+    // G5: Update agent filter options from current tasks
+    updateAgentFilter();
     // Backprop task select mirrors the queue
     const sel = $('bpTaskSelect');
     const prev = sel.value;
@@ -807,6 +1043,80 @@ async function refreshMaterials() {
 async function refreshAll() {
     await Promise.all([refreshRecommendations(), refreshTasks(), refreshMaterials()]);
 }
+
+// ──────────────────────────────────────────────────────────────
+// G5: Agent filter dropdown population
+// ──────────────────────────────────────────────────────────────
+function updateAgentFilter() {
+    const sel = $('agentFilter');
+    if (!sel) return;
+    const agents = new Set();
+    tasks.forEach(t => { if (t.bound_execution_agent) agents.add(t.bound_execution_agent); });
+    const prevVal = agentFilterValue;
+    sel.innerHTML = '<option value="">全部</option>' +
+        Array.from(agents).sort().map(a => `<option value="${CORE.esc(a)}">${CORE.esc(a)}</option>`).join('');
+    sel.value = prevVal;
+}
+
+$('agentFilter').addEventListener('change', async () => {
+    agentFilterValue = $('agentFilter').value;
+    await refreshTasks();
+});
+
+// ──────────────────────────────────────────────────────────────
+// G5: Rebind modal handlers
+// ──────────────────────────────────────────────────────────────
+function openRebindModal(taskId) {
+    rebindTaskId = taskId;
+    const task = tasks.find(t => t.task_id === taskId);
+    const info = task
+        ? `任务：<code class="mono">${CORE.esc(CORE.shortId(taskId, 12))}…</code><br/>` +
+          `目标：<strong>${CORE.esc(task.objective || '(无)')}</strong><br/>` +
+          `当前执行者：<code>${CORE.esc(task.bound_execution_agent || '—')}</code>`
+        : `task_id: ${CORE.esc(taskId)}`;
+    $('rebindTaskInfo').innerHTML = info;
+    $('rebindAgent').value = '';
+    $('rebindUrl').value = '';
+    $('rebindReason').value = '';
+    $('rebindResult').className = 'result-box';
+    $('confirmRebindBtn').disabled = true;
+    $('rebindModal').classList.add('visible');
+}
+
+function updateRebindConfirm() {
+    $('confirmRebindBtn').disabled = $('rebindAgent').value.trim().length === 0;
+}
+$('rebindAgent').addEventListener('input', updateRebindConfirm);
+$('cancelRebindBtn').addEventListener('click', () => $('rebindModal').classList.remove('visible'));
+$('confirmRebindBtn').addEventListener('click', async () => {
+    const box = $('rebindResult');
+    const newAgent = $('rebindAgent').value.trim();
+    const url = $('rebindUrl').value.trim();
+    const reason = $('rebindReason').value.trim();
+    if (!newAgent) { showResult(box, false, '新执行者必填'); return; }
+    let payload;
+    try {
+        const newBinding = {
+            execution_agent: newAgent,
+            user_confirmed_at: new Date().toISOString()
+        };
+        if (url) newBinding.conversation_url = url;
+        if (reason) newBinding.reason = reason;
+        payload = CORE.buildRebindPayload(rebindTaskId, newBinding);
+    } catch (err) {
+        showResult(box, false, err.message);
+        return;
+    }
+    const res = await CORE.rpc('POST', '/rpc/task/rebind', payload, COMPANION_URL);
+    if (res.ok) {
+        showResult(box, true,
+            `重绑成功\nevent_id=${res.result.event_id}\n` +
+            `previous_agent=${res.result.previous_agent || '(初始)'} → new_agent=${res.result.new_binding.execution_agent}`);
+        await refreshTasks();
+    } else {
+        showResult(box, false, `重绑失败（HTTP ${res.status}）：${res.failure.message}`);
+    }
+});
 
 (async function init() {
     await pollHealth();

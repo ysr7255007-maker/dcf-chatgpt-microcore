@@ -34,6 +34,13 @@
         failed: '已失败'
     };
 
+    // G5: Audit event types
+    const AUDIT_EVENT_TYPES = [
+        'task.overreach_detected',
+        'task.privilege_expansion_requested',
+        'task.value_divergence_reported'
+    ];
+
     const RECOMMENDATION_STATES = ['pending', 'accepted', 'dismissed', 'expired'];
     const RECOMMENDATION_STATE_LABELS = {
         pending: '待处理',
@@ -121,25 +128,68 @@
     }
 
     async function fetchTasks(status = null, COMPANION_URL = 'http://127.0.0.1:8472') {
-        // Companion contract: /rpc/task/query requires task_id OR status.
-        // status=null therefore means "all five states", queried honestly per state.
-        if (status) {
-            const res = await rpc('GET', `/rpc/task/query?status=${encodeURIComponent(status)}&limit=100`, undefined, COMPANION_URL);
+        // G5: executionAgent filter also supported (third param)
+        return fetchTasksWithFilter(null, status, null, COMPANION_URL);
+    }
+
+    /**
+     * Fetch tasks with optional filters.
+     * - executionAgent alone: single GET /rpc/task/query?execution_agent=X&limit=100
+     * - status alone or both: five-state fan-out (G4 pattern)
+     */
+    async function fetchTasksWithFilter(executionAgent = null, status = null, taskId = null, COMPANION_URL = 'http://127.0.0.1:8472') {
+        if (executionAgent && !status && !taskId) {
+            // Single query for all states filtered by agent (G5 feature)
+            const res = await rpc('GET', `/rpc/task/query?execution_agent=${encodeURIComponent(executionAgent)}&limit=100`, undefined, COMPANION_URL);
             return res.ok ? (res.result.tasks || []) : [];
+        } else {
+            // G4 pattern: fan-out by status/task_id
+            if (status) {
+                const res = await rpc('GET', `/rpc/task/query?status=${encodeURIComponent(status)}&limit=100`, undefined, COMPANION_URL);
+                return res.ok ? (res.result.tasks || []) : [];
+            }
+            if (taskId) {
+                const res = await rpc('GET', `/rpc/task/query?task_id=${encodeURIComponent(taskId)}&limit=100`, undefined, COMPANION_URL);
+                return res.ok ? (res.result.tasks || []) : [];
+            }
+            const lists = await Promise.all(TASK_STATES.map(s =>
+                rpc('GET', `/rpc/task/query?status=${encodeURIComponent(s)}&limit=100`, undefined, COMPANION_URL)
+            ));
+            const merged = [];
+            for (const res of lists) {
+                if (res.ok && Array.isArray(res.result.tasks)) merged.push(...res.result.tasks);
+            }
+            return merged;
         }
-        const lists = await Promise.all(TASK_STATES.map(s =>
-            rpc('GET', `/rpc/task/query?status=${encodeURIComponent(s)}&limit=100`, undefined, COMPANION_URL)
-        ));
-        const merged = [];
-        for (const res of lists) {
-            if (res.ok && Array.isArray(res.result.tasks)) merged.push(...res.result.tasks);
-        }
-        return merged;
     }
 
     async function fetchSessions(COMPANION_URL = 'http://127.0.0.1:8472') {
         const res = await rpc('GET', '/rpc/adapter/sessions', undefined, COMPANION_URL);
         return res.ok ? (res.result.sessions || []) : [];
+    }
+
+    /**
+     * G5: Get binding_history for a specific task.
+     * Calls GET /rpc/task/query?task_id=X&include_binding_history=true
+     * Returns array sorted by created_at ASC: [{event_id, created_at, new_binding, previous_agent, rebind_timestamp}]
+     */
+    async function fetchBindingHistory(taskId, COMPANION_URL = 'http://127.0.0.1:8472') {
+        if (!isValidULID(taskId)) throw new Error('invalid task_id');
+        const res = await rpc('GET', `/rpc/task/query?task_id=${encodeURIComponent(taskId)}&include_binding_history=true`, undefined, COMPANION_URL);
+        if (!res.ok) return [];
+        return res.result.binding_history || [];
+    }
+
+    /**
+     * G5: Fetch audit events for a task.
+     * Returns events matching one of the three audit types from /rpc/events/query?source_id=X
+     */
+    async function fetchTaskAuditEvents(taskId, COMPANION_URL = 'http://127.0.0.1:8472') {
+        if (!isValidULID(taskId)) throw new Error('invalid task_id');
+        const res = await rpc('GET', `/rpc/events/query?source_id=${encodeURIComponent(taskId)}&limit=200`, undefined, COMPANION_URL);
+        if (!res.ok) return [];
+        const events = res.result.events || [];
+        return events.filter(e => AUDIT_EVENT_TYPES.includes(e.event_type));
     }
 
     async function fetchMaterials(limit = 200, COMPANION_URL = 'http://127.0.0.1:8472') {
@@ -230,6 +280,62 @@
             throw new Error('snapshot_json must be stringified JSON');
         }
         return { task_id: taskId, checkpoint_id: checkpointId, checkpoint_type: checkpointType, snapshot_json: snapshotJson };
+    }
+
+    /**
+     * G5: Build POST /rpc/task/rebind payload.
+     * Requires: task_id (ULID), new_binding.execution_agent (string), new_binding.user_confirmed_at (ISO string).
+     * Optional: new_binding.conversation_url, new_binding.reason.
+     */
+    function buildRebindPayload(taskId, newBinding) {
+        if (!isValidULID(taskId)) throw new Error('invalid task_id');
+        if (!newBinding || typeof newBinding !== 'object') {
+            throw new Error('new_binding must be an object');
+        }
+        if (!newBinding.execution_agent || typeof newBinding.execution_agent !== 'string') {
+            throw new Error('new_binding.execution_agent is required (string)');
+        }
+        if (!newBinding.user_confirmed_at || typeof newBinding.user_confirmed_at !== 'string') {
+            throw new Error('new_binding.user_confirmed_at is required (ISO timestamp string)');
+        }
+        const binding = {
+            execution_agent: newBinding.execution_agent,
+            user_confirmed_at: newBinding.user_confirmed_at
+        };
+        if (newBinding.conversation_id !== undefined) binding.conversation_id = newBinding.conversation_id;
+        if (newBinding.conversation_url !== undefined) binding.conversation_url = newBinding.conversation_url;
+        if (newBinding.reason !== undefined) binding.reason = newBinding.reason;
+        return { task_id: taskId, new_binding: binding };
+    }
+
+    /**
+     * G5: Build ingest envelope for user decision on pending privilege expansion.
+     * When user clicks approve/deny on a pending expansion event, this builds a new
+     * task.privilege_expansion_requested event with user_decision=approved/denied.
+     * Original payload fields (current_boundary, requested_boundary, justification, requested_by) are preserved.
+     */
+    function buildExpansionDecisionEvent(taskId, originalPayload, decision) {
+        if (!isValidULID(taskId)) throw new Error('invalid task_id');
+        if (!['approved', 'denied'].includes(decision)) throw new Error('decision must be approved or denied');
+        if (!originalPayload || typeof originalPayload !== 'object') {
+            throw new Error('originalPayload required (from the pending expansion event payload_json)');
+        }
+        return {
+            event: {
+                event_id: generateULID(),
+                source_id: taskId,
+                event_type: 'task.privilege_expansion_requested',
+                payload_json: {
+                    task_id: taskId,
+                    current_boundary: originalPayload.current_boundary,
+                    requested_boundary: originalPayload.requested_boundary,
+                    justification: originalPayload.justification,
+                    requested_by: originalPayload.requested_by,
+                    user_decision: decision
+                },
+                created_at: new Date().toISOString()
+            }
+        };
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -369,6 +475,13 @@
 
         // UI
         recommendCardStyle,
-        stateBadgeClass
+        stateBadgeClass,
+
+        // G5 helpers
+        fetchTasksWithFilter,
+        fetchBindingHistory,
+        fetchTaskAuditEvents,
+        buildRebindPayload,
+        buildExpansionDecisionEvent
     };
 });
