@@ -27,6 +27,57 @@ const MATERIAL_EVENT_TYPES = [
     'material.sync.pulled_back'
 ];
 
+// G4: Task lifecycle states (five-state progression, forward-only, skipping allowed)
+const TASK_STATES = ['proposed', 'accepted', 'in_progress', 'completed', 'failed'];
+const TASK_STATE_TRANSITIONS = {
+    'proposed': ['accepted', 'in_progress', 'completed', 'failed'],  // can skip levels
+    'accepted': ['in_progress', 'completed', 'failed'],
+    'in_progress': ['completed', 'failed'],
+    'completed': [],  // terminal state
+    'failed': []      // terminal state
+};
+
+// G4: Card processing states
+const CARD_STATES = ['new', 'triaged', 'processed', 'archived'];
+
+// G4: Spark validation states
+const SPARK_STATES = ['emerging', 'validated', 'actionable', 'dismissed'];
+
+// G4: Recommendation action states
+const RECOMMENDATION_STATES = ['pending', 'accepted', 'dismissed', 'expired'];
+
+// G4: All task-related event types
+const TASK_EVENT_TYPES = [
+    'task.created',
+    'task.accepted',
+    'task.progressed',
+    'task.completed',
+    'task.failed',
+    'task.checkpoint_saved',
+    'task.result_recorded',
+    'task.failure_recorded',
+    'task.insight_changed',
+    'task.rebind'
+];
+
+// G4: All recommendation-related event types
+const RECOMMENDATION_EVENT_TYPES = [
+    'recommendation.proposed',
+    'recommendation.accepted',
+    'recommendation.dismissed',
+    'recommendation.expired'
+];
+
+// G4: All card-related event types
+const CARD_EVENT_TYPES = [
+    'card.created'
+];
+
+// G4: All spark-related event types
+const SPARK_EVENT_TYPES = [
+    'spark.emerged'
+];
+
 /**
  * Validate SHA-256 hash format
  * @param {string} hash - SHA-256 hex string (64 characters)
@@ -406,6 +457,275 @@ function validateMaterialEventPayload(eventType, payload) {
     return { valid: errors.length === 0, errors };
 }
 
+/**
+ * Validate task state transition (forward-only, can skip levels)
+ * @param {string} fromState - Current state
+ * @param {string} toState - Target state
+ * @returns {{valid: boolean, error?: string}}
+ */
+function validateTaskStateTransition(fromState, toState) {
+    if (!TASK_STATES.includes(fromState)) {
+        return { valid: false, error: `Invalid fromState: ${fromState}` };
+    }
+    
+    if (!TASK_STATES.includes(toState)) {
+        return { valid: false, error: `Invalid toState: ${toState}` };
+    }
+    
+    const allowedTransitions = TASK_STATE_TRANSITIONS[fromState];
+    if (!allowedTransitions.includes(toState)) {
+        return {
+            valid: false,
+            error: `Cannot transition task from ${fromState} to ${toState}. Allowed: ${allowedTransitions.join(', ') || '(none, terminal state)'}`
+        };
+    }
+    
+    return { valid: true };
+}
+
+/**
+ * Validate card state transition (sequential + archiving)
+ * @param {string} fromState - Current state
+ * @param {string} toState - Target state
+ * @returns {{valid: boolean, error?: string}}
+ */
+function validateCardStateTransition(fromState, toState) {
+    if (!CARD_STATES.includes(fromState)) {
+        return { valid: false, error: `Invalid fromState: ${fromState}` };
+    }
+    
+    if (!CARD_STATES.includes(toState)) {
+        return { valid: false, error: `Invalid toState: ${toState}` };
+    }
+    
+    // Cards can only move forward or directly to archived
+    const fromIndex = CARD_STATES.indexOf(fromState);
+    const toIndex = CARD_STATES.indexOf(toState);
+    
+    if (toIndex < fromIndex && toState !== 'archived') {
+        return {
+            valid: false,
+            error: `Cannot transition card from ${fromState} to ${toState}. Must progress forward or archive.`
+        };
+    }
+    
+    return { valid: true };
+}
+
+/**
+ * Validate spark state transition
+ * @param {string} fromState - Current state
+ * @param {string} toState - Target state
+ * @returns {{valid: boolean, error?: string}}
+ */
+function validateSparkStateTransition(fromState, toState) {
+    if (!SPARK_STATES.includes(fromState)) {
+        return { valid: false, error: `Invalid fromState: ${fromState}` };
+    }
+    
+    if (!SPARK_STATES.includes(toState)) {
+        return { valid: false, error: `Invalid toState: ${toState}` };
+    }
+    
+    // Sparks can only progress forward or be dismissed
+    const fromIndex = SPARK_STATES.indexOf(fromState);
+    const toIndex = SPARK_STATES.indexOf(toState);
+    
+    if (toIndex < fromIndex && toState !== 'dismissed') {
+        return {
+            valid: false,
+            error: `Cannot transition spark from ${fromState} to ${toState}. Must progress forward or dismiss.`
+        };
+    }
+    
+    return { valid: true };
+}
+
+/**
+ * Validate recommendation state transition
+ * @param {string} fromState - Current state
+ * @param {string} toState - Target state
+ * @returns {{valid: boolean, error?: string}}
+ */
+function validateRecommendationStateTransition(fromState, toState) {
+    if (!RECOMMENDATION_STATES.includes(fromState)) {
+        return { valid: false, error: `Invalid fromState: ${fromState}` };
+    }
+    
+    if (!RECOMMENDATION_STATES.includes(toState)) {
+        return { valid: false, error: `Invalid toState: ${toState}` };
+    }
+    
+    // Recommendations can be accepted/dismissed at any time, or expire from pending
+    if (fromState === 'pending') {
+        if (['accepted', 'dismissed', 'expired'].includes(toState)) {
+            return { valid: true };
+        }
+    }
+    
+    return { valid: true }; // Other transitions are implicitly allowed
+}
+
+/**
+ * Validate task.* event payload (G4)
+ * @param {string} eventType - task.* event type
+ * @param {Object|null} payload - parsed payload object
+ * @returns {{valid: boolean, errors: string[]}}
+ */
+function validateTaskEventPayload(eventType, payload) {
+    const errors = [];
+    
+    if (payload === null || typeof payload !== 'object') {
+        return { valid: false, errors: ['Task events require a payload object'] };
+    }
+    
+    if (!payload.task_id || !isValidULID(payload.task_id)) {
+        errors.push(`Task event ${eventType} requires a valid ULID task_id`);
+    }
+    
+    // Common required fields for all task events
+    if (payload.objective !== undefined && typeof payload.objective !== 'string') {
+        errors.push(`Task event ${eventType} objective must be a string if provided`);
+    }
+    
+    switch (eventType) {
+        case 'task.created':
+            if (!payload.objective || typeof payload.objective !== 'string') {
+                errors.push('task.created requires objective (string)');
+            }
+            if (payload.bound_conversation_id && !isValidULID(payload.bound_conversation_id)) {
+                errors.push('task.created bound_conversation_id must be a valid ULID if provided');
+            }
+            break;
+            
+        case 'task.accepted':
+            // No additional required fields
+            break;
+            
+        case 'task.progressed':
+            if (!payload.progress_json || typeof payload.progress_json === 'string') {
+                // Accept either JSON object or stringified JSON
+                let progress;
+                try {
+                    progress = typeof payload.progress_json === 'string' 
+                        ? JSON.parse(payload.progress_json) 
+                        : payload.progress_json;
+                } catch (_) {
+                    errors.push('task.progressed progress_json must be valid JSON if string');
+                }
+            }
+            break;
+            
+        case 'task.checkpoint_saved':
+            if (!payload.checkpoint_id || !isValidULID(payload.checkpoint_id)) {
+                errors.push('task.checkpoint_saved requires checkpoint_id (ULID)');
+            }
+            if (!payload.snapshot_json || typeof payload.snapshot_json !== 'string') {
+                errors.push('task.checkpoint_saved requires snapshot_json (stringified JSON)');
+            }
+            break;
+            
+        case 'task.completed':
+        case 'task.result_recorded':
+            if (!payload.result_event_id || !isValidULID(payload.result_event_id)) {
+                errors.push(`${eventType} requires result_event_id (ULID)`);
+            }
+            // feedback_to_materials field for back-propagation
+            if (payload.feedback_to_materials !== undefined) {
+                if (!Array.isArray(payload.feedback_to_materials)) {
+                    errors.push(`${eventType} feedback_to_materials must be an array if provided`);
+                }
+            }
+            break;
+            
+        case 'task.failed':
+        case 'task.failure_recorded':
+            if (!payload.failure_path_event_id || !isValidULID(payload.failure_path_event_id)) {
+                errors.push(`${eventType} requires failure_path_event_id (ULID)`);
+            }
+            if (payload.feedback_to_materials !== undefined) {
+                if (!Array.isArray(payload.feedback_to_materials)) {
+                    errors.push(`${eventType} feedback_to_materials must be an array if provided`);
+                }
+            }
+            break;
+            
+        case 'task.insight_changed':
+            // No additional required fields
+            break;
+            
+        case 'task.rebind':
+            if (!payload.new_binding || typeof payload.new_binding !== 'object') {
+                errors.push('task.rebind requires new_binding (object)');
+            }
+            break;
+            
+        default:
+            // Unknown task event type will be caught by event type validation
+            break;
+    }
+    
+    return { valid: errors.length === 0, errors };
+}
+
+/**
+ * Validate recommendation.* event payload (G4)
+ * @param {string} eventType - recommendation.* event type
+ * @param {Object|null} payload - parsed payload object
+ * @returns {{valid: boolean, errors: string[]}}
+ */
+function validateRecommendationEventPayload(eventType, payload) {
+    const errors = [];
+    
+    if (payload === null || typeof payload !== 'object') {
+        return { valid: false, errors: ['Recommendation events require a payload object'] };
+    }
+    
+    if (!payload.recommendation_id || !isValidULID(payload.recommendation_id)) {
+        errors.push(`Recommendation event ${eventType} requires a valid ULID recommendation_id`);
+    }
+    
+    switch (eventType) {
+        case 'recommendation.proposed':
+            // Full descriptor fields required only at proposal time
+            if (!payload.source_entity_type || !['card', 'spark', 'task', 'system'].includes(payload.source_entity_type)) {
+                errors.push(`Recommendation event ${eventType} requires source_entity_type (card|spark|task|system)`);
+            }
+            if (!payload.source_entity_id || !isValidULID(payload.source_entity_id)) {
+                errors.push(`Recommendation event ${eventType} requires source_entity_id (ULID)`);
+            }
+            if (!payload.recommendation_text || typeof payload.recommendation_text !== 'string') {
+                errors.push(`Recommendation event ${eventType} requires recommendation_text (string)`);
+            }
+            if (payload.materiality_score !== undefined && (typeof payload.materiality_score !== 'number' || payload.materiality_score < 0 || payload.materiality_score > 1)) {
+                errors.push('recommendation.proposed materiality_score must be 0-1 if provided');
+            }
+            if (payload.priority_level !== undefined && (typeof payload.priority_level !== 'number' || payload.priority_level < 1 || payload.priority_level > 9)) {
+                errors.push('recommendation.proposed priority_level must be 1-9 if provided');
+            }
+            break;
+            
+        case 'recommendation.accepted':
+            if (payload.binding_context !== undefined && payload.binding_context !== null && typeof payload.binding_context !== 'string') {
+                errors.push('recommendation.accepted binding_context must be a JSON string if provided');
+            }
+            break;
+            
+        case 'recommendation.dismissed':
+            // Optional reason field
+            break;
+            
+        case 'recommendation.expired':
+            // No additional required fields
+            break;
+            
+        default:
+            break;
+    }
+    
+    return { valid: errors.length === 0, errors };
+}
+
 module.exports = {
     validateSHA256,
     validateEventType,
@@ -413,14 +733,26 @@ module.exports = {
     validateAttributionState,
     validateAttributionTransition,
     validateMaterialEventPayload,
-    validatePayload,
-    validateISO8601,
-    validateSequenceNumber,
+    validateTaskStateTransition,
+    validateCardStateTransition,
+    validateSparkStateTransition,
+    validateRecommendationStateTransition,
+    validateTaskEventPayload,
+    validateRecommendationEventPayload,
     validateRawEvent,
     validateBoundaryRelation,
     validateRPCRequest,
     BOUNDARY_STATES,
     ATTRIBUTION_STATES,
     ATTRIBUTION_STATE_TRANSITIONS,
-    MATERIAL_EVENT_TYPES
+    MATERIAL_EVENT_TYPES,
+    TASK_STATES,
+    TASK_STATE_TRANSITIONS,
+    CARD_STATES,
+    SPARK_STATES,
+    RECOMMENDATION_STATES,
+    TASK_EVENT_TYPES,
+    RECOMMENDATION_EVENT_TYPES,
+    CARD_EVENT_TYPES,
+    SPARK_EVENT_TYPES
 };

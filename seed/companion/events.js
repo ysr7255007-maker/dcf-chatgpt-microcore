@@ -12,10 +12,20 @@ const {
     validateBoundaryRelation,
     validateMaterialEventPayload,
     validateAttributionTransition,
+    validateTaskStateTransition,
+    validateTaskEventPayload,
+    validateRecommendationEventPayload,
     BOUNDARY_STATES
 } = require('./types');
 const { CompanionDB } = require('./db');
 const { applyEventToDb } = require('./materials');
+const {
+    applyTaskEventToDb,
+    applyRecommendationEventToDb,
+    applyCardEventToDb,
+    applySparkEventToDb,
+    generateMaterialFeedbackChain
+} = require('./reducers/g4-reducers');
 
 class EventProcessor {
     constructor(db) {
@@ -55,6 +65,23 @@ class EventProcessor {
             const materialCheck = this.validateMaterialEvent(event);
             if (!materialCheck.valid) {
                 return { success: false, error: materialCheck.error };
+            }
+        }
+        
+        // G4: task.* events - payload required fields + forward-only
+        // state machine (regression -> honest rejection)
+        if (typeof event.event_type === 'string' && event.event_type.startsWith('task.')) {
+            const taskCheck = this.validateTaskEvent(event);
+            if (!taskCheck.valid) {
+                return { success: false, error: taskCheck.error, rejected: taskCheck.rejected || false };
+            }
+        }
+        
+        // G4: recommendation.* events - payload required fields per type
+        if (typeof event.event_type === 'string' && event.event_type.startsWith('recommendation.')) {
+            const recCheck = this.validateRecommendationEvent(event);
+            if (!recCheck.valid) {
+                return { success: false, error: recCheck.error };
             }
         }
         
@@ -106,12 +133,22 @@ class EventProcessor {
         const result = this.db.insertEvent(event);
         
         if (result.success) {
-            // G3: incremental projection update via the SAME pure reducer
+            // G3/G4: incremental projection update via the SAME pure reducer
             // used by full recomputation (recompute === incremental)
-            if (!result.duplicated
-                && typeof event.event_type === 'string'
-                && event.event_type.startsWith('material.')) {
-                applyEventToDb(this.db, event);
+            if (!result.duplicated && typeof event.event_type === 'string') {
+                if (event.event_type.startsWith('material.')) {
+                    applyEventToDb(this.db, event);
+                } else if (event.event_type.startsWith('task.')) {
+                    applyTaskEventToDb(this.db, event);
+                    // G4: back-propagation to material attribution chain
+                    await this.propagateMaterialFeedback(event);
+                } else if (event.event_type.startsWith('recommendation.')) {
+                    applyRecommendationEventToDb(this.db, event);
+                } else if (event.event_type.startsWith('card.')) {
+                    applyCardEventToDb(this.db, event);
+                } else if (event.event_type.startsWith('spark.')) {
+                    applySparkEventToDb(this.db, event);
+                }
             }
             
             // Update boundary for derived entities if any
@@ -145,6 +182,18 @@ class EventProcessor {
                 const materialCheck = this.validateMaterialEvent(event);
                 if (!materialCheck.valid) {
                     validationErrors.push(`Event ${event.event_id || '?'}: ${materialCheck.error}`);
+                }
+            }
+            if (typeof event.event_type === 'string' && event.event_type.startsWith('task.')) {
+                const taskCheck = this.validateTaskEvent(event);
+                if (!taskCheck.valid) {
+                    validationErrors.push(`Event ${event.event_id || '?'}: ${taskCheck.error}`);
+                }
+            }
+            if (typeof event.event_type === 'string' && event.event_type.startsWith('recommendation.')) {
+                const recCheck = this.validateRecommendationEvent(event);
+                if (!recCheck.valid) {
+                    validationErrors.push(`Event ${event.event_id || '?'}: ${recCheck.error}`);
                 }
             }
         }
@@ -189,10 +238,20 @@ class EventProcessor {
         
         // Track which ones were new vs duplicated
         if (result.success) {
-            // G3: incremental projection updates (same reducer as recompute)
+            // G3/G4: incremental projection updates (same reducer as recompute)
             for (const event of eligibleEvents) {
-                if (typeof event.event_type === 'string' && event.event_type.startsWith('material.')) {
+                if (typeof event.event_type !== 'string') continue;
+                if (event.event_type.startsWith('material.')) {
                     applyEventToDb(this.db, event);
+                } else if (event.event_type.startsWith('task.')) {
+                    applyTaskEventToDb(this.db, event);
+                    await this.propagateMaterialFeedback(event);
+                } else if (event.event_type.startsWith('recommendation.')) {
+                    applyRecommendationEventToDb(this.db, event);
+                } else if (event.event_type.startsWith('card.')) {
+                    applyCardEventToDb(this.db, event);
+                } else if (event.event_type.startsWith('spark.')) {
+                    applySparkEventToDb(this.db, event);
                 }
             }
             
@@ -466,6 +525,167 @@ class EventProcessor {
         }
         
         return { valid: true };
+    }
+    
+    /**
+     * G4: Validate task.* events before ingestion.
+     * - State transitions must be forward-only (regression -> reject)
+     * - Required fields per event type are mandatory
+     * - feedback_to_materials field for back-propagation events
+     */
+    validateTaskEvent(event) {
+        let payload;
+        try {
+            payload = typeof event.payload_json === 'string'
+                ? JSON.parse(event.payload_json)
+                : event.payload_json;
+        } catch (error) {
+            return { valid: false, error: `Task event payload is not valid JSON: ${error.message}` };
+        }
+        
+        const check = validateTaskEventPayload(event.event_type, payload);
+        if (!check.valid) {
+            return { valid: false, error: `Task event rejected: ${check.errors.join(', ')}` };
+        }
+        
+        // For state-changing events, the TARGET state is derived from the
+        // event type itself; regression against the persisted projection
+        // state is rejected (forward-only, skipping allowed)
+        const TARGET_STATE_BY_EVENT = {
+            'task.accepted': 'accepted',
+            'task.progressed': 'in_progress',
+            'task.completed': 'completed',
+            'task.result_recorded': 'completed',
+            'task.failed': 'failed',
+            'task.failure_recorded': 'failed'
+        };
+        const toState = TARGET_STATE_BY_EVENT[event.event_type];
+        
+        if (toState) {
+            const currentState = this.getTaskState(payload.task_id);
+            
+            if (currentState && currentState !== toState) {
+                const transitionCheck = validateTaskStateTransition(currentState, toState);
+                if (!transitionCheck.valid) {
+                    return {
+                        valid: false,
+                        rejected: true,
+                        error: `Task state regression rejected: ${transitionCheck.error}`
+                    };
+                }
+            }
+        }
+        
+        return { valid: true };
+    }
+    
+    /**
+     * G4: Validate recommendation.* events
+     */
+    validateRecommendationEvent(event) {
+        let payload;
+        try {
+            payload = typeof event.payload_json === 'string'
+                ? JSON.parse(event.payload_json)
+                : event.payload_json;
+        } catch (error) {
+            return { valid: false, error: `Recommendation event payload is not valid JSON: ${error.message}` };
+        }
+        
+        const check = validateRecommendationEventPayload(event.event_type, payload);
+        if (!check.valid) {
+            return { valid: false, error: `Recommendation event rejected: ${check.errors.join(', ')}` };
+        }
+        
+        return { valid: true };
+    }
+    
+    /**
+     * Get current task state from projection (for validation)
+     */
+    getTaskState(taskId) {
+        if (!this.db || !this.db.db) {
+            return null;
+        }
+        
+        try {
+            if (this.db.db.isMock) {
+                const projection = (this.db.db.data.tasks_projection || []).find(t => t.task_id === taskId);
+                return projection ? projection.current_status : null;
+            }
+            
+            const stmt = this.db.db.prepare('SELECT current_status FROM tasks_projection WHERE task_id = ?');
+            const row = stmt.get(taskId);
+            return row ? row.current_status : null;
+        } catch (error) {
+            return null;
+        }
+    }
+    
+    /**
+     * G4: back-propagation. When a task lifecycle event carries
+     * feedback_to_materials, emit a material.attribution.transitioned
+     * event chain (evidence_ref -> originating task event_id).
+     * - success acceptance (task.completed / task.result_recorded) -> reality_verified
+     * - failure / insight paths -> user_tentative
+     * Degenerate (no-op) or regressive transitions are skipped honestly.
+     */
+    async propagateMaterialFeedback(taskEvent) {
+        const FEEDBACK_EVENT_TYPES = [
+            'task.completed', 'task.failed',
+            'task.result_recorded', 'task.failure_recorded', 'task.insight_changed'
+        ];
+        if (!FEEDBACK_EVENT_TYPES.includes(taskEvent.event_type)) {
+            return { generated: 0 };
+        }
+        
+        let payload;
+        try {
+            payload = typeof taskEvent.payload_json === 'string'
+                ? JSON.parse(taskEvent.payload_json)
+                : taskEvent.payload_json;
+        } catch (_) {
+            return { generated: 0 };
+        }
+        
+        if (!payload || !Array.isArray(payload.feedback_to_materials) || payload.feedback_to_materials.length === 0) {
+            return { generated: 0 };
+        }
+        
+        // Snapshot current attribution states for the target materials
+        const projections = new Map();
+        for (const feedback of payload.feedback_to_materials) {
+            if (feedback && feedback.entity_id) {
+                const proj = this.db.getMaterialProjection(feedback.entity_id);
+                if (proj) projections.set(feedback.entity_id, proj);
+            }
+        }
+        
+        const chain = generateMaterialFeedbackChain(taskEvent, projections);
+        let generated = 0;
+        const eventIds = [];
+        
+        for (const link of chain) {
+            const { from_state, to_state } = link.payload_json;
+            // Forward-only: skip no-op and regressive links instead of corrupting the chain
+            if (from_state === to_state) continue;
+            if (!validateAttributionTransition(from_state, to_state).valid) continue;
+            
+            const result = await this.ingestEvent({
+                event_id: link.event_id,
+                source_id: link.source_id,
+                event_type: link.event_type,
+                payload_json: { ...link.payload_json, provenance: link.provenance },
+                created_at: link.created_at
+            });
+            
+            if (result.success) {
+                generated++;
+                eventIds.push(link.event_id);
+            }
+        }
+        
+        return { generated, event_ids: eventIds };
     }
     
     /**

@@ -23,11 +23,12 @@ const path = require('path');
 // Load modules
 const { CompanionDB } = require('./db');
 const { EventProcessor } = require('./events');
-const { validateRPCRequest, BOUNDARY_STATES, ATTRIBUTION_STATES } = require('./types');
+const { validateRPCRequest, BOUNDARY_STATES, ATTRIBUTION_STATES, TASK_STATES, TASK_STATE_TRANSITIONS, RECOMMENDATION_STATES, validateTaskStateTransition } = require('./types');
 const { runDoctor } = require('./doctor');
 const { GitHubSync, checkGhAuth, sha256 } = require('./github-sync');
 const { MaterialProcessor } = require('./materials');
 const { exportMaterials } = require('./export');
+const { generateULID, isValidULID } = require('./ulid');
 
 // Configuration
 const DEFAULT_PORT = 8472;
@@ -94,6 +95,19 @@ Endpoints:
   POST /rpc/sync/github/push      Push merged candidate to remote (G3)
   POST /rpc/sync/github/pull      Pull-back remote changes (G3)
   GET/POST /rpc/export            Self-interpreting export (G3)
+  
+  # G4: Task lifecycle management
+  GET  /rpc/task/query            Query tasks (task_id, status, limit params)
+  POST /rpc/task/status           Query task status transition
+  POST /rpc/task/checkpoint       Save checkpoint for task
+  
+  # G4: Recommendation management
+  GET  /rpc/recommendation/query  Query recommendations (source_id, status params)
+  POST /rpc/recommendation/accept Accept recommendation
+  POST /rpc/recommendation/dismiss Dismiss recommendation
+  
+  # G4: Adapter sessions (for conversation context)
+  GET  /rpc/adapter/sessions      List active adapter sessions
 `);
 }
 
@@ -303,6 +317,528 @@ function handleHealth(req, res) {
 function handleStats(req, res) {
     const stats = companionDB.getStats();
     sendJSONResponse(res, 200, rpcResult(stats, null));
+}
+
+/**
+ * Handler: GET /rpc/adapter/sessions
+ * List active adapter sessions (for conversation context)
+ */
+function handleAdapterSessions(req, res) {
+    try {
+        // Sessions are derived from the append-only event log: one session
+        // per conversation source observed by adapters (conversation.* events)
+        const sessionsById = new Map();
+        
+        const collect = (row) => {
+            let payload = {};
+            try {
+                payload = typeof row.payload_json === 'string'
+                    ? JSON.parse(row.payload_json)
+                    : (row.payload_json || {});
+            } catch (_) { payload = {}; }
+            
+            const existing = sessionsById.get(row.source_id);
+            if (!existing || row.created_at > existing.last_seen) {
+                sessionsById.set(row.source_id, {
+                    conversation_id: row.source_id,
+                    session_id: payload.session_id || (existing ? existing.session_id : null),
+                    conversation_url: payload.url || payload.conversation_url || (existing ? existing.conversation_url : null),
+                    adapter: payload.adapter || payload.source || (existing ? existing.adapter : null),
+                    last_seen: row.created_at,
+                    event_count: (existing ? existing.event_count : 0) + 1
+                });
+            } else {
+                existing.event_count += 1;
+            }
+        };
+        
+        if (companionDB.db.isMock) {
+            for (const row of (companionDB.db.data.raw_events || [])) {
+                if (typeof row.event_type === 'string' && row.event_type.startsWith('conversation.')) {
+                    collect(row);
+                }
+            }
+        } else {
+            const rows = companionDB.db.prepare(
+                "SELECT source_id, event_type, payload_json, created_at FROM raw_events WHERE event_type LIKE 'conversation.%' ORDER BY created_at ASC LIMIT 5000"
+            ).all();
+            for (const row of rows) collect(row);
+        }
+        
+        const sessions = [...sessionsById.values()]
+            .sort((a, b) => (a.last_seen < b.last_seen ? 1 : -1))
+            .slice(0, 100);
+        
+        return sendJSONResponse(res, 200, rpcResult({
+            sessions,
+            count: sessions.length
+        }, null));
+    } catch (error) {
+        console.error('Adapter sessions error:', error);
+        return sendJSONResponse(res, 500, rpcError(-32603, 'Internal error: ' + error.message));
+    }
+}
+
+/**
+ * Handler: GET /rpc/task/query
+ * Query tasks with optional filters: task_id, status, limit
+ */
+function handleTaskQueryGet(req, res) {
+    try {
+        const urlObj = url.parse(req.url, true);
+        const query = urlObj.query;
+        
+        const taskId = query.task_id || null;
+        const status = query.status || null;
+        const limit = parseInt(query.limit) || 50;
+        
+        if (!taskId && !status) {
+            return sendJSONResponse(res, 400, rpcError(-32602, 'Missing required parameter: task_id or status'));
+        }
+        
+        // Build query conditions
+        let conditions = [];
+        let params = [];
+        
+        if (taskId) {
+            conditions.push('task_id = ?');
+            params.push(taskId);
+        }
+        
+        if (status) {
+            if (!TASK_STATES.includes(status)) {
+                return sendJSONResponse(res, 400, rpcError(-32602, `Invalid status: ${status}. Must be one of: ${TASK_STATES.join(', ')}`));
+            }
+            conditions.push('current_status = ?');
+            params.push(status);
+        }
+        
+        const whereClause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
+        const stmt = companionDB.db.prepare(`
+            SELECT * FROM tasks_projection 
+            ${whereClause}
+            LIMIT ?
+        `);
+        
+        params.push(limit);
+        const tasks = stmt.all(...params);
+        
+        return sendJSONResponse(res, 200, rpcResult({
+            tasks,
+            count: tasks.length
+        }, null));
+    } catch (error) {
+        console.error('Task query error:', error);
+        return sendJSONResponse(res, 500, rpcError(-32603, 'Internal error: ' + error.message));
+    }
+}
+
+/**
+ * Record an honest task.transition_rejected event (full chain: the
+ * rejected request itself is part of the log) and return its event_id.
+ */
+async function recordTaskTransitionRejection(task_id, from_state, to_state, reason) {
+    const rejectionEventId = generateULID();
+    const rejection = await eventProcessor.ingestEvent({
+        event_id: rejectionEventId,
+        source_id: task_id,
+        event_type: 'task.transition_rejected',
+        payload_json: {
+            task_id,
+            requested_from_state: from_state,
+            requested_to_state: to_state,
+            reason
+        }
+    });
+    return rejection.success ? rejectionEventId : null;
+}
+
+/**
+ * Handler: POST /rpc/task/status
+ * Query task status transition and event_id
+ */
+async function handleTaskStatus(req, res, requestBody) {
+    try {
+        const { task_id, from_state, to_state } = requestBody;
+        
+        if (!task_id || !isValidULID(task_id)) {
+            return sendJSONResponse(res, 400, rpcError(-32602, 'Invalid task_id'));
+        }
+        
+        if (!from_state || !to_state) {
+            return sendJSONResponse(res, 400, rpcError(-32602, 'Missing from_state or to_state'));
+        }
+        
+        if (!TASK_STATES.includes(from_state) || !TASK_STATES.includes(to_state)) {
+            return sendJSONResponse(res, 400, rpcError(-32602, `Invalid state. Must be one of: ${TASK_STATES.join(', ')}`));
+        }
+        
+        // Validate transition (forward-only, skipping allowed); a rejected
+        // regression is recorded as an independent event (honest chain)
+        const transitionCheck = validateTaskStateTransition(from_state, to_state);
+        if (!transitionCheck.valid) {
+            const rejectionEventId = await recordTaskTransitionRejection(
+                task_id, from_state, to_state, transitionCheck.error
+            );
+            return sendJSONResponse(res, 400, rpcError(-32000, `Invalid transition: ${transitionCheck.error}`, {
+                rejected: true,
+                rejection_event_id: rejectionEventId
+            }));
+        }
+        
+        // Generate event and ingest it. Contract per target state:
+        //   accepted -> task.accepted, in_progress -> task.progressed,
+        //   completed -> task.completed, failed -> task.failed
+        const eventId = generateULID();
+        const EVENT_TYPE_BY_STATE = {
+            accepted: 'task.accepted',
+            in_progress: 'task.progressed',
+            completed: 'task.completed',
+            failed: 'task.failed'
+        };
+        const eventType = EVENT_TYPE_BY_STATE[to_state] || 'task.progressed';
+        
+        const payload = {
+            task_id,
+            current_status: to_state,
+            from_state,
+            to_state
+        };
+        
+        // task.completed / task.failed carry mandatory evidence references;
+        // the status event itself is the evidence when none is supplied
+        if (to_state === 'completed') {
+            payload.result_event_id = isValidULID(requestBody.result_event_id)
+                ? requestBody.result_event_id : eventId;
+        }
+        if (to_state === 'failed') {
+            payload.failure_path_event_id = isValidULID(requestBody.failure_path_event_id)
+                ? requestBody.failure_path_event_id : eventId;
+        }
+        if (Array.isArray(requestBody.feedback_to_materials)) {
+            payload.feedback_to_materials = requestBody.feedback_to_materials;
+        }
+        
+        const event = {
+            event_id: eventId,
+            source_id: task_id,
+            event_type: eventType,
+            payload_json: payload
+        };
+        
+        const result = await eventProcessor.ingestEvent(event);
+        
+        if (result.success) {
+            return sendJSONResponse(res, 200, rpcResult({
+                event_id: eventId,
+                from_state,
+                to_state,
+                success: true
+            }, requestBody.id || null));
+        } else if (result.rejected) {
+            // Regression detected against the persisted projection state
+            const rejectionEventId = await recordTaskTransitionRejection(
+                task_id, from_state, to_state, result.error
+            );
+            return sendJSONResponse(res, 400, rpcError(-32000, result.error, {
+                rejected: true,
+                rejection_event_id: rejectionEventId
+            }));
+        } else {
+            return sendJSONResponse(res, 400, rpcError(-32000, result.error));
+        }
+    } catch (error) {
+        console.error('Task status error:', error);
+        return sendJSONResponse(res, 500, rpcError(-32603, 'Internal error: ' + error.message));
+    }
+}
+
+/**
+ * Handler: POST /rpc/task/checkpoint
+ * Save checkpoint for task progress tracking
+ */
+async function handleTaskCheckpoint(req, res, requestBody) {
+    try {
+        const { task_id, checkpoint_id, checkpoint_type, snapshot_json } = requestBody;
+        
+        if (!task_id || !isValidULID(task_id)) {
+            return sendJSONResponse(res, 400, rpcError(-32602, 'Invalid task_id'));
+        }
+        
+        if (!checkpoint_id || !isValidULID(checkpoint_id)) {
+            return sendJSONResponse(res, 400, rpcError(-32602, 'Invalid checkpoint_id'));
+        }
+        
+        if (!checkpoint_type || typeof checkpoint_type !== 'string') {
+            return sendJSONResponse(res, 400, rpcError(-32602, 'Missing checkpoint_type'));
+        }
+        
+        if (!snapshot_json || typeof snapshot_json !== 'string') {
+            return sendJSONResponse(res, 400, rpcError(-32602, 'Missing snapshot_json'));
+        }
+        
+        // Ingest checkpoint event
+        const eventId = generateULID();
+        const event = {
+            event_id: eventId,
+            source_id: task_id,
+            event_type: 'task.checkpoint_saved',
+            payload_json: {
+                task_id,
+                checkpoint_id,
+                checkpoint_type,
+                snapshot_json
+            }
+        };
+        
+        const result = await eventProcessor.ingestEvent(event);
+        
+        if (result.success) {
+            // Persist checkpoint row + update tasks_projection pointer
+            const createdAt = new Date().toISOString();
+            if (companionDB.db.isMock) {
+                const arr = companionDB.db.data.task_checkpoints = companionDB.db.data.task_checkpoints || [];
+                arr.push({ checkpoint_id, task_id, checkpoint_type, snapshot_json, created_at: createdAt });
+                const tasks = companionDB.db.data.tasks_projection || [];
+                const t = tasks.find(row => row.task_id === task_id);
+                if (t) { t.checkpoint_event_id = eventId; t.updated_at = createdAt; }
+            } else {
+                companionDB.db.prepare(
+                    'INSERT OR REPLACE INTO task_checkpoints (checkpoint_id, task_id, checkpoint_type, snapshot_json, created_at) VALUES (?, ?, ?, ?, ?)'
+                ).run(checkpoint_id, task_id, checkpoint_type, snapshot_json, createdAt);
+                companionDB.db.prepare(
+                    'UPDATE tasks_projection SET checkpoint_event_id = ?, updated_at = datetime(\'now\') WHERE task_id = ?'
+                ).run(eventId, task_id);
+            }
+            
+            return sendJSONResponse(res, 200, rpcResult({
+                checkpoint_id,
+                event_id: eventId,
+                success: true
+            }, requestBody.id || null));
+        } else {
+            return sendJSONResponse(res, 400, rpcError(-32000, result.error));
+        }
+    } catch (error) {
+        console.error('Task checkpoint error:', error);
+        return sendJSONResponse(res, 500, rpcError(-32603, 'Internal error: ' + error.message));
+    }
+}
+
+/**
+ * Handler: POST /rpc/recommendation/query
+ * Query recommendations by source_id or status
+ */
+async function handleRecommendationQueryPost(req, res, requestBody) {
+    try {
+        const { source_id, source_type, status } = requestBody;
+        
+        if (!source_id && !status) {
+            return sendJSONResponse(res, 400, rpcError(-32602, 'Missing source_id or status'));
+        }
+        
+        // Build query conditions
+        let conditions = [];
+        let params = [];
+        
+        if (source_id) {
+            if (!isValidULID(source_id)) {
+                return sendJSONResponse(res, 400, rpcError(-32602, 'Invalid source_id'));
+            }
+            // If source_type provided, filter by it; otherwise search both types
+            if (source_type) {
+                if (!['card', 'spark', 'task', 'system'].includes(source_type)) {
+                    return sendJSONResponse(res, 400, rpcError(-32602, `Invalid source_type: ${source_type}`));
+                }
+                conditions.push('source_entity_id = ? AND source_entity_type = ?');
+                params.push(source_id, source_type);
+            } else {
+                conditions.push('source_entity_id = ?');
+                params.push(source_id);
+            }
+        }
+        
+        if (status) {
+            if (!RECOMMENDATION_STATES.includes(status)) {
+                return sendJSONResponse(res, 400, rpcError(-32602, `Invalid status: ${status}. Must be one of: ${RECOMMENDATION_STATES.join(', ')}`));
+            }
+            conditions.push('status = ?');
+            params.push(status);
+        }
+        
+        const whereClause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
+        const stmt = companionDB.db.prepare(`
+            SELECT * FROM recommendations_projection 
+            ${whereClause}
+            ORDER BY created_at DESC
+            LIMIT 100
+        `);
+        
+        const recommendations = stmt.all(...params);
+        
+        return sendJSONResponse(res, 200, rpcResult({
+            recommendations,
+            count: recommendations.length
+        }, requestBody.id || null));
+    } catch (error) {
+        console.error('Recommendation query error:', error);
+        return sendJSONResponse(res, 500, rpcError(-32603, 'Internal error: ' + error.message));
+    }
+}
+
+/**
+ * Handler: POST /rpc/recommendation/accept
+ * Accept a recommendation and optionally create a task
+ */
+async function handleRecommendationAccept(req, res, requestBody) {
+    try {
+        const { recommendation_id, binding_context } = requestBody;
+        
+        if (!recommendation_id || !isValidULID(recommendation_id)) {
+            return sendJSONResponse(res, 400, rpcError(-32602, 'Invalid recommendation_id'));
+        }
+        
+        // Validate existing recommendation
+        let rec;
+        if (companionDB.db.isMock) {
+            rec = (companionDB.db.data.recommendations_projection || []).find(r => r.recommendation_id === recommendation_id);
+        } else {
+            const stmt = companionDB.db.prepare('SELECT * FROM recommendations_projection WHERE recommendation_id = ?');
+            rec = stmt.get(recommendation_id);
+        }
+        
+        if (!rec) {
+            return sendJSONResponse(res, 404, rpcError(-32001, 'Recommendation not found'));
+        }
+        
+        if (rec.status !== 'pending') {
+            return sendJSONResponse(res, 400, rpcError(-32000, `Recommendation is already in state: ${rec.status}`));
+        }
+        
+        // Ingest acceptance event
+        const eventId = generateULID();
+        const event = {
+            event_id: eventId,
+            source_id: recommendation_id,
+            event_type: 'recommendation.accepted',
+            payload_json: {
+                recommendation_id,
+                binding_context: binding_context ? JSON.stringify(binding_context) : null
+            }
+        };
+        
+        const result = await eventProcessor.ingestEvent(event);
+        
+        if (result.success) {
+            // Update recommendation status
+            if (!companionDB.db.isMock) {
+                companionDB.db.prepare(
+                    "UPDATE recommendations_projection SET status = 'accepted', binding_context_json = ?, updated_at = datetime('now') WHERE recommendation_id = ?"
+                ).run(binding_context ? JSON.stringify(binding_context) : null, recommendation_id);
+            }
+            
+            // Contract: acceptance materializes a task bound to the given
+            // context (source_ref keeps the provenance to the recommendation)
+            const taskId = generateULID();
+            const bc = binding_context && typeof binding_context === 'object' ? binding_context : {};
+            const taskEvent = {
+                event_id: generateULID(),
+                source_id: taskId,
+                event_type: 'task.created',
+                payload_json: {
+                    task_id: taskId,
+                    objective: rec.recommendation_text || `Follow recommendation ${recommendation_id}`,
+                    source_ref: recommendation_id,
+                    bound_conversation_id: isValidULID(bc.conversation_id) ? bc.conversation_id : undefined,
+                    bound_conversation_url: typeof bc.conversation_url === 'string' ? bc.conversation_url : undefined,
+                    bound_execution_agent: typeof bc.execution_agent === 'string' ? bc.execution_agent : undefined,
+                    boundary_inherited_from: isValidULID(bc.boundary_inherited_from) ? bc.boundary_inherited_from : undefined
+                }
+            };
+            
+            const taskResult = await eventProcessor.ingestEvent(taskEvent);
+            
+            return sendJSONResponse(res, 200, rpcResult({
+                recommendation_id,
+                event_id: eventId,
+                task_id: taskResult.success ? taskId : null,
+                task_event_id: taskResult.success ? taskEvent.event_id : null,
+                binding_context,
+                success: true
+            }, requestBody.id || null));
+        } else {
+            return sendJSONResponse(res, 400, rpcError(-32000, result.error));
+        }
+    } catch (error) {
+        console.error('Recommendation accept error:', error);
+        return sendJSONResponse(res, 500, rpcError(-32603, 'Internal error: ' + error.message));
+    }
+}
+
+/**
+ * Handler: POST /rpc/recommendation/dismiss
+ * Dismiss a recommendation with optional reason
+ */
+async function handleRecommendationDismiss(req, res, requestBody) {
+    try {
+        const { recommendation_id, reason } = requestBody;
+        
+        if (!recommendation_id || !isValidULID(recommendation_id)) {
+            return sendJSONResponse(res, 400, rpcError(-32602, 'Invalid recommendation_id'));
+        }
+        
+        // Validate existing recommendation
+        let rec;
+        if (companionDB.db.isMock) {
+            rec = (companionDB.db.data.recommendations_projection || []).find(r => r.recommendation_id === recommendation_id);
+        } else {
+            const stmt = companionDB.db.prepare('SELECT * FROM recommendations_projection WHERE recommendation_id = ?');
+            rec = stmt.get(recommendation_id);
+        }
+        
+        if (!rec) {
+            return sendJSONResponse(res, 404, rpcError(-32001, 'Recommendation not found'));
+        }
+        
+        if (rec.status !== 'pending') {
+            return sendJSONResponse(res, 400, rpcError(-32000, `Recommendation is already in state: ${rec.status}`));
+        }
+        
+        // Ingest dismissal event
+        const eventId = generateULID();
+        const event = {
+            event_id: eventId,
+            source_id: recommendation_id,
+            event_type: 'recommendation.dismissed',
+            payload_json: {
+                recommendation_id,
+                reason: reason || null
+            }
+        };
+        
+        const result = await eventProcessor.ingestEvent(event);
+        
+        if (result.success) {
+            // Update recommendation status
+            if (!companionDB.db.isMock) {
+                companionDB.db.prepare(
+                    "UPDATE recommendations_projection SET status = 'dismissed', updated_at = datetime('now') WHERE recommendation_id = ?"
+                ).run(recommendation_id);
+            }
+            
+            return sendJSONResponse(res, 200, rpcResult({
+                recommendation_id,
+                event_id: eventId,
+                reason,
+                success: true
+            }, requestBody.id || null));
+        } else {
+            return sendJSONResponse(res, 400, rpcError(-32000, result.error));
+        }
+    } catch (error) {
+        console.error('Recommendation dismiss error:', error);
+        return sendJSONResponse(res, 500, rpcError(-32603, 'Internal error: ' + error.message));
+    }
 }
 
 /**
@@ -688,6 +1224,16 @@ async function handleRequest(req, res) {
             return handleExport(req, res, {});
         }
         
+        // G4: Adapter sessions
+        if (pathname === '/rpc/adapter/sessions' && req.method === 'GET') {
+            return handleAdapterSessions(req, res);
+        }
+        
+        // G4: Task query (GET)
+        if (pathname === '/rpc/task/query' && req.method === 'GET') {
+            return handleTaskQueryGet(req, res);
+        }
+        
         // For POST endpoints, need to read body
         if (['POST', 'PUT'].includes(req.method)) {
             const requestBody = await readRequestBody(req);
@@ -722,6 +1268,31 @@ async function handleRequest(req, res) {
             
             if (pathname === '/rpc/export') {
                 return handleExport(req, res, requestBody);
+            }
+            
+            // G4: Recommendation query
+            if (pathname === '/rpc/recommendation/query' && req.method === 'POST') {
+                return handleRecommendationQueryPost(req, res, requestBody);
+            }
+            
+            // G4: Task status query
+            if (pathname === '/rpc/task/status') {
+                return handleTaskStatus(req, res, requestBody);
+            }
+            
+            // G4: Task checkpoint save
+            if (pathname === '/rpc/task/checkpoint') {
+                return handleTaskCheckpoint(req, res, requestBody);
+            }
+            
+            // G4: Recommendation accept
+            if (pathname === '/rpc/recommendation/accept') {
+                return handleRecommendationAccept(req, res, requestBody);
+            }
+            
+            // G4: Recommendation dismiss
+            if (pathname === '/rpc/recommendation/dismiss') {
+                return handleRecommendationDismiss(req, res, requestBody);
             }
             
             // Default to /rpc/events/ingest if not matched
@@ -853,7 +1424,65 @@ function getDefaultBaseDirForDoctor() {
 }
 
 // Export for testing
-module.exports = { initializeServer, handleRequest, readRequestBody, companionDB, eventProcessor };
+/**
+ * Start an in-process server for tests (no doctor, ephemeral port by default).
+ * Returns { server, port, db, eventProcessor } and wires module-level globals
+ * so exported handlers operate against the test database.
+ */
+async function startTestServer({ port = 0, dbPath = ':memory:' } = {}) {
+    companionDB = new CompanionDB(dbPath);
+    await companionDB.initialize();
+    eventProcessor = new EventProcessor(companionDB);
+    materialProcessor = new MaterialProcessor({ db: companionDB, eventProcessor });
+    server = http.createServer(handleRequest);
+    
+    await new Promise((resolve, reject) => {
+        server.listen(port, '127.0.0.1', resolve);
+        server.on('error', reject);
+    });
+    
+    return {
+        server,
+        port: server.address().port,
+        db: companionDB,
+        eventProcessor
+    };
+}
+
+/**
+ * Stop the in-process test server and release globals.
+ */
+async function stopTestServer() {
+    if (server) {
+        await new Promise(resolve => server.close(resolve));
+        server = null;
+    }
+    if (companionDB) {
+        companionDB.close();
+        companionDB = null;
+    }
+    eventProcessor = null;
+    materialProcessor = null;
+}
+
+module.exports = {
+    initializeServer,
+    handleRequest,
+    readRequestBody,
+    companionDB,
+    eventProcessor,
+    // G4 handlers for testing
+    handleTaskQueryGet,
+    handleTaskStatus,
+    handleTaskCheckpoint,
+    handleRecommendationQueryPost,
+    handleRecommendationAccept,
+    handleRecommendationDismiss,
+    handleAdapterSessions,
+    // G4 in-process test harness
+    startTestServer,
+    stopTestServer
+};
 
 // Run if called directly
 if (require.main === module) {

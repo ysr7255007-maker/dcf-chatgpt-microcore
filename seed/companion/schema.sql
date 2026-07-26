@@ -86,7 +86,149 @@ CREATE TABLE IF NOT EXISTS sync_metadata (
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Create indexes for common queries
+-- ----------------------------------------------------------------------------
+-- G4: task_checkpoints - checkpoint events for task progress tracking
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS task_checkpoints (
+    checkpoint_id TEXT PRIMARY KEY,              -- ULID, stable checkpoint identifier
+    task_id TEXT NOT NULL,                       -- ULID, parent task reference
+    checkpoint_type TEXT NOT NULL,               -- type (progress_update, state_change, milestone_reached)
+    snapshot_json TEXT NOT NULL,                 -- JSON snapshot at this checkpoint
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    
+    CHECK (checkpoint_id IS NOT NULL AND checkpoint_id != ''),
+    CHECK (task_id IS NOT NULL AND task_id != ''),
+    CHECK (checkpoint_type IS NOT NULL AND checkpoint_type != ''),
+    CHECK (snapshot_json IS NOT NULL AND snapshot_json != '')
+);
+
+-- Index for querying checkpoints by task_id
+CREATE INDEX IF NOT EXISTS idx_task_checkpoints_task_id ON task_checkpoints(task_id);
+CREATE INDEX IF NOT EXISTS idx_task_checkpoints_created_at ON task_checkpoints(created_at);
+
+-- ----------------------------------------------------------------------------
+-- G4: tasks_projection - computed projection from task lifecycle events
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS tasks_projection (
+    task_id TEXT PRIMARY KEY,                    -- ULID, unique task identifier
+    source_ref TEXT,                             -- original source reference (e.g., card/recommendation ID)
+    objective TEXT,                              -- brief objective summary
+    boundary_inherited_from TEXT,                -- ULID of event that defined task boundaries
+    bound_conversation_id TEXT,                  -- ULID of associated conversation
+    bound_conversation_url TEXT,                 -- conversation URL for context
+    bound_execution_agent TEXT,                  -- ULID of execution agent assigned
+    current_status TEXT NOT NULL,                -- proposed | accepted | in_progress | completed | failed
+    progress_json TEXT,                          -- detailed progress tracking (JSON)
+    checkpoint_event_id TEXT,                    -- latest checkpoint event reference
+    result_event_id TEXT,                        -- final result event reference
+    failure_path_event_id TEXT,                  -- failure path diagnostic event
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    
+    CHECK (task_id IS NOT NULL AND task_id != ''),
+    CHECK (current_status IN ('proposed', 'accepted', 'in_progress', 'completed', 'failed'))
+);
+
+-- Index for common query patterns
+CREATE INDEX IF NOT EXISTS idx_tasks_projection_current_status ON tasks_projection(current_status);
+CREATE INDEX IF NOT EXISTS idx_tasks_projection_source_ref ON tasks_projection(source_ref);
+CREATE INDEX IF NOT EXISTS idx_tasks_projection_bound_conversation_id ON tasks_projection(bound_conversation_id);
+
+-- ----------------------------------------------------------------------------
+-- G4: cards_projection - computed projection from card.* events
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS cards_projection (
+    card_id TEXT PRIMARY KEY,                    -- ULID, unique card identifier
+    title TEXT,                                  -- card title/summary
+    body_text TEXT,                              -- full card content
+    materiality_score REAL,                      -- relevance/importance score (0-1)
+    priority_level INTEGER,                      -- processing priority (1=highest, 9=lowest)
+    status TEXT NOT NULL,                        -- new | triaged | processed | archived
+    source_event_id TEXT,                        -- original card.created event
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    
+    CHECK (card_id IS NOT NULL AND card_id != ''),
+    CHECK (materiality_score >= 0.0 AND materiality_score <= 1.0),
+    CHECK (priority_level >= 1 AND priority_level <= 9),
+    CHECK (status IN ('new', 'triaged', 'processed', 'archived'))
+);
+
+-- Index for filtering and sorting
+CREATE INDEX IF NOT EXISTS idx_cards_projection_materiality_score ON cards_projection(materiality_score);
+CREATE INDEX IF NOT EXISTS idx_cards_projection_priority_level ON cards_projection(priority_level);
+CREATE INDEX IF NOT EXISTS idx_cards_projection_status ON cards_projection(status);
+
+-- ----------------------------------------------------------------------------
+-- G4: sparks_projection - computed projection from spark.* events
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS sparks_projection (
+    spark_id TEXT PRIMARY KEY,                   -- ULID, unique spark identifier
+    insight_summary TEXT,                        -- brief insight description
+    confidence_score REAL,                       -- confidence level (0-1)
+    category TEXT,                               -- topic/domain category
+    related_card_ids TEXT,                       -- JSON array of related card IDs
+    status TEXT NOT NULL,                        -- emerging | validated | actionable | dismissed
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    
+    CHECK (spark_id IS NOT NULL AND spark_id != ''),
+    CHECK (confidence_score >= 0.0 AND confidence_score <= 1.0),
+    CHECK (status IN ('emerging', 'validated', 'actionable', 'dismissed'))
+);
+
+-- Index for filtering
+CREATE INDEX IF NOT EXISTS idx_sparks_projection_confidence_score ON sparks_projection(confidence_score);
+CREATE INDEX IF NOT EXISTS idx_sparks_projection_status ON sparks_projection(status);
+CREATE INDEX IF NOT EXISTS idx_sparks_projection_category ON sparks_projection(category);
+
+-- ----------------------------------------------------------------------------
+-- G4: recommendations_projection - computed projection from recommendation.* events
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS recommendations_projection (
+    recommendation_id TEXT PRIMARY KEY,          -- ULID, unique recommendation identifier
+    source_entity_type TEXT NOT NULL,            -- card | spark | task | system
+    source_entity_id TEXT NOT NULL,              -- ULID of source entity
+    recommendation_text TEXT NOT NULL,           -- recommendation content
+    suggested_action TEXT,                       -- recommended user action
+    target_material_ids TEXT,                    -- JSON array of target material IDs
+    materiality_score REAL,                      -- importance score (0-1)
+    priority_level INTEGER,                      -- processing priority (1=highest, 9=lowest)
+    status TEXT NOT NULL,                        -- pending | accepted | dismissed | expired
+    binding_context_json TEXT,                   -- optional context for binding (JSON)
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    
+    CHECK (recommendation_id IS NOT NULL AND recommendation_id != ''),
+    CHECK (source_entity_type IS NOT NULL AND source_entity_type != ''),
+    CHECK (source_entity_id IS NOT NULL AND source_entity_id != ''),
+    CHECK (recommendation_text IS NOT NULL AND recommendation_text != ''),
+    CHECK (materiality_score >= 0.0 AND materiality_score <= 1.0),
+    CHECK (priority_level >= 1 AND priority_level <= 9),
+    CHECK (status IN ('pending', 'accepted', 'dismissed', 'expired'))
+);
+
+-- Index for queries
+CREATE INDEX IF NOT EXISTS idx_recommendations_projection_source ON recommendations_projection(source_entity_type, source_entity_id);
+CREATE INDEX IF NOT EXISTS idx_recommendations_projection_status ON recommendations_projection(status);
+CREATE INDEX IF NOT EXISTS idx_recommendations_projection_materiality_score ON recommendations_projection(materiality_score);
+CREATE INDEX IF NOT EXISTS idx_recommendations_projection_priority_level ON recommendations_projection(priority_level);
+
+-- View for joining recommendations with source entities (optional query aid)
+-- Note: Views may not be supported in older SQLite versions, kept commented
+-- CREATE VIEW IF NOT EXISTS v_recommendations_with_sources AS
+-- SELECT 
+--     r.*,
+--     CASE r.source_entity_type
+--         WHEN 'card' THEN c.title
+--         WHEN 'spark' THEN s.insight_summary
+--         WHEN 'task' THEN t.objective
+--         ELSE NULL
+--     END AS source_display_name
+-- FROM recommendations_projection r
+-- LEFT JOIN cards_projection c ON r.source_entity_type = 'card' AND r.source_entity_id = c.card_id
+-- LEFT JOIN sparks_projection s ON r.source_entity_type = 'spark' AND r.source_entity_id = s.spark_id
+-- LEFT JOIN tasks_projection t ON r.source_entity_type = 'task' AND r.source_entity_id = t.task_id;
 CREATE INDEX IF NOT EXISTS idx_raw_events_source_id ON raw_events(source_id);
 CREATE INDEX IF NOT EXISTS idx_raw_events_created_at ON raw_events(created_at);
 CREATE INDEX IF NOT EXISTS idx_raw_events_event_type ON raw_events(event_type);
