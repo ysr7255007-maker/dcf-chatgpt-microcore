@@ -3,7 +3,7 @@
 - Generated at: `2026-07-26T09:05:15+09:00`
 - Repository: `ysr7255007-maker/dcf-chatgpt-microcore`
 - Evidence scope: remote Git facts, fresh-clone verification, merge dry-run, preservation decision
-- Status: `repository_unification_verified_local`; local-only dirty artifacts remain `blocked_unavailable`
+- Status: `repository_unification_published`; local-only dirty artifacts remain `blocked_unavailable`
 
 ## Observed remote facts
 
@@ -98,7 +98,19 @@ archive/vision-reweaving-exploration -> 2fa7fc0
 archive/control-plane-reconcile-rc3  -> fc186df
 ```
 
-If the GitHub write surface cannot create tags, equivalent remote archive refs must be recorded without moving or deleting the original branches. A missing remote tag is not reported as completed.
+Published remote result:
+
+```text
+main                                      -> ce95ecb2268894712607886948638b910123b35b
+main tree                                 -> 6d3df42af1b70cad3c5726003cca179dc8fa21b7
+work/seed-p0-unification-20260726         -> ce95ecb2268894712607886948638b910123b35b
+archive/old-world-baseline                -> bdaaad474880667f927c0affc22755db36f712c3
+archive/vision-reweaving-exploration      -> 2fa7fc0f544fd7fea50f5e05c7d56a9990a08ac3
+archive/control-plane-reconcile-rc3       -> fc186dfc906d52e51eb06677d935098c407c2f3a
+stable                                    -> 4f1f9a20cc410b9c929d8615fd161aab9ec8a32f
+```
+
+`main@ce95ecb` is a two-parent merge of `05eebb4` and `2fa7fc0`. Its tree is byte-identical to the locally verified P0 tree. The available GitHub write surface did not expose annotated-tag creation, so remote archive branches provide equivalent immutable checkpoints while the annotated tag names remain local. No remote tag is claimed.
 
 ## Unavailable local-only artifacts
 
@@ -129,6 +141,7 @@ This unknown does not authorize silently replacing those local files. If they la
 | main legacy verification | `behavior_passed` in Node test scope |
 | rebuild Chrome/legacy verification | `behavior_passed` in Node test scope |
 | conflict-free merge tree | `observed` |
+| published `main` tree equals locally verified tree | `observed` |
 | accurate old-world implementation commit | `observed` + execution-layer decision |
 | real Chrome rc.3 activation | `not_tested` |
 | local dirty artifact capture | `blocked_unavailable` |
