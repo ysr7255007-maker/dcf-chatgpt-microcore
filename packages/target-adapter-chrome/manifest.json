@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "minimum_chrome_version": "138",
+  "name": "DCF Target Adapter",
+  "version": "0.1.0",
+  "description": "Thin plugin for DCF Surface to read/send to target windows",
+  "permissions": [
+    "activeTab",
+    "clipboardWrite",
+    "scripting",
+    "tabs",
+    "storage"
+  ],
+  "host_permissions": [
+    "*://*/*"
+  ],
+  "externally_connectable": {
+    "matches": [
+      "*://*/*"
+    ]
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "cpaste.js",
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "DCF Target Adapter"
+  }
+}

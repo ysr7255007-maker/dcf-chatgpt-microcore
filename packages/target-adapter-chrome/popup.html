@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>DCF Target Adapter</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      width: 340px;
+      margin: 0;
+      padding: 14px 16px;
+      color: #1f2329;
+    }
+    h1 {
+      font-size: 14px;
+      margin: 0 0 6px;
+      font-weight: 600;
+    }
+    .status {
+      font-size: 12px;
+      color: #2e7d32;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #2e7d32;
+      display: inline-block;
+    }
+    .url {
+      font-size: 11px;
+      color: #646a73;
+      word-break: break-all;
+      margin-bottom: 12px;
+      line-height: 1.4;
+    }
+    .row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    button {
+      flex: 1;
+      padding: 7px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      border: 1px solid #d0d3d6;
+      background: #fff;
+      border-radius: 6px;
+      transition: background .15s;
+    }
+    button:hover {
+      background: #f2f3f5;
+    }
+    pre {
+      background: #f5f6f7;
+      padding: 8px 10px;
+      font-size: 11px;
+      line-height: 1.4;
+      max-height: 220px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      border-radius: 6px;
+      margin: 0;
+      border: 1px solid #e5e6eb;
+    }
+  </style>
+</head>
+<body>
+  <h1>DCF Target Adapter</h1>
+  <div class="status"><span class="dot"></span><span id="status">已连接</span></div>
+  <div class="url" id="url">—</div>
+  <div class="row">
+    <button id="read">Test Read</button>
+    <button id="send">Test Send</button>
+    <button id="ping">Ping</button>
+  </div>
+  <pre id="result">（等待操作）</pre>
+  <script src="popup.js"></script>
+</body>
+</html>

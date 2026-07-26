@@ -1,0 +1,13 @@
+{
+  "name": "dcf-surface",
+  "version": "0.1.0",
+  "description": "DCF Surface - Independent desktop sidebar for dialog control",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^30.0.0"
+  }
+}
