@@ -16,11 +16,13 @@ const path = require('path');
 const { CompanionDB } = require('./db');
 const { EventProcessor } = require('./events');
 const { validateRPCRequest, BOUNDARY_STATES } = require('./types');
+const { runDoctor } = require('./doctor');
 
 // Configuration
 const DEFAULT_PORT = 8472;
 let PORT = parseInt(process.argv.find(arg => arg.startsWith('--port='))?.split('=')[1]) || DEFAULT_PORT;
 let DB_PATH = process.argv.find(arg => arg.startsWith('--db='))?.split('=').slice(1).join('=') || null;
+let BASE_DIR = process.argv.find(arg => arg.startsWith('--dcf-dir='))?.split('=').slice(1).join('=') || null;
 
 // Global state
 let companionDB = null;
@@ -45,6 +47,8 @@ function parseArgs() {
         } else if (arg === '--help' || arg === '-h') {
             printUsage();
             process.exit(0);
+        } else if (arg.startsWith('--dcf-dir=')) {
+            BASE_DIR = arg.split('=').slice(1).join('=');
         }
     }
 }
@@ -448,6 +452,22 @@ process.on('SIGTERM', gracefulShutdown);
 async function main() {
     parseArgs();
     
+    // Run self-healing doctor first (self-fixing, not guidance)
+    console.log('Running G2 companion doctor...\n');
+    const baseDir = BASE_DIR || getDefaultBaseDirForDoctor();
+    const doctorResult = await runDoctor({ port: PORT, dbPath: DB_PATH, baseDir });
+    console.log(`doctor summary:\n${doctorResult.summary.join('\n')}`);
+    console.log('');
+
+    if (doctorResult.shouldExit) {
+        console.error(`doctor exit condition: ${doctorResult.checks.port.detail}`);
+        process.exit(doctorResult.exitCode);
+    }
+
+    // Apply doctor fixes to global config
+    PORT = doctorResult.port;
+    DB_PATH = doctorResult.dbPath;
+
     // Initialize database
     companionDB = new CompanionDB(DB_PATH);
     
@@ -457,6 +477,14 @@ async function main() {
         console.error('Startup failed:', error.message);
         process.exit(1);
     }
+}
+
+/**
+ * Get default base dir for doctor (--dcf-dir not provided)
+ */
+function getDefaultBaseDirForDoctor() {
+    const homeDir = process.env.HOME || process.env.USERPROFILE || '.';
+    return path.join(homeDir, '.dcf');
 }
 
 // Export for testing

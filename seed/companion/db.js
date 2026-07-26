@@ -78,9 +78,11 @@ class CompanionDB {
         try {
             this.db = new DatabaseSync(this.dbPath);
             
-            // Read and execute schema
-            const schemaPath = path.join(__dirname, 'schema.sql');
-            const schema = fs.readFileSync(schemaPath, 'utf8');
+            // Read and execute schema. A packaged binary embeds the schema
+            // as a global string so runtime never depends on the source dir.
+            const schema = (typeof globalThis.__DCF_EMBEDDED_SCHEMA__ === 'string')
+                ? globalThis.__DCF_EMBEDDED_SCHEMA__
+                : fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
             
             // Execute statement by statement (to handle multiple statements).
             // Strip comment lines first: a statement chunk may START with

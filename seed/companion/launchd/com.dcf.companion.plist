@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  G2 Companion launchd template (per-user LaunchAgent).
+
+  This file is a TEMPLATE: install.sh replaces the __PLACEHOLDER__ tokens
+  and writes the rendered plist to ~/Library/LaunchAgents/. launchd does
+  not expand ~ or environment variables in paths, so absolute paths are
+  rendered at install time.
+
+  Placeholders:
+    __COMPANION_BIN__   absolute path to the dcf-companion executable
+    __DCF_DIR__         companion base dir (default: $HOME/.dcf)
+    __PORT__            HTTP JSON-RPC port (default: 8472)
+    __LABEL__           launchd label (default: com.dcf.companion)
+
+  Restart semantics:
+    RunAtLoad = start on login / bootstrap.
+    KeepAlive.SuccessfulExit = false means: restart after a crash
+    (non-zero exit), but do NOT restart after a clean exit — this keeps
+    the doctor's single-instance semantics (exit 0 when a healthy
+    companion already owns the port) from causing a respawn loop.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>__LABEL__</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__COMPANION_BIN__</string>
+        <string>--port=__PORT__</string>
+        <string>--dcf-dir=__DCF_DIR__</string>
+        <string>--db=__DCF_DIR__/companion.db</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <key>StandardOutPath</key>
+    <string>__DCF_DIR__/logs/companion.launchd.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>__DCF_DIR__/logs/companion.launchd.err.log</string>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>
