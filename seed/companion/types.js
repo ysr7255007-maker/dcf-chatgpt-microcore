@@ -46,7 +46,7 @@ const SPARK_STATES = ['emerging', 'validated', 'actionable', 'dismissed'];
 // G4: Recommendation action states
 const RECOMMENDATION_STATES = ['pending', 'accepted', 'dismissed', 'expired'];
 
-// G4: All task-related event types
+// G4/G5: All task-related event types
 const TASK_EVENT_TYPES = [
     'task.created',
     'task.accepted',
@@ -57,8 +57,21 @@ const TASK_EVENT_TYPES = [
     'task.result_recorded',
     'task.failure_recorded',
     'task.insight_changed',
-    'task.rebind'
+    'task.rebind',
+    // G5: Cross-executor collaboration audit events (pure event log, no state machine)
+    'task.overreach_detected',
+    'task.privilege_expansion_requested',
+    'task.value_divergence_reported'
 ];
+
+// G5: Severity levels for overreach detection
+const OVERREACH_SEVERITIES = ['critical', 'warning'];
+
+// G5: User decision states for privilege expansion requests
+const PRIVILEGE_USER_DECISIONS = ['pending', 'approved', 'denied'];
+
+// G5: Divergence categories for value divergence reports
+const DIVERGENCE_CATEGORIES = ['scope', 'priority', 'method', 'other'];
 
 // G4: All recommendation-related event types
 const RECOMMENDATION_EVENT_TYPES = [
@@ -657,6 +670,80 @@ function validateTaskEventPayload(eventType, payload) {
         case 'task.rebind':
             if (!payload.new_binding || typeof payload.new_binding !== 'object') {
                 errors.push('task.rebind requires new_binding (object)');
+            } else {
+                const nb = payload.new_binding;
+                if (!nb.execution_agent || typeof nb.execution_agent !== 'string') {
+                    errors.push('task.rebind new_binding.execution_agent is required (string)');
+                }
+                if (nb.conversation_id !== null && nb.conversation_id !== undefined && !isValidULID(nb.conversation_id)) {
+                    errors.push('task.rebind new_binding.conversation_id must be a valid ULID or null');
+                }
+                if (nb.conversation_url !== null && nb.conversation_url !== undefined && typeof nb.conversation_url !== 'string') {
+                    errors.push('task.rebind new_binding.conversation_url must be a string or null');
+                }
+                if (!nb.user_confirmed_at || typeof nb.user_confirmed_at !== 'string') {
+                    errors.push('task.rebind new_binding.user_confirmed_at is required (string)');
+                }
+                if (nb.reason !== undefined && nb.reason !== null && typeof nb.reason !== 'string') {
+                    errors.push('task.rebind new_binding.reason must be a string if provided');
+                }
+            }
+            break;
+            
+        case 'task.overreach_detected':
+            if (!payload.objective || typeof payload.objective !== 'string') {
+                errors.push('task.overreach_detected requires objective (string)');
+            }
+            if (!payload.executed_action || typeof payload.executed_action !== 'string') {
+                errors.push('task.overreach_detected requires executed_action (string)');
+            }
+            if (payload.detection_evidence === undefined || payload.detection_evidence === null) {
+                errors.push('task.overreach_detected requires detection_evidence');
+            }
+            if (!payload.detected_at || typeof payload.detected_at !== 'string') {
+                errors.push('task.overreach_detected requires detected_at (string)');
+            }
+            if (!payload.detected_by || typeof payload.detected_by !== 'string') {
+                errors.push('task.overreach_detected requires detected_by (string)');
+            }
+            if (!payload.severity || !OVERREACH_SEVERITIES.includes(payload.severity)) {
+                errors.push(`task.overreach_detected severity must be one of: ${OVERREACH_SEVERITIES.join(', ')}`);
+            }
+            break;
+            
+        case 'task.privilege_expansion_requested':
+            if (!payload.current_boundary || typeof payload.current_boundary !== 'string') {
+                errors.push('task.privilege_expansion_requested requires current_boundary (string)');
+            }
+            if (!payload.requested_boundary || typeof payload.requested_boundary !== 'string') {
+                errors.push('task.privilege_expansion_requested requires requested_boundary (string)');
+            }
+            if (!payload.justification || typeof payload.justification !== 'string') {
+                errors.push('task.privilege_expansion_requested requires justification (string)');
+            }
+            if (!payload.requested_by || typeof payload.requested_by !== 'string') {
+                errors.push('task.privilege_expansion_requested requires requested_by (string)');
+            }
+            if (!payload.user_decision || !PRIVILEGE_USER_DECISIONS.includes(payload.user_decision)) {
+                errors.push(`task.privilege_expansion_requested user_decision must be one of: ${PRIVILEGE_USER_DECISIONS.join(', ')}`);
+            }
+            break;
+            
+        case 'task.value_divergence_reported':
+            if (!payload.objective || typeof payload.objective !== 'string') {
+                errors.push('task.value_divergence_reported requires objective (string)');
+            }
+            if (!payload.execution_divergence || typeof payload.execution_divergence !== 'string') {
+                errors.push('task.value_divergence_reported requires execution_divergence (string)');
+            }
+            if (!payload.execution_rationale || typeof payload.execution_rationale !== 'string') {
+                errors.push('task.value_divergence_reported requires execution_rationale (string)');
+            }
+            if (!payload.reported_by || typeof payload.reported_by !== 'string') {
+                errors.push('task.value_divergence_reported requires reported_by (string)');
+            }
+            if (!payload.category || !DIVERGENCE_CATEGORIES.includes(payload.category)) {
+                errors.push(`task.value_divergence_reported category must be one of: ${DIVERGENCE_CATEGORIES.join(', ')}`);
             }
             break;
             
@@ -754,5 +841,8 @@ module.exports = {
     TASK_EVENT_TYPES,
     RECOMMENDATION_EVENT_TYPES,
     CARD_EVENT_TYPES,
-    SPARK_EVENT_TYPES
+    SPARK_EVENT_TYPES,
+    OVERREACH_SEVERITIES,
+    PRIVILEGE_USER_DECISIONS,
+    DIVERGENCE_CATEGORIES
 };

@@ -97,9 +97,10 @@ Endpoints:
   GET/POST /rpc/export            Self-interpreting export (G3)
   
   # G4: Task lifecycle management
-  GET  /rpc/task/query            Query tasks (task_id, status, limit params)
+  GET  /rpc/task/query            Query tasks (task_id, status, execution_agent, include_binding_history params)
   POST /rpc/task/status           Query task status transition
   POST /rpc/task/checkpoint       Save checkpoint for task
+  POST /rpc/task/rebind           Rebind task to new execution agent (G5)
   
   # G4: Recommendation management
   GET  /rpc/recommendation/query  Query recommendations (source_id, status params)
@@ -381,7 +382,9 @@ function handleAdapterSessions(req, res) {
 
 /**
  * Handler: GET /rpc/task/query
- * Query tasks with optional filters: task_id, status, limit
+ * Query tasks with optional filters: task_id, status, execution_agent, limit
+ * G5 extension: include_binding_history=true appends binding_history array
+ *               (aggregated from task.rebind events in raw_events)
  */
 function handleTaskQueryGet(req, res) {
     try {
@@ -390,10 +393,34 @@ function handleTaskQueryGet(req, res) {
         
         const taskId = query.task_id || null;
         const status = query.status || null;
+        const executionAgent = query.execution_agent || null;
+        const includeBindingHistory = query.include_binding_history === 'true';
         const limit = parseInt(query.limit) || 50;
         
-        if (!taskId && !status) {
-            return sendJSONResponse(res, 400, rpcError(-32602, 'Missing required parameter: task_id or status'));
+        if (!taskId && !status && !executionAgent) {
+            return sendJSONResponse(res, 400, rpcError(-32602, 'Missing required parameter: task_id, status, or execution_agent'));
+        }
+        
+        if (companionDB.db.isMock) {
+            // Mock mode: filter in-memory
+            let tasks = (companionDB.db.data.tasks_projection || []).slice();
+            if (taskId) tasks = tasks.filter(t => t.task_id === taskId);
+            if (status) {
+                if (!TASK_STATES.includes(status)) {
+                    return sendJSONResponse(res, 400, rpcError(-32602, `Invalid status: ${status}. Must be one of: ${TASK_STATES.join(', ')}`));
+                }
+                tasks = tasks.filter(t => t.current_status === status);
+            }
+            if (executionAgent) tasks = tasks.filter(t => t.bound_execution_agent === executionAgent);
+            tasks = tasks.slice(0, limit);
+            
+            const response = { tasks, count: tasks.length };
+            
+            if (includeBindingHistory && taskId) {
+                response.binding_history = aggregateBindingHistory(taskId);
+            }
+            
+            return sendJSONResponse(res, 200, rpcResult(response, null));
         }
         
         // Build query conditions
@@ -413,6 +440,11 @@ function handleTaskQueryGet(req, res) {
             params.push(status);
         }
         
+        if (executionAgent) {
+            conditions.push('bound_execution_agent = ?');
+            params.push(executionAgent);
+        }
+        
         const whereClause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
         const stmt = companionDB.db.prepare(`
             SELECT * FROM tasks_projection 
@@ -423,14 +455,67 @@ function handleTaskQueryGet(req, res) {
         params.push(limit);
         const tasks = stmt.all(...params);
         
-        return sendJSONResponse(res, 200, rpcResult({
-            tasks,
-            count: tasks.length
-        }, null));
+        const response = { tasks, count: tasks.length };
+        
+        if (includeBindingHistory && taskId) {
+            response.binding_history = aggregateBindingHistory(taskId);
+        }
+        
+        return sendJSONResponse(res, 200, rpcResult(response, null));
     } catch (error) {
         console.error('Task query error:', error);
         return sendJSONResponse(res, 500, rpcError(-32603, 'Internal error: ' + error.message));
     }
+}
+
+/**
+ * G5: Aggregate all task.rebind events for a given task_id from raw_events.
+ * Returns an array sorted by created_at ascending (chronological order).
+ * Each entry contains: event_id, created_at, new_binding, previous_agent, rebind_timestamp.
+ */
+function aggregateBindingHistory(taskId) {
+    let rebindEvents = [];
+    
+    try {
+        if (companionDB.db.isMock) {
+            rebindEvents = (companionDB.db.data.raw_events || []).filter(e =>
+                e.event_type === 'task.rebind' && e.source_id === taskId
+            );
+        } else {
+            rebindEvents = companionDB.db.prepare(
+                `SELECT event_id, source_id, event_type, payload_json, created_at 
+                 FROM raw_events 
+                 WHERE event_type = 'task.rebind' AND source_id = ? 
+                 ORDER BY created_at ASC`
+            ).all(taskId);
+        }
+    } catch (_) {
+        return [];
+    }
+    
+    // Sort ascending by created_at
+    rebindEvents.sort((a, b) => {
+        const ta = new Date(a.created_at).getTime();
+        const tb = new Date(b.created_at).getTime();
+        return ta - tb;
+    });
+    
+    return rebindEvents.map(e => {
+        let payload = {};
+        try {
+            payload = typeof e.payload_json === 'string'
+                ? JSON.parse(e.payload_json)
+                : (e.payload_json || {});
+        } catch (_) { payload = {}; }
+        
+        return {
+            event_id: e.event_id,
+            created_at: e.created_at,
+            new_binding: payload.new_binding || null,
+            previous_agent: payload.previous_agent || null,
+            rebind_timestamp: payload.rebind_timestamp || e.created_at
+        };
+    });
 }
 
 /**
@@ -549,6 +634,94 @@ async function handleTaskStatus(req, res, requestBody) {
         }
     } catch (error) {
         console.error('Task status error:', error);
+        return sendJSONResponse(res, 500, rpcError(-32603, 'Internal error: ' + error.message));
+    }
+}
+
+/**
+ * Handler: POST /rpc/task/rebind (G5)
+ * Rebind a task to a new execution agent / conversation.
+ * Required: task_id, new_binding (object with execution_agent, user_confirmed_at)
+ * Validation: task must exist and not be in terminal state (completed/failed)
+ * Returns: {event_id, new_binding, previous_agent}
+ */
+async function handleTaskRebind(req, res, requestBody) {
+    try {
+        const { task_id, new_binding } = requestBody;
+        
+        if (!task_id || !isValidULID(task_id)) {
+            return sendJSONResponse(res, 400, rpcError(-32602, 'Invalid task_id'));
+        }
+        
+        if (!new_binding || typeof new_binding !== 'object') {
+            return sendJSONResponse(res, 400, rpcError(-32602, 'Missing required parameter: new_binding (object)'));
+        }
+        
+        if (!new_binding.execution_agent || typeof new_binding.execution_agent !== 'string') {
+            return sendJSONResponse(res, 400, rpcError(-32602, 'new_binding.execution_agent is required (string)'));
+        }
+        
+        if (!new_binding.user_confirmed_at || typeof new_binding.user_confirmed_at !== 'string') {
+            return sendJSONResponse(res, 400, rpcError(-32602, 'new_binding.user_confirmed_at is required (string)'));
+        }
+        
+        // Fetch current task projection to validate existence and non-terminal state
+        let taskRow;
+        if (companionDB.db.isMock) {
+            taskRow = (companionDB.db.data.tasks_projection || []).find(t => t.task_id === task_id) || null;
+        } else {
+            try {
+                taskRow = companionDB.db.prepare('SELECT * FROM tasks_projection WHERE task_id = ?').get(task_id) || null;
+            } catch (_) {
+                taskRow = null;
+            }
+        }
+        
+        if (!taskRow) {
+            return sendJSONResponse(res, 400, rpcError(-32000, `Task not found: ${task_id}`));
+        }
+        
+        const TERMINAL_STATES = ['completed', 'failed'];
+        if (TERMINAL_STATES.includes(taskRow.current_status)) {
+            return sendJSONResponse(res, 400, rpcError(-32000, `Task is in terminal state: ${taskRow.current_status}. Rebind not allowed.`));
+        }
+        
+        const previousAgent = taskRow.bound_execution_agent || null;
+        const rebindTimestamp = new Date().toISOString();
+        
+        // Generate and ingest task.rebind event (append-only)
+        const eventId = generateULID();
+        const event = {
+            event_id: eventId,
+            source_id: task_id,
+            event_type: 'task.rebind',
+            payload_json: {
+                task_id,
+                new_binding: {
+                    execution_agent: new_binding.execution_agent,
+                    conversation_id: new_binding.conversation_id || null,
+                    conversation_url: new_binding.conversation_url || null,
+                    user_confirmed_at: new_binding.user_confirmed_at,
+                    reason: new_binding.reason || undefined
+                },
+                previous_agent: previousAgent,
+                rebind_timestamp: rebindTimestamp
+            }
+        };
+        
+        const result = await eventProcessor.ingestEvent(event);
+        
+        if (result.success) {
+            return sendJSONResponse(res, 200, rpcResult({
+                event_id: eventId,
+                new_binding: event.payload_json.new_binding,
+                previous_agent: previousAgent
+            }, requestBody.id || null));
+        } else {
+            return sendJSONResponse(res, 400, rpcError(-32000, result.error));
+        }
+    } catch (error) {
+        console.error('Task rebind error:', error);
         return sendJSONResponse(res, 500, rpcError(-32603, 'Internal error: ' + error.message));
     }
 }
@@ -1285,6 +1458,11 @@ async function handleRequest(req, res) {
                 return handleTaskCheckpoint(req, res, requestBody);
             }
             
+            // G5: Task rebind
+            if (pathname === '/rpc/task/rebind') {
+                return handleTaskRebind(req, res, requestBody);
+            }
+            
             // G4: Recommendation accept
             if (pathname === '/rpc/recommendation/accept') {
                 return handleRecommendationAccept(req, res, requestBody);
@@ -1471,10 +1649,11 @@ module.exports = {
     readRequestBody,
     companionDB,
     eventProcessor,
-    // G4 handlers for testing
+    // G4/G5 handlers for testing
     handleTaskQueryGet,
     handleTaskStatus,
     handleTaskCheckpoint,
+    handleTaskRebind,
     handleRecommendationQueryPost,
     handleRecommendationAccept,
     handleRecommendationDismiss,

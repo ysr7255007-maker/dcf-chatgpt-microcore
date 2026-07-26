@@ -178,8 +178,15 @@ function applyTaskEvent(projection, event) {
             
         case 'task.rebind':
             if (payload.new_binding) {
-                proj.bound_conversation_id = payload.new_binding.conversation_id || proj.bound_conversation_id;
+                // "最近 agent 胜": new_binding overwrites the bound fields.
+                // conversation_id / conversation_url may be null (explicit unbind).
                 proj.bound_execution_agent = payload.new_binding.execution_agent || proj.bound_execution_agent;
+                if (payload.new_binding.conversation_id !== undefined && payload.new_binding.conversation_id !== null) {
+                    proj.bound_conversation_id = payload.new_binding.conversation_id;
+                }
+                if (payload.new_binding.conversation_url !== undefined && payload.new_binding.conversation_url !== null) {
+                    proj.bound_conversation_url = payload.new_binding.conversation_url;
+                }
             }
             proj.updated_at = event.created_at;
             break;
