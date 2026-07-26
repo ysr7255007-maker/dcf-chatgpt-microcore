@@ -1364,6 +1364,524 @@ async function handleExport(req, res, requestBody = {}) {
     }
 }
 
+// ============================================================================
+// G6: Personal software modification (Patch management) handlers
+// ============================================================================
+
+const { PATCH_STATUSES, ENV_HEALTH_STATUSES, PATCH_EVENT_TYPES } = require('./types');
+const { applyPatchEvent, applyEnvHealthEvent, createEmptyPatchProjection, patchFromRow } = require('./reducers/g6-patch-reducers');
+
+/**
+ * Get patch projection from DB (real or mock)
+ */
+function getPatchProjectionRow(patchId) {
+    if (companionDB.db.isMock) {
+        return (companionDB.db.data.patches_projection || []).find(p => p.patch_id === patchId) || null;
+    }
+    try {
+        return companionDB.db.prepare('SELECT * FROM patches_projection WHERE patch_id = ?').get(patchId) || null;
+    } catch (_) {
+        return null;
+    }
+}
+
+/**
+ * Upsert patch projection to DB
+ */
+function upsertPatchProjection(proj) {
+    const record = {
+        patch_id: proj.patch_id,
+        title: proj.title || null,
+        description: proj.description || null,
+        patch_body_json: proj.patch_body_json || null,
+        patch_status: proj.patch_status || 'proposed',
+        environment_health: proj.environment_health || 'healthy',
+        source_ref: proj.source_ref || null,
+        validated_by: proj.validated_by || null,
+        validated_at: proj.validated_at || null,
+        activated_at: proj.activated_at || null,
+        reverted_at: proj.reverted_at || null,
+        superseded_by: proj.superseded_by || null,
+        validation_notes_json: proj.validation_notes_json || null,
+        created_at: proj.created_at || new Date().toISOString(),
+        updated_at: proj.updated_at || new Date().toISOString()
+    };
+    
+    if (companionDB.db.isMock) {
+        const arr = companionDB.db.data.patches_projection = companionDB.db.data.patches_projection || [];
+        const idx = arr.findIndex(p => p.patch_id === record.patch_id);
+        if (idx >= 0) arr[idx] = record; else arr.push(record);
+        return { success: true };
+    }
+    
+    try {
+        companionDB.db.prepare(`
+            INSERT OR REPLACE INTO patches_projection
+                (patch_id, title, description, patch_body_json, patch_status, environment_health,
+                 source_ref, validated_by, validated_at, activated_at, reverted_at,
+                 superseded_by, validation_notes_json, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+            record.patch_id, record.title, record.description, record.patch_body_json,
+            record.patch_status, record.environment_health, record.source_ref,
+            record.validated_by, record.validated_at, record.activated_at,
+            record.reverted_at, record.superseded_by, record.validation_notes_json,
+            record.created_at, record.updated_at
+        );
+        return { success: true };
+    } catch (error) {
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Handler: GET /rpc/patch/query
+ * Query patches by status, include_environment
+ */
+function handlePatchQuery(req, res) {
+    try {
+        const parsedUrl = url.parse(req.url, true);
+        const { status, patch_id, include_environment } = parsedUrl.query;
+        
+        let results = [];
+        
+        if (companionDB.db.isMock) {
+            const all = companionDB.db.data.patches_projection || [];
+            if (patch_id) {
+                const found = all.find(p => p.patch_id === patch_id);
+                results = found ? [found] : [];
+            } else if (status) {
+                results = all.filter(p => p.patch_status === status);
+            } else {
+                results = [...all];
+            }
+        } else {
+            if (patch_id) {
+                const row = companionDB.db.prepare('SELECT * FROM patches_projection WHERE patch_id = ?').get(patch_id);
+                results = row ? [row] : [];
+            } else if (status) {
+                results = companionDB.db.prepare('SELECT * FROM patches_projection WHERE patch_status = ? ORDER BY updated_at DESC').all(status);
+            } else {
+                results = companionDB.db.prepare('SELECT * FROM patches_projection ORDER BY updated_at DESC').all();
+            }
+        }
+        
+        // Optionally include environment projections
+        if (include_environment === 'true' && results.length > 0) {
+            for (const patch of results) {
+                if (companionDB.db.isMock) {
+                    patch.environment_files = (companionDB.db.data.patch_environment_projections || [])
+                        .filter(e => e.patch_id === patch.patch_id);
+                } else {
+                    try {
+                        patch.environment_files = companionDB.db.prepare(
+                            'SELECT * FROM patch_environment_projections WHERE patch_id = ?'
+                        ).all(patch.patch_id);
+                    } catch (_) {
+                        patch.environment_files = [];
+                    }
+                }
+            }
+        }
+        
+        return sendJSONResponse(res, 200, rpcResult({ patches: results, count: results.length }));
+    } catch (error) {
+        return sendJSONResponse(res, 500, rpcError(-32603, 'Internal error: ' + error.message));
+    }
+}
+
+/**
+ * Handler: POST /rpc/patch/propose
+ * Propose a new patch.
+ * Required: title, patch_body_json
+ * Optional: description, source_ref
+ */
+async function handlePatchPropose(req, res, requestBody) {
+    try {
+        const { title, description, patch_body_json, source_ref } = requestBody;
+        
+        if (!title || typeof title !== 'string') {
+            return sendJSONResponse(res, 400, rpcError(-32602, 'title is required (string)'));
+        }
+        if (!patch_body_json || typeof patch_body_json !== 'string') {
+            return sendJSONResponse(res, 400, rpcError(-32602, 'patch_body_json is required (stringified JSON)'));
+        }
+        
+        const patchId = generateULID();
+        const eventId = generateULID();
+        const now = new Date().toISOString();
+        
+        // Create event
+        const event = {
+            event_id: eventId,
+            source_id: patchId,
+            event_type: 'patch.proposed',
+            payload_json: {
+                patch_id: patchId,
+                title,
+                description: description || null,
+                patch_body_json,
+                source_ref: source_ref || null
+            },
+            created_at: now
+        };
+        
+        // Persist event
+        const insertResult = companionDB.insertEvent(event);
+        if (!insertResult.success) {
+            return sendJSONResponse(res, 500, rpcError(-32603, 'Failed to persist event: ' + insertResult.error));
+        }
+        
+        // Apply reducer
+        const proj = applyPatchEvent(null, event);
+        upsertPatchProjection(proj);
+        
+        return sendJSONResponse(res, 200, rpcResult({
+            patch_id: patchId,
+            event_id: eventId,
+            patch_status: 'proposed'
+        }));
+    } catch (error) {
+        return sendJSONResponse(res, 500, rpcError(-32603, 'Internal error: ' + error.message));
+    }
+}
+
+/**
+ * Handler: POST /rpc/patch/validate
+ * Validate a proposed patch.
+ * Required: patch_id, validated_by
+ * Optional: validation_notes_json
+ */
+async function handlePatchValidate(req, res, requestBody) {
+    try {
+        const { patch_id, validated_by, validation_notes_json } = requestBody;
+        
+        if (!patch_id || !isValidULID(patch_id)) {
+            return sendJSONResponse(res, 400, rpcError(-32602, 'patch_id is required (valid ULID)'));
+        }
+        if (!validated_by || typeof validated_by !== 'string') {
+            return sendJSONResponse(res, 400, rpcError(-32602, 'validated_by is required (string)'));
+        }
+        
+        // Check current state
+        const current = getPatchProjectionRow(patch_id);
+        if (!current) {
+            return sendJSONResponse(res, 404, rpcError(-32001, `Patch ${patch_id} not found`));
+        }
+        if (current.patch_status !== 'proposed' && current.patch_status !== 'needs_revalidation') {
+            return sendJSONResponse(res, 400, rpcError(-32000, `Cannot validate patch in status: ${current.patch_status}. Must be proposed or needs_revalidation`));
+        }
+        
+        const eventId = generateULID();
+        const now = new Date().toISOString();
+        
+        const event = {
+            event_id: eventId,
+            source_id: patch_id,
+            event_type: 'patch.validate',
+            payload_json: {
+                patch_id,
+                validated_by,
+                validation_notes_json: validation_notes_json || null
+            },
+            created_at: now
+        };
+        
+        const insertResult = companionDB.insertEvent(event);
+        if (!insertResult.success) {
+            return sendJSONResponse(res, 500, rpcError(-32603, 'Failed to persist event: ' + insertResult.error));
+        }
+        
+        const proj = applyPatchEvent({ ...current }, event);
+        upsertPatchProjection(proj);
+        
+        return sendJSONResponse(res, 200, rpcResult({
+            patch_id,
+            event_id: eventId,
+            patch_status: 'validated',
+            validated_by,
+            validated_at: now
+        }));
+    } catch (error) {
+        return sendJSONResponse(res, 500, rpcError(-32603, 'Internal error: ' + error.message));
+    }
+}
+
+/**
+ * Handler: POST /rpc/patch/activate
+ * Activate a validated patch.
+ * Required: patch_id
+ */
+async function handlePatchActivate(req, res, requestBody) {
+    try {
+        const { patch_id } = requestBody;
+        
+        if (!patch_id || !isValidULID(patch_id)) {
+            return sendJSONResponse(res, 400, rpcError(-32602, 'patch_id is required (valid ULID)'));
+        }
+        
+        const current = getPatchProjectionRow(patch_id);
+        if (!current) {
+            return sendJSONResponse(res, 404, rpcError(-32001, `Patch ${patch_id} not found`));
+        }
+        if (current.patch_status !== 'validated') {
+            return sendJSONResponse(res, 400, rpcError(-32000, `Cannot activate patch in status: ${current.patch_status}. Must be validated`));
+        }
+        
+        const eventId = generateULID();
+        const now = new Date().toISOString();
+        
+        const event = {
+            event_id: eventId,
+            source_id: patch_id,
+            event_type: 'patch.activate',
+            payload_json: { patch_id },
+            created_at: now
+        };
+        
+        const insertResult = companionDB.insertEvent(event);
+        if (!insertResult.success) {
+            return sendJSONResponse(res, 500, rpcError(-32603, 'Failed to persist event: ' + insertResult.error));
+        }
+        
+        const proj = applyPatchEvent({ ...current }, event);
+        upsertPatchProjection(proj);
+        
+        return sendJSONResponse(res, 200, rpcResult({
+            patch_id,
+            event_id: eventId,
+            patch_status: 'active',
+            activated_at: now
+        }));
+    } catch (error) {
+        return sendJSONResponse(res, 500, rpcError(-32603, 'Internal error: ' + error.message));
+    }
+}
+
+/**
+ * Handler: POST /rpc/patch/deactivate
+ * Deactivate an active patch (transition to needs_revalidation).
+ * Required: patch_id
+ */
+async function handlePatchDeactivate(req, res, requestBody) {
+    try {
+        const { patch_id } = requestBody;
+        
+        if (!patch_id || !isValidULID(patch_id)) {
+            return sendJSONResponse(res, 400, rpcError(-32602, 'patch_id is required (valid ULID)'));
+        }
+        
+        const current = getPatchProjectionRow(patch_id);
+        if (!current) {
+            return sendJSONResponse(res, 404, rpcError(-32001, `Patch ${patch_id} not found`));
+        }
+        if (current.patch_status !== 'active') {
+            return sendJSONResponse(res, 400, rpcError(-32000, `Cannot deactivate patch in status: ${current.patch_status}. Must be active`));
+        }
+        
+        const eventId = generateULID();
+        const now = new Date().toISOString();
+        
+        const event = {
+            event_id: eventId,
+            source_id: patch_id,
+            event_type: 'patch.deactivate',
+            payload_json: { patch_id },
+            created_at: now
+        };
+        
+        const insertResult = companionDB.insertEvent(event);
+        if (!insertResult.success) {
+            return sendJSONResponse(res, 500, rpcError(-32603, 'Failed to persist event: ' + insertResult.error));
+        }
+        
+        const proj = applyPatchEvent({ ...current }, event);
+        upsertPatchProjection(proj);
+        
+        return sendJSONResponse(res, 200, rpcResult({
+            patch_id,
+            event_id: eventId,
+            patch_status: 'needs_revalidation'
+        }));
+    } catch (error) {
+        return sendJSONResponse(res, 500, rpcError(-32603, 'Internal error: ' + error.message));
+    }
+}
+
+/**
+ * Handler: POST /rpc/patch/revert
+ * Revert an active/validated patch (append-only, never deletes history).
+ * Required: patch_id, reverted_by
+ * Optional: revert_reason
+ */
+async function handlePatchRevert(req, res, requestBody) {
+    try {
+        const { patch_id, reverted_by, revert_reason } = requestBody;
+        
+        if (!patch_id || !isValidULID(patch_id)) {
+            return sendJSONResponse(res, 400, rpcError(-32602, 'patch_id is required (valid ULID)'));
+        }
+        if (!reverted_by || typeof reverted_by !== 'string') {
+            return sendJSONResponse(res, 400, rpcError(-32602, 'reverted_by is required (string)'));
+        }
+        
+        const current = getPatchProjectionRow(patch_id);
+        if (!current) {
+            return sendJSONResponse(res, 404, rpcError(-32001, `Patch ${patch_id} not found`));
+        }
+        if (current.patch_status !== 'active' && current.patch_status !== 'validated') {
+            return sendJSONResponse(res, 400, rpcError(-32000, `Cannot revert patch in status: ${current.patch_status}. Must be active or validated`));
+        }
+        
+        const eventId = generateULID();
+        const now = new Date().toISOString();
+        
+        const event = {
+            event_id: eventId,
+            source_id: patch_id,
+            event_type: 'patch.revert',
+            payload_json: {
+                patch_id,
+                reverted_by,
+                revert_reason: revert_reason || null
+            },
+            created_at: now
+        };
+        
+        const insertResult = companionDB.insertEvent(event);
+        if (!insertResult.success) {
+            return sendJSONResponse(res, 500, rpcError(-32603, 'Failed to persist event: ' + insertResult.error));
+        }
+        
+        const proj = applyPatchEvent({ ...current }, event);
+        upsertPatchProjection(proj);
+        
+        return sendJSONResponse(res, 200, rpcResult({
+            patch_id,
+            event_id: eventId,
+            patch_status: 'reverted',
+            reverted_at: now,
+            reverted_by
+        }));
+    } catch (error) {
+        return sendJSONResponse(res, 500, rpcError(-32603, 'Internal error: ' + error.message));
+    }
+}
+
+/**
+ * Handler: POST /rpc/patch/revalidate
+ * Revalidate a needs_revalidation patch.
+ * Required: patch_id
+ * Optional: validation_result ('valid'|'invalid'), validated_by, validation_notes_json
+ */
+async function handlePatchRevalidate(req, res, requestBody) {
+    try {
+        const { patch_id, validation_result, validated_by, validation_notes_json } = requestBody;
+        
+        if (!patch_id || !isValidULID(patch_id)) {
+            return sendJSONResponse(res, 400, rpcError(-32602, 'patch_id is required (valid ULID)'));
+        }
+        
+        const current = getPatchProjectionRow(patch_id);
+        if (!current) {
+            return sendJSONResponse(res, 404, rpcError(-32001, `Patch ${patch_id} not found`));
+        }
+        if (current.patch_status !== 'needs_revalidation') {
+            return sendJSONResponse(res, 400, rpcError(-32000, `Cannot revalidate patch in status: ${current.patch_status}. Must be needs_revalidation`));
+        }
+        
+        const eventId = generateULID();
+        const now = new Date().toISOString();
+        
+        const event = {
+            event_id: eventId,
+            source_id: patch_id,
+            event_type: 'patch.revalidate',
+            payload_json: {
+                patch_id,
+                validation_result: validation_result || 'valid',
+                validated_by: validated_by || null,
+                validation_notes_json: validation_notes_json || null
+            },
+            created_at: now
+        };
+        
+        const insertResult = companionDB.insertEvent(event);
+        if (!insertResult.success) {
+            return sendJSONResponse(res, 500, rpcError(-32603, 'Failed to persist event: ' + insertResult.error));
+        }
+        
+        const proj = applyPatchEvent({ ...current }, event);
+        upsertPatchProjection(proj);
+        
+        return sendJSONResponse(res, 200, rpcResult({
+            patch_id,
+            event_id: eventId,
+            patch_status: proj.patch_status,
+            validation_result: validation_result || 'valid'
+        }));
+    } catch (error) {
+        return sendJSONResponse(res, 500, rpcError(-32603, 'Internal error: ' + error.message));
+    }
+}
+
+/**
+ * Handler: POST /rpc/patch/supersede
+ * Mark a patch as superseded by another.
+ * Required: patch_id, superseded_by_patch_id
+ */
+async function handlePatchSupersede(req, res, requestBody) {
+    try {
+        const { patch_id, superseded_by_patch_id } = requestBody;
+        
+        if (!patch_id || !isValidULID(patch_id)) {
+            return sendJSONResponse(res, 400, rpcError(-32602, 'patch_id is required (valid ULID)'));
+        }
+        if (!superseded_by_patch_id || !isValidULID(superseded_by_patch_id)) {
+            return sendJSONResponse(res, 400, rpcError(-32602, 'superseded_by_patch_id is required (valid ULID)'));
+        }
+        
+        const current = getPatchProjectionRow(patch_id);
+        if (!current) {
+            return sendJSONResponse(res, 404, rpcError(-32001, `Patch ${patch_id} not found`));
+        }
+        if (current.patch_status !== 'active' && current.patch_status !== 'validated') {
+            return sendJSONResponse(res, 400, rpcError(-32000, `Cannot supersede patch in status: ${current.patch_status}. Must be active or validated`));
+        }
+        
+        const eventId = generateULID();
+        const now = new Date().toISOString();
+        
+        const event = {
+            event_id: eventId,
+            source_id: patch_id,
+            event_type: 'patch.supersede',
+            payload_json: {
+                patch_id,
+                superseded_by_patch_id
+            },
+            created_at: now
+        };
+        
+        const insertResult = companionDB.insertEvent(event);
+        if (!insertResult.success) {
+            return sendJSONResponse(res, 500, rpcError(-32603, 'Failed to persist event: ' + insertResult.error));
+        }
+        
+        const proj = applyPatchEvent({ ...current }, event);
+        upsertPatchProjection(proj);
+        
+        return sendJSONResponse(res, 200, rpcResult({
+            patch_id,
+            event_id: eventId,
+            patch_status: 'superseded',
+            superseded_by: superseded_by_patch_id
+        }));
+    } catch (error) {
+        return sendJSONResponse(res, 500, rpcError(-32603, 'Internal error: ' + error.message));
+    }
+}
+
 /**
  * Main request handler
  */
@@ -1405,6 +1923,11 @@ async function handleRequest(req, res) {
         // G4: Task query (GET)
         if (pathname === '/rpc/task/query' && req.method === 'GET') {
             return handleTaskQueryGet(req, res);
+        }
+        
+        // G6: Patch query (GET)
+        if (pathname === '/rpc/patch/query' && req.method === 'GET') {
+            return handlePatchQuery(req, res);
         }
         
         // For POST endpoints, need to read body
@@ -1461,6 +1984,29 @@ async function handleRequest(req, res) {
             // G5: Task rebind
             if (pathname === '/rpc/task/rebind') {
                 return handleTaskRebind(req, res, requestBody);
+            }
+            
+            // G6: Patch management endpoints
+            if (pathname === '/rpc/patch/propose') {
+                return handlePatchPropose(req, res, requestBody);
+            }
+            if (pathname === '/rpc/patch/validate') {
+                return handlePatchValidate(req, res, requestBody);
+            }
+            if (pathname === '/rpc/patch/activate') {
+                return handlePatchActivate(req, res, requestBody);
+            }
+            if (pathname === '/rpc/patch/deactivate') {
+                return handlePatchDeactivate(req, res, requestBody);
+            }
+            if (pathname === '/rpc/patch/revert') {
+                return handlePatchRevert(req, res, requestBody);
+            }
+            if (pathname === '/rpc/patch/revalidate') {
+                return handlePatchRevalidate(req, res, requestBody);
+            }
+            if (pathname === '/rpc/patch/supersede') {
+                return handlePatchSupersede(req, res, requestBody);
             }
             
             // G4: Recommendation accept
@@ -1658,6 +2204,15 @@ module.exports = {
     handleRecommendationAccept,
     handleRecommendationDismiss,
     handleAdapterSessions,
+    // G6 patch handlers for testing
+    handlePatchQuery,
+    handlePatchPropose,
+    handlePatchValidate,
+    handlePatchActivate,
+    handlePatchDeactivate,
+    handlePatchRevert,
+    handlePatchRevalidate,
+    handlePatchSupersede,
     // G4 in-process test harness
     startTestServer,
     stopTestServer

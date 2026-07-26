@@ -256,3 +256,63 @@ CREATE INDEX IF NOT EXISTS idx_raw_events_event_type_g3 ON raw_events(event_type
 -- ----------------------------------------------------------------------------
 -- Note: Default boundaries are created per-entity when first encountered.
 -- The companion doesn't pre-populate these; they're dynamic based on observed events.
+
+-- ----------------------------------------------------------------------------
+-- G6: patches_projection - personal software modification lifecycle
+-- 6-state status machine: proposed → validated → active → (needs_revalidation/reverted/superseded)
+-- Environment health monitoring (4-state)
+-- Append-only revert semantics (never delete/overwrite)
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS patches_projection (
+    patch_id TEXT PRIMARY KEY,                   -- ULID, unique patch identifier
+    title TEXT NOT NULL,                         -- human-readable patch title
+    description TEXT,                            -- detailed description of the modification
+    patch_body_json TEXT NOT NULL,               -- actual patch content (JSON-encoded diff/instructions)
+    patch_status TEXT DEFAULT 'proposed'         -- current status in 6-state machine
+        CHECK(patch_status IN ('proposed', 'validated', 'active', 'needs_revalidation', 'reverted', 'superseded')),
+    environment_health TEXT DEFAULT 'healthy'    -- runtime environment health status
+        CHECK(environment_health IN ('healthy', 'degraded', 'unhealthy', 'unknown')),
+    source_ref TEXT,                             -- ULID of source reference (recommendation/task)
+    validated_by TEXT,                           -- who validated (agent name or user)
+    validated_at TEXT,                           -- ISO8601 validation timestamp
+    activated_at TEXT,                           -- ISO8601 activation timestamp
+    reverted_at TEXT,                            -- ISO8601 revert timestamp (append-only)
+    superseded_by TEXT,                          -- patch_id that superseded this one
+    validation_notes_json TEXT,                  -- JSON array of validation notes
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    
+    CHECK (patch_id IS NOT NULL AND patch_id != ''),
+    CHECK (title IS NOT NULL AND title != ''),
+    CHECK (patch_body_json IS NOT NULL AND patch_body_json != '')
+);
+
+-- G6: Primary query indexes for patches_projection (7+ indexes)
+CREATE INDEX IF NOT EXISTS idx_patches_status ON patches_projection(patch_status);
+CREATE INDEX IF NOT EXISTS idx_patches_env_health ON patches_projection(environment_health);
+CREATE INDEX IF NOT EXISTS idx_patches_source ON patches_projection(source_ref);
+CREATE INDEX IF NOT EXISTS idx_patches_validated_at ON patches_projection(validated_at);
+CREATE INDEX IF NOT EXISTS idx_patches_activated_at ON patches_projection(activated_at);
+CREATE INDEX IF NOT EXISTS idx_patches_created_at ON patches_projection(created_at);
+CREATE INDEX IF NOT EXISTS idx_patches_superseded_by ON patches_projection(superseded_by);
+CREATE INDEX IF NOT EXISTS idx_patches_updated_at ON patches_projection(updated_at);
+
+-- ----------------------------------------------------------------------------
+-- G6: patch_environment_projections - file-level impact tracking per patch
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS patch_environment_projections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    patch_id TEXT NOT NULL REFERENCES patches_projection(patch_id) ON DELETE CASCADE,
+    file_path TEXT NOT NULL,                     -- affected file path
+    action TEXT NOT NULL                         -- type of file modification
+        CHECK(action IN ('create', 'modify', 'delete')),
+    before_hash TEXT,                            -- SHA-256 of file content before
+    after_hash TEXT,                             -- SHA-256 of file content after
+    before_content_text TEXT,                    -- original content (for quick diff)
+    after_content_text TEXT,                     -- new content (for quick diff)
+    dependency_level INTEGER DEFAULT 0,          -- dependency ordering level
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_patch_env_patch_id ON patch_environment_projections(patch_id);
+CREATE INDEX IF NOT EXISTS idx_patch_env_file_path ON patch_environment_projections(file_path);

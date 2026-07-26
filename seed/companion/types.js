@@ -64,6 +64,37 @@ const TASK_EVENT_TYPES = [
     'task.value_divergence_reported'
 ];
 
+// G6: Personal software modification patch events
+const PATCH_EVENT_TYPES = [
+    'patch.proposed',
+    'patch.validated',
+    'patch.activated',
+    'patch.deactivated',
+    'patch.needs_revalidation',
+    'patch.reverted',
+    'patch.superseded',
+    'env.health_checked',
+    'env.health_changed'
+];
+
+// G6: Patch status constants (6-state progression)
+const PATCH_STATUSES = {
+    PROPOSED: 'proposed',
+    VALIDATED: 'validated',
+    ACTIVE: 'active',
+    NEEDS_REVALIDATION: 'needs_revalidation',
+    REVERTED: 'reverted',
+    SUPERSEDED: 'superseded'
+};
+
+// G6: Environment health constants (4-state monitoring)
+const ENV_HEALTH_STATUSES = {
+    HEALTHY: 'healthy',
+    DEGRADED: 'degraded',
+    UNHEALTHY: 'unhealthy',
+    UNKNOWN: 'unknown'
+};
+
 // G5: Severity levels for overreach detection
 const OVERREACH_SEVERITIES = ['critical', 'warning'];
 
@@ -756,6 +787,159 @@ function validateTaskEventPayload(eventType, payload) {
 }
 
 /**
+ * Validate patch status value (G6)
+ * @param {string} status - Patch status
+ * @returns {{valid: boolean, error?: string}}
+ */
+function validatePatchStatus(status) {
+    if (!PATCH_STATUSES.PROPOSED && !PATCH_STATUSES.VALIDATED && 
+        !PATCH_STATUSES.ACTIVE && !PATCH_STATUSES.NEEDS_REVALIDATION &&
+        !PATCH_STATUSES.REVERTED && !PATCH_STATUSES.SUPERSEDED) {
+        return {
+            valid: false,
+            error: `Invalid patch status: ${status}. Must be one of: ${Object.values(PATCH_STATUSES).join(', ')}`
+        };
+    }
+    
+    if (!Object.values(PATCH_STATUSES).includes(status)) {
+        return {
+            valid: false,
+            error: `Invalid patch status: ${status}. Must be one of: ${Object.values(PATCH_STATUSES).join(', ')}`
+        };
+    }
+    
+    return { valid: true };
+}
+
+/**
+ * Validate environment health status (G6)
+ * @param {string} status - Environment health status
+ * @returns {{valid: boolean, error?: string}}
+ */
+function validateEnvHealthStatus(status) {
+    if (!Object.values(ENV_HEALTH_STATUSES).includes(status)) {
+        return {
+            valid: false,
+            error: `Invalid environment health status: ${status}. Must be one of: ${Object.values(ENV_HEALTH_STATUSES).join(', ')}`
+        };
+    }
+    
+    return { valid: true };
+}
+
+/**
+ * Validate patch.* event payload (G6)
+ * @param {string} eventType - recommendation.* event type
+ * @param {Object|null} payload - parsed payload object
+ * @returns {{valid: boolean, errors: string[]}}
+ */
+function validatePatchEventPayload(eventType, payload) {
+    const errors = [];
+    
+    if (payload === null || typeof payload !== 'object') {
+        return { valid: false, errors: ['Patch events require a payload object'] };
+    }
+    
+    if (!payload.patch_id || !isValidULID(payload.patch_id)) {
+        errors.push(`Patch event ${eventType} requires a valid ULID patch_id`);
+    }
+    
+    switch (eventType) {
+        case 'patch.proposed':
+            if (!payload.title || typeof payload.title !== 'string') {
+                errors.push('patch.proposed requires title (string)');
+            }
+            if (!payload.patch_body_json || typeof payload.patch_body_json !== 'string') {
+                errors.push('patch.proposed requires patch_body_json (stringified JSON)');
+            }
+            if (payload.source_ref && !isValidULID(payload.source_ref)) {
+                errors.push('patch.proposed source_ref must be a valid ULID if provided');
+            }
+            break;
+            
+        case 'patch.validate':
+            if (!payload.validated_by || typeof payload.validated_by !== 'string') {
+                errors.push('patch.validate requires validated_by (string)');
+            }
+            if (payload.validation_notes_json !== undefined) {
+                if (typeof payload.validation_notes_json !== 'string') {
+                    try {
+                        JSON.parse(payload.validation_notes_json);
+                    } catch (_) {
+                        errors.push('patch.validate validation_notes_json must be valid JSON if string');
+                    }
+                }
+            }
+            break;
+            
+        case 'patch.activate':
+            // No additional required fields
+            break;
+            
+        case 'patch.deactivate':
+        case 'patch.needs_revalidation':
+            // No additional required fields
+            break;
+            
+        case 'patch.revalidate':
+            if (payload.validation_result && !['valid', 'invalid'].includes(payload.validation_result)) {
+                errors.push('patch.revalidate validation_result must be "valid" or "invalid"');
+            }
+            if (payload.validation_result === 'valid' && !payload.validated_by) {
+                errors.push('patch.revalidate requires validated_by when result is "valid"');
+            }
+            break;
+            
+        case 'patch.revert':
+            if (!payload.reverted_by || typeof payload.reverted_by !== 'string') {
+                errors.push('patch.revert requires reverted_by (string)');
+            }
+            if (payload.revert_reason !== undefined && payload.revert_reason !== null && typeof payload.revert_reason !== 'string') {
+                errors.push('patch.revert revert_reason must be a string if provided');
+            }
+            break;
+            
+        case 'patch.supersede':
+            if (!payload.superseded_by_patch_id || !isValidULID(payload.superseded_by_patch_id)) {
+                errors.push('patch.supersede requires superseded_by_patch_id (valid ULID)');
+            }
+            break;
+            
+        case 'env.health_checked':
+            if (!payload.health_status || !ENV_HEALTH_STATUSES[ENV_HEALTH_STATUSES.HEALTHY] && 
+                !ENV_HEALTH_STATUSES.DEGRADED && !ENV_HEALTH_STATUSES.UNHEALTHY && !ENV_HEALTH_STATUSES.UNKNOWN) {
+                errors.push('env.health_checked requires health_status (one of: healthy, degraded, unhealthy, unknown)');
+            }
+            if (payload.health_data_json !== undefined) {
+                try {
+                    JSON.parse(payload.health_data_json || '{}');
+                } catch (_) {
+                    errors.push('env.health_checked health_data_json must be valid JSON if string');
+                }
+            }
+            break;
+            
+        case 'env.health_changed':
+            if (!payload.health_status || !['degraded', 'unhealthy'].includes(payload.health_status)) {
+                errors.push('env.health_changed requires health_status (degraded or unhealthy)');
+            }
+            if (payload.reason && typeof payload.reason !== 'string') {
+                errors.push('env.health_changed reason must be a string if provided');
+            }
+            if (payload.affected_files && !Array.isArray(payload.affected_files)) {
+                errors.push('env.health_changed affected_files must be an array if provided');
+            }
+            break;
+            
+        default:
+            // Unknown patch event type will be caught by event type validation
+            break;
+    }
+    
+    return { valid: errors.length === 0, errors };
+}
+
+/**
  * Validate recommendation.* event payload (G4)
  * @param {string} eventType - recommendation.* event type
  * @param {Object|null} payload - parsed payload object
@@ -826,6 +1010,9 @@ module.exports = {
     validateRecommendationStateTransition,
     validateTaskEventPayload,
     validateRecommendationEventPayload,
+    validatePatchEventPayload,
+    validatePatchStatus,
+    validateEnvHealthStatus,
     validateRawEvent,
     validateBoundaryRelation,
     validateRPCRequest,
@@ -844,5 +1031,8 @@ module.exports = {
     SPARK_EVENT_TYPES,
     OVERREACH_SEVERITIES,
     PRIVILEGE_USER_DECISIONS,
-    DIVERGENCE_CATEGORIES
+    DIVERGENCE_CATEGORIES,
+    PATCH_EVENT_TYPES,
+    PATCH_STATUSES,
+    ENV_HEALTH_STATUSES
 };
