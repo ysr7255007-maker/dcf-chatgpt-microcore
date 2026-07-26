@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DCF Surface — 回看</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+        background: #f4f5f7; color: #24292f; line-height: 1.6;
+    }
+    .container { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
+    header, .panel {
+        background: #fff; border: 1px solid #e1e4e8; border-radius: 8px;
+        padding: 20px; margin-bottom: 16px;
+    }
+    h1 { font-size: 20px; margin-bottom: 4px; }
+    .sub { color: #656d76; font-size: 13px; }
+    .row { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+    input[type=text] {
+        flex: 1; min-width: 240px; padding: 8px 10px;
+        border: 1px solid #d0d7de; border-radius: 6px; font-size: 14px;
+        font-family: ui-monospace, monospace;
+    }
+    button {
+        padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer;
+        font-size: 14px; background: #0969da; color: #fff;
+    }
+    button.secondary { background: #6e7781; }
+    button:disabled { opacity: .5; cursor: default; }
+    .panel-title { font-size: 15px; font-weight: 600; margin-bottom: 12px; }
+    .stats { display: flex; gap: 12px; flex-wrap: wrap; }
+    .stat { background: #f6f8fa; border-radius: 6px; padding: 10px 18px; text-align: center; }
+    .stat b { display: block; font-size: 22px; color: #0969da; }
+    .stat span { font-size: 12px; color: #656d76; }
+    .stat.bad b { color: #cf222e; }
+    .boundary { margin-top: 14px; padding: 12px; border-radius: 6px; background: #ddf4ff; border: 1px solid #b6e3ff; }
+    .boundary .state { font-weight: 700; }
+    .b-NOT_OBSERVE { color: #cf222e; }
+    .b-OBSERVE_CURRENT_ONLY { color: #9a6700; }
+    .b-OBSERVE_AND_ARCHIVE { color: #1a7f37; }
+    .b-unknown { color: #656d76; }
+    .boundary .row { margin-top: 10px; }
+    .boundary button { font-size: 12px; padding: 6px 12px; background: #fff; color: #24292f; border: 1px solid #d0d7de; }
+    .boundary button.active { background: #0969da; color: #fff; border-color: #0969da; }
+    .gap {
+        border-left: 4px solid #cf222e; background: #fff1f0;
+        padding: 10px 14px; margin: 10px 0; border-radius: 0 6px 6px 0;
+        font-size: 13px;
+    }
+    .gap code { font-family: ui-monospace, monospace; }
+    .nogap {
+        border-left: 4px solid #1a7f37; background: #f0fff4;
+        padding: 10px 14px; margin: 10px 0; border-radius: 0 6px 6px 0; font-size: 13px;
+    }
+    .msg {
+        border: 1px solid #e1e4e8; border-radius: 8px; padding: 12px 14px; margin-bottom: 10px;
+    }
+    .msg.user { background: #fafbfc; }
+    .msg.assistant { background: #fff; }
+    .msg-head { display: flex; gap: 10px; align-items: baseline; font-size: 12px; color: #656d76; flex-wrap: wrap; margin-bottom: 6px; }
+    .role { font-weight: 700; font-size: 13px; }
+    .role.user { color: #0969da; }
+    .role.assistant { color: #8250df; }
+    .etype { background: #f6f8fa; border-radius: 4px; padding: 1px 6px; font-family: ui-monospace, monospace; }
+    .eid { font-family: ui-monospace, monospace; }
+    .msg-text { white-space: pre-wrap; word-break: break-word; font-size: 14px; }
+    .raw { margin-top: 6px; font-size: 12px; }
+    .raw pre {
+        background: #f6f8fa; border-radius: 6px; padding: 8px; overflow-x: auto;
+        font-size: 11px; margin-top: 4px;
+    }
+    .err { background: #fff1f0; border: 1px solid #ffccc7; color: #cf222e; padding: 12px; border-radius: 6px; }
+    .loading { text-align: center; color: #656d76; padding: 30px; }
+    details summary { cursor: pointer; color: #656d76; }
+</style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>DCF Surface — 对话回看</h1>
+        <div class="sub">数据来源：Companion Core（<span id="companionUrl"></span>）。缺口、边界、来路均如实展示。</div>
+        <div class="row">
+            <input type="text" id="sourceIdInput" placeholder="source_id（26 位 ULID）">
+            <button id="loadBtn">加载</button>
+            <button id="sourcesBtn" class="secondary">Companion 状态</button>
+        </div>
+    </header>
+    <div id="main"></div>
+</div>
+
+<script>
+'use strict';
+
+const COMPANION_URL = 'http://127.0.0.1:8472';
+document.getElementById('companionUrl').textContent = COMPANION_URL;
+
+const BOUNDARY_STATES = ['NOT_OBSERVE', 'OBSERVE_CURRENT_ONLY', 'OBSERVE_AND_ARCHIVE'];
+const BOUNDARY_LABELS = {
+    NOT_OBSERVE: '不读取',
+    OBSERVE_CURRENT_ONLY: '只用于当前',
+    OBSERVE_AND_ARCHIVE: '允许归档',
+    unknown: '未知（尚无边界事件，默认：只用于当前）'
+};
+
+const ENCODING = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+function generateULID() {
+    let time = Date.now(), ts = '';
+    for (let i = 0; i < 10; i++) { ts = ENCODING[time % 32] + ts; time = Math.floor(time / 32); }
+    const bytes = new Uint8Array(16); crypto.getRandomValues(bytes);
+    let rnd = '';
+    for (let i = 0; i < 16; i++) rnd += ENCODING[bytes[i] & 31];
+    return ts + rnd;
+}
+
+let currentSourceId = null;
+let currentBoundary = 'unknown';
+
+function el(id) { return document.getElementById(id); }
+function esc(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function rpcGet(path) {
+    const res = await fetch(COMPANION_URL + path);
+    const body = await res.json();
+    if (!res.ok || body.error) {
+        throw new Error((body.error && body.error.message) || ('HTTP ' + res.status));
+    }
+    return body.result;
+}
+
+async function rpcPost(path, payload) {
+    const res = await fetch(COMPANION_URL + path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    const body = await res.json();
+    if (!res.ok || body.error) {
+        throw new Error((body.error && body.error.message) || ('HTTP ' + res.status));
+    }
+    return body.result;
+}
+
+function parsePayload(e) {
+    if (e.payload_json == null) return null;
+    if (typeof e.payload_json === 'object') return e.payload_json;
+    try { return JSON.parse(e.payload_json); } catch (err) { return { _raw: e.payload_json }; }
+}
+
+/**
+ * 显性缺口检测：按 sequence_number 排序后找出序列中断。
+ * 首事件之前的缺口（min seq > 1）同样如实显示。
+ */
+function detectGaps(events) {
+    const seqs = events
+        .map(e => e.sequence_number)
+        .filter(n => Number.isInteger(n))
+        .sort((a, b) => a - b);
+    const gaps = [];
+    let prev = 0; // 序列号从 1 开始
+    for (const seq of seqs) {
+        if (seq > prev + 1) {
+            gaps.push({ from: prev + 1, to: seq - 1, count: seq - 1 - prev });
+        }
+        if (seq > prev) prev = seq;
+    }
+    return gaps;
+}
+
+/** 从事件流推导当前边界状态（companion 是唯一事实源） */
+function deriveBoundary(events) {
+    const boundaryEvents = events
+        .filter(e => e.event_type === 'system.boundary.updated')
+        .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+    if (boundaryEvents.length === 0) return 'unknown';
+    const payload = parsePayload(boundaryEvents[0]);
+    return (payload && BOUNDARY_STATES.includes(payload.boundary_state))
+        ? payload.boundary_state : 'unknown';
+}
+
+async function loadEvents() {
+    const sourceId = el('sourceIdInput').value.trim();
+    if (!/^[0-9A-HJKMNP-TV-Z]{26}$/.test(sourceId)) {
+        el('main').innerHTML = '<div class="panel"><div class="err">source_id 必须是 26 位 ULID（Crockford Base32）</div></div>';
+        return;
+    }
+    currentSourceId = sourceId;
+    el('main').innerHTML = '<div class="panel"><div class="loading">正在从 companion 加载…</div></div>';
+    try {
+        const result = await rpcGet('/rpc/events/query?source_id=' + encodeURIComponent(sourceId) + '&limit=500&orderBy=ASC');
+        render(result.events || [], sourceId);
+    } catch (err) {
+        el('main').innerHTML = '<div class="panel"><div class="err">加载失败：' + esc(err.message) +
+            '<br>请确认 Companion Core 正在 ' + COMPANION_URL + ' 运行（node seed/companion/index.js）</div></div>';
+    }
+}
+
+function render(events, sourceId) {
+    const sorted = [...events].sort((a, b) => {
+        const sa = Number.isInteger(a.sequence_number) ? a.sequence_number : Infinity;
+        const sb = Number.isInteger(b.sequence_number) ? b.sequence_number : Infinity;
+        if (sa !== sb) return sa - sb;
+        return (a.created_at || '').localeCompare(b.created_at || '');
+    });
+    const gaps = detectGaps(sorted);
+    const missing = gaps.reduce((s, g) => s + g.count, 0);
+    currentBoundary = deriveBoundary(sorted);
+
+    let html = '<div class="panel">';
+    html += '<div class="panel-title">统计</div><div class="stats">';
+    html += '<div class="stat"><b>' + sorted.length + '</b><span>已入库事件</span></div>';
+    html += '<div class="stat' + (gaps.length ? ' bad' : '') + '"><b>' + gaps.length + '</b><span>缺口区间</span></div>';
+    html += '<div class="stat' + (missing ? ' bad' : '') + '"><b>' + missing + '</b><span>缺失事件数</span></div>';
+    html += '</div>';
+
+    // 三态边界显示 + 切换
+    html += '<div class="boundary">当前边界：<span class="state b-' + currentBoundary + '">' +
+        esc(BOUNDARY_LABELS[currentBoundary] || currentBoundary) + '</span>';
+    html += '<div class="row">';
+    for (const s of BOUNDARY_STATES) {
+        html += '<button data-boundary="' + s + '"' + (s === currentBoundary ? ' class="active"' : '') + '>' +
+            esc(BOUNDARY_LABELS[s]) + '</button>';
+    }
+    html += '</div><div class="sub" style="margin-top:6px">切换会作为 system.boundary.updated 事件写入 companion；扩展侧在下一个同步周期（≤30s）生效。</div></div>';
+    html += '</div>';
+
+    // 缺口
+    html += '<div class="panel"><div class="panel-title">缺口（' + gaps.length + '）</div>';
+    if (gaps.length === 0) {
+        html += '<div class="nogap">无缺口：序列号连续完整。</div>';
+    } else {
+        gaps.forEach((g, i) => {
+            html += '<div class="gap">缺口 #' + (i + 1) + '：序列 <code>' + g.from + ' – ' + g.to +
+                '</code>，缺失 <b>' + g.count + '</b> 个事件。事件在送达 companion 前丢失（outbox 逐出 / 断连 / 扩展未运行），如实显示，不做推测补齐。</div>';
+        });
+    }
+    html += '</div>';
+
+    // 对话时间线
+    html += '<div class="panel"><div class="panel-title">对话（按 sequence_number 排序）</div>';
+    if (sorted.length === 0) {
+        html += '<div class="sub">该 source_id 下暂无事件。</div>';
+    }
+    for (const e of sorted) {
+        const payload = parsePayload(e);
+        const role = payload && payload.role ? payload.role : '';
+        const text = payload && typeof payload.text === 'string' ? payload.text : null;
+        html += '<div class="msg ' + esc(role) + '">';
+        html += '<div class="msg-head">';
+        if (role) html += '<span class="role ' + esc(role) + '">' + esc(role) + '</span>';
+        html += '<span class="etype">' + esc(e.event_type || '') + '</span>';
+        html += '<span>seq ' + (Number.isInteger(e.sequence_number) ? e.sequence_number : '—') + '</span>';
+        html += '<span class="eid">' + esc(e.event_id || '') + '</span>';
+        html += '<span>' + esc(e.created_at || '') + '</span>';
+        html += '<span>来路 source: <span class="eid">' + esc(e.source_id || '') + '</span></span>';
+        html += '</div>';
+        if (text !== null) {
+            html += '<div class="msg-text">' + esc(text) + '</div>';
+        }
+        html += '<div class="raw"><details><summary>payload</summary><pre>' +
+            esc(JSON.stringify(payload, null, 2)) + '</pre></details></div>';
+        html += '</div>';
+    }
+    html += '</div>';
+
+    el('main').innerHTML = html;
+
+    // 绑定边界切换按钮
+    document.querySelectorAll('button[data-boundary]').forEach(btn => {
+        btn.addEventListener('click', () => setBoundary(btn.getAttribute('data-boundary')));
+    });
+}
+
+/** 边界切换：作为边界事件写入 companion（唯一事实写入者），随后重载 */
+async function setBoundary(state) {
+    if (!currentSourceId) return;
+    try {
+        await rpcPost('/rpc/events/ingest', {
+            id: 'surface-boundary-' + Date.now(),
+            event: {
+                event_id: generateULID(),
+                source_id: currentSourceId,
+                event_type: 'system.boundary.updated',
+                payload_json: { boundary_state: state, set_by: 'surface', scope: 'conversation' },
+                created_at: new Date().toISOString()
+            }
+        });
+        await loadEvents();
+    } catch (err) {
+        alert('边界切换写入失败：' + err.message);
+    }
+}
+
+async function showCompanionStatus() {
+    el('main').innerHTML = '<div class="panel"><div class="loading">查询 companion…</div></div>';
+    try {
+        const [health, stats] = await Promise.all([rpcGet('/rpc/health'), rpcGet('/rpc/stats')]);
+        el('main').innerHTML = '<div class="panel"><div class="panel-title">Companion 状态</div><pre>' +
+            esc(JSON.stringify({ health, stats }, null, 2)) + '</pre></div>';
+    } catch (err) {
+        el('main').innerHTML = '<div class="panel"><div class="err">companion 不可达：' + esc(err.message) + '</div></div>';
+    }
+}
+
+el('loadBtn').addEventListener('click', loadEvents);
+el('sourcesBtn').addEventListener('click', showCompanionStatus);
+el('sourceIdInput').addEventListener('keydown', e => { if (e.key === 'Enter') loadEvents(); });
+
+const params = new URLSearchParams(location.search);
+if (params.get('source_id')) {
+    el('sourceIdInput').value = params.get('source_id');
+    loadEvents();
+}
+</script>
+</body>
+</html>

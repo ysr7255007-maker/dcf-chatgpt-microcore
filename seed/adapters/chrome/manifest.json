@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "DCF Chrome Adapter - G1",
+  "version": "0.1.0-g1",
+  "description": "G1 Chrome adapter for observing ChatGPT conversations and sending events to Companion Core",
+  "permissions": [
+    "storage",
+    "alarms",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "http://127.0.0.1:8472/*",
+    "http://localhost:8472/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://chatgpt.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "action": {
+    "default_title": "DCF Chrome Adapter"
+  },
+  "minimum_chrome_version": "102"
+}
