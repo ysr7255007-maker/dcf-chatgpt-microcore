@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>G2 Surface — 全域对话回看</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+        background: #f4f5f7; color: #24292f; line-height: 1.6;
+        height: 100vh; overflow: hidden;
+    }
+    
+    /* 离线横幅 */
+    .offline-banner {
+        position: fixed; top: 0; left: 0; right: 0;
+        background: #cf222e; color: #fff;
+        text-align: center; padding: 8px;
+        font-size: 13px; font-weight: 600;
+        z-index: 10000; display: none;
+    }
+    .offline-banner.visible { display: block; }
+    
+    /* 主容器：全屏宽度，最大 1200px */
+    .container {
+        display: flex; height: calc(100vh - 20px);
+        margin: 10px auto; max-width: 1200px;
+        gap: 12px; padding: 0 16px;
+    }
+    
+    /* 左侧导航栏 */
+    .sidebar {
+        width: 380px; min-width: 320px;
+        background: #fff; border: 1px solid #e1e4e8;
+        border-radius: 8px; display: flex; flex-direction: column;
+        overflow: hidden;
+    }
+    
+    /* 右侧详情区 */
+    .detail-panel {
+        flex: 1; min-width: 0;
+        background: #fff; border: 1px solid #e1e4e8;
+        border-radius: 8px; overflow: hidden;
+        display: flex; flex-direction: column;
+    }
+    
+    /* 顶部区域（侧边栏）*/
+    .sidebar-header {
+        padding: 16px; border-bottom: 1px solid #e1e4e8;
+        background: #fafbfc;
+    }
+    
+    .sidebar-title {
+        font-size: 16px; font-weight: 700; margin-bottom: 8px;
+        display: flex; align-items: center; gap: 8px;
+    }
+    .sidebar-title b { color: #0969da; }
+    
+    .sub { font-size: 12px; color: #656d76; margin-bottom: 10px; }
+    
+    /* 搜索框 */
+    .search-box {
+        display: flex; gap: 6px;
+    }
+    .search-box input {
+        flex: 1; padding: 8px 10px;
+        border: 1px solid #d0d7de; border-radius: 6px;
+        font-size: 14px; font-family: ui-monospace, monospace;
+    }
+    .search-box button {
+        padding: 8px 16px; border: none; border-radius: 6px;
+        cursor: pointer; font-size: 14px; background: #0969da; color: #fff;
+    }
+    .search-box button:hover { background: #0969da; opacity: 0.9; }
+    
+    /* 边界状态条 */
+    .boundary-bar {
+        padding: 10px 16px; border-bottom: 1px solid #e1e4e8;
+        background: #ddf4ff; display: flex; justify-content: space-between; align-items: center;
+    }
+    .boundary-label { font-size: 12px; color: #586069; }
+    .boundary-state {
+        font-weight: 700; font-size: 13px;
+        padding: 4px 10px; border-radius: 4px;
+    }
+    .b-NOT_OBSERVE { background: #ffeef0; color: #cf222e; }
+    .b-OBSERVE_CURRENT_ONLY { background: #fff8c5; color: #9a6700; }
+    .b-OBSERVE_AND_ARCHIVE { background: #dafbe1; color: #1a7f37; }
+    .b-unknown { background: #f6f8fa; color: #656d76; }
+    
+    .boundary-select {
+        padding: 4px 8px; border: 1px solid #d0d7de;
+        border-radius: 4px; font-size: 12px; background: #fff;
+    }
+    
+    /* 内容区域 */
+    .sidebar-content {
+        flex: 1; overflow-y: auto; padding: 12px;
+        border-bottom: 1px solid #e1e4e8;
+    }
+    
+    .detail-content {
+        flex: 1; overflow-y: auto; padding: 16px;
+        background: #fafbfc;
+    }
+    
+    /* 统计面板 */
+    .stats { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    .stat {
+        background: #f6f8fa; border-radius: 6px; padding: 8px 12px;
+        text-align: center; flex: 1; min-width: 80px;
+    }
+    .stat b { display: block; font-size: 18px; color: #0969da; }
+    .stat span { font-size: 11px; color: #656d76; }
+    .stat.bad b { color: #cf222e; }
+    
+    /* 缺口条 */
+    .gap-bar {
+        border-left: 4px solid #cf222e; background: #fff1f0;
+        padding: 8px 10px; margin: 6px 0; border-radius: 0 4px 4px 0;
+        font-size: 12px; display: flex; justify-content: space-between; align-items: center;
+    }
+    .gap-bar code { font-family: ui-monospace, monospace; }
+    .gap-bar .view-btn {
+        padding: 2px 8px; font-size: 11px;
+        background: #fff; border: 1px solid #d0d7de;
+        border-radius: 4px; cursor: pointer; text-decoration: underline;
+    }
+    
+    /* 无缺口提示 */
+    .nogap {
+        border-left: 4px solid #1a7f37; background: #f0fff4;
+        padding: 8px 10px; margin: 6px 0; border-radius: 0 4px 4px 0;
+        font-size: 12px; color: #1a7f37;
+    }
+    
+    /* 搜索结果列表 */
+    .result-list { list-style: none; }
+    .result-item {
+        padding: 10px 12px; border: 1px solid #e1e4e8;
+        border-radius: 6px; margin-bottom: 8px;
+        cursor: pointer; transition: all 0.15s ease;
+    }
+    .result-item:hover {
+        border-color: #0969da; background: #f0f6fc;
+        transform: translateX(2px);
+    }
+    .result-item.selected {
+        border-color: #0969da; background: #dbedff;
+        box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.2);
+    }
+    .result-item h4 {
+        font-size: 13px; font-weight: 600;
+        margin-bottom: 4px; display: flex; align-items: center; gap: 6px;
+    }
+    .result-item .etype {
+        background: #e1e4e8; border-radius: 3px; padding: 2px 6px;
+        font-size: 11px; font-family: ui-monospace, monospace;
+    }
+    .result-item .meta {
+        font-size: 11px; color: #656d76;
+        display: flex; gap: 10px; flex-wrap: wrap;
+    }
+    .result-item .source { font-family: ui-monospace, monospace; }
+    .result-item .summary {
+        font-size: 12px; color: #24292f;
+        margin-top: 6px; white-space: pre-wrap; word-break: break-word;
+        max-height: 60px; overflow: hidden; text-overflow: ellipsis;
+    }
+    .result-item.hidden-body { opacity: 0.6; }
+    .result-item.hidden-body .summary { display: none; }
+    .result-item.hidden-body .empty-placeholder {
+        display: block; font-size: 12px; color: #9a9a9a;
+        font-style: italic; text-align: center; padding: 6px 0;
+    }
+    
+    /* 卡片架 */
+    .cards-grid {
+        display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 12px; margin-top: 12px;
+    }
+    .card {
+        border: 1px solid #e1e4e8; border-radius: 6px;
+        padding: 12px; background: #fff;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        transition: all 0.15s ease;
+    }
+    .card:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+        border-color: #0969da;
+    }
+    .card-header {
+        display: flex; justify-content: space-between; align-items: flex-start;
+        margin-bottom: 8px;
+    }
+    .card-type {
+        font-size: 11px; font-weight: 700; text-transform: uppercase;
+        background: #0969da; color: #fff;
+        padding: 3px 8px; border-radius: 4px;
+    }
+    .card-title { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+    .card-body {
+        font-size: 13px; color: #24292f;
+        white-space: pre-wrap; word-break: break-word;
+        margin-bottom: 10px; max-height: 120px; overflow-y: auto;
+    }
+    .card-actions {
+        display: flex; gap: 6px; justify-content: flex-end;
+        border-top: 1px solid #e1e4e8; padding-top: 8px;
+    }
+    .card-actions button {
+        padding: 6px 12px; border: none; border-radius: 4px;
+        cursor: pointer; font-size: 12px; font-weight: 600;
+    }
+    .btn-launch { background: #2da44e; color: #fff; }
+    .btn-launch:hover { background: #2da44e; opacity: 0.9; }
+    .btn-details {
+        background: #f6f8fa; color: #24292f;
+        border: 1px solid #d0d7de;
+    }
+    
+    /* 详情区样式 */
+    .detail-header {
+        padding: 16px; border-bottom: 1px solid #e1e4e8;
+        background: #fafbfc;
+    }
+    .detail-header h3 { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+    .detail-meta { font-size: 12px; color: #656d76; display: flex; gap: 12px; flex-wrap: wrap; }
+    .detail-meta span { display: flex; align-items: center; gap: 4px; }
+    
+    .detail-body {
+        padding: 16px; font-family: ui-monospace, monospace;
+        font-size: 13px; white-space: pre-wrap; word-break: break-word;
+        background: #fff;
+    }
+    .detail-body.empty {
+        display: flex; align-items: center; justify-content: center;
+        height: 100%; color: #656d76; font-family: -apple-system, sans-serif;
+        font-size: 14px; font-style: italic;
+    }
+    
+    /* 加载和错误状态 */
+    .loading {
+        text-align: center; color: #656d76; padding: 40px;
+        font-size: 14px;
+    }
+    .error-msg {
+        background: #fff1f0; border: 1px solid #ffccc7;
+        color: #cf222e; padding: 12px; border-radius: 6px;
+        font-size: 13px;
+    }
+    
+    /* Modal */
+    .modal-overlay {
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.5); z-index: 9999;
+        display: none; align-items: center; justify-content: center;
+    }
+    .modal-overlay.visible { display: flex; }
+    .modal {
+        background: #fff; border-radius: 8px;
+        padding: 20px; max-width: 500px; width: 90%;
+        max-height: 80vh; overflow-y: auto;
+        box-shadow: 0 12px 48px rgba(0,0,0,0.24);
+    }
+    .modal h3 { font-size: 16px; font-weight: 700; margin-bottom: 12px; }
+    .modal pre {
+        background: #f6f8fa; border: 1px solid #e1e4e8;
+        border-radius: 6px; padding: 12px; overflow-x: auto;
+        font-size: 12px; margin-bottom: 16px;
+    }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+    .modal-actions button {
+        padding: 8px 16px; border: none; border-radius: 6px;
+        cursor: pointer; font-size: 14px;
+    }
+    .btn-confirm { background: #2da44e; color: #fff; }
+    .btn-cancel { background: #f6f8fa; color: #24292f; border: 1px solid #d0d7de; }
+    
+    /* 滚动条样式 */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #f6f8fa; }
+    ::-webkit-scrollbar-thumb { background: #adbac7; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #8696a6; }
+</style>
+</head>
+<body>
+<!-- 离线横幅 -->
+<div id="offlineBanner" class="offline-banner">⚠ Companion 当前离线 · 自动重连中...</div>
+
+<div class="container">
+    <!-- 左侧导航栏 -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-title">
+                📖 <b>G2 Surface</b> — 全域对话回看
+            </div>
+            <div class="sub">数据来源：<span id="companionUrl">http://127.0.0.1:8472</span></div>
+            
+            <!-- 搜索框 -->
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="关键词搜索 (FTS5)...">
+                <button id="searchBtn">搜索</button>
+            </div>
+        </div>
+        
+        <!-- 边界状态条 -->
+        <div class="boundary-bar">
+            <div>
+                <div class="boundary-label">当前边界状态</div>
+                <div id="boundaryState" class="boundary-state b-unknown">未知</div>
+            </div>
+            <select id="boundarySelect" class="boundary-select" disabled>
+                <option value="unknown" hidden>—</option>
+                <option value="NOT_OBSERVE">不读取</option>
+                <option value="OBSERVE_CURRENT_ONLY">只用于当前</option>
+                <option value="OBSERVE_AND_ARCHIVE">允许归档</option>
+            </select>
+        </div>
+        
+        <!-- 搜索结果 / 卡片架 -->
+        <div class="sidebar-content" id="sidebarContent">
+            <div class="loading">请输入关键词搜索或输入 source_id 查看详情</div>
+        </div>
+    </aside>
+    
+    <!-- 右侧详情区 -->
+    <section class="detail-panel">
+        <div class="detail-header">
+            <h3 id="detailTitle">详情</h3>
+            <div class="detail-meta" id="detailMeta"></div>
+        </div>
+        <div class="detail-body empty" id="detailBody">
+            选择一个事件查看详情
+        </div>
+    </section>
+</div>
+
+<!-- 发射确认 Modal -->
+<div id="launchModal" class="modal-overlay">
+    <div class="modal">
+        <h3>准备发射到对话</h3>
+        <p style="font-size:13px;color:#656d76;margin-bottom:12px;">
+            以下内容将被格式化为 ChatGPT message 并复制到剪贴板：
+        </p>
+        <pre id="launchPayload"></pre>
+        <div class="modal-actions">
+            <button class="btn-cancel" id="cancelLaunchBtn">取消</button>
+            <button class="btn-confirm" id="confirmLaunchBtn">复制并关闭</button>
+        </div>
+    </div>
+</div>
+
+<script>
+'use strict';
+
+const COMPANION_URL = 'http://127.0.0.1:8472';
+document.getElementById('companionUrl').textContent = COMPANION_URL;
+
+const BOUNDARY_STATES = ['NOT_OBSERVE', 'OBSERVE_CURRENT_ONLY', 'OBSERVE_AND_ARCHIVE'];
+const BOUNDARY_LABELS = {
+    NOT_OBSERVE: '不读取',
+    OBSERVE_CURRENT_ONLY: '只用于当前',
+    OBSERVE_AND_ARCHIVE: '允许归档',
+    unknown: '未知'
+};
+
+// Global state
+let currentBoundary = 'unknown';
+let currentSourceId = null;
+let searchResults = [];
+let selectedEventId = null;
+let isOnline = true;
+let pendingLaunchCard = null;
+
+// DOM elements
+const el = id => document.getElementById(id);
+const offlineBanner = el('offlineBanner');
+const sidebarContent = el('sidebarContent');
+const detailTitle = el('detailTitle');
+const detailMeta = el('detailMeta');
+const detailBody = el('detailBody');
+const boundaryState = el('boundaryState');
+const boundarySelect = el('boundarySelect');
+
+/**
+ * Generate ULID
+ */
+function generateULID() {
+    const ENCODING = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+    let time = Date.now(), ts = '';
+    for (let i = 0; i < 10; i++) {
+        ts = ENCODING[time % 32] + ts;
+        time = Math.floor(time / 32);
+    }
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    let rnd = '';
+    for (let i = 0; i < 16; i++) rnd += ENCODING[bytes[i] & 31];
+    return ts + rnd;
+}
+
+/**
+ * Escaping
+ */
+function esc(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[c]);
+}
+
+/**
+ * RPC calls
+ */
+async function rpcGet(path) {
+    const res = await fetch(COMPANION_URL + path);
+    const body = await res.json();
+    if (!res.ok || body.error) {
+        throw new Error((body.error && body.error.message) || ('HTTP ' + res.status));
+    }
+    return body.result;
+}
+
+async function rpcPost(path, payload) {
+    const res = await fetch(COMPANION_URL + path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    const body = await res.json();
+    if (!res.ok || body.error) {
+        throw new Error((body.error && body.error.message) || ('HTTP ' + res.status));
+    }
+    return body.result;
+}
+
+/**
+ * Parse payload
+ */
+function parsePayload(e) {
+    if (e.payload_json == null) return null;
+    if (typeof e.payload_json === 'object') return e.payload_json;
+    try { return JSON.parse(e.payload_json); }
+    catch (err) { return { _raw: e.payload_json }; }
+}
+
+/**
+ * Detect gaps in sequence numbers
+ */
+function detectGaps(events) {
+    const seqs = events
+        .map(e => e.sequence_number)
+        .filter(n => Number.isInteger(n))
+        .sort((a, b) => a - b);
+    const gaps = [];
+    let prev = 0;
+    for (const seq of seqs) {
+        if (seq > prev + 1) {
+            gaps.push({ from: prev + 1, to: seq - 1, count: seq - 1 - prev });
+        }
+        if (seq > prev) prev = seq;
+    }
+    return gaps;
+}
+
+/**
+ * Derive boundary from events
+ */
+function deriveBoundary(events) {
+    const boundaryEvents = events
+        .filter(e => e.event_type === 'system.boundary.updated')
+        .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+    if (boundaryEvents.length === 0) return 'unknown';
+    const payload = parsePayload(boundaryEvents[0]);
+    return (payload && BOUNDARY_STATES.includes(payload.boundary_state))
+        ? payload.boundary_state : 'unknown';
+}
+
+/**
+ * Update boundary UI
+ */
+function updateBoundaryUI(state) {
+    currentBoundary = state;
+    boundaryState.textContent = BOUNDARY_LABELS[state] || state;
+    boundaryState.className = 'boundary-state ' + (state === 'unknown' ? 'b-unknown' : 'b-' + state);
+    boundarySelect.value = state;
+    boundarySelect.disabled = state === 'unknown';
+}
+
+/**
+ * Hide body when NOT_OBSERVE
+ */
+function shouldHideBody(event, state) {
+    if (state !== 'NOT_OBSERVE') return false;
+    // Always hide body except boundary-setting events
+    const boundaryTypes = [
+        'system.boundary.created',
+        'system.boundary.updated',
+        'system.boundary.transferred'
+    ];
+    return !boundaryTypes.includes(event.event_type);
+}
+
+/**
+ * Search events
+ */
+async function searchEvents(keyword) {
+    if (!keyword || keyword.trim().length === 0) {
+        sidebarContent.innerHTML = '<div class="loading">请输入关键词</div>';
+        return;
+    }
+    
+    sidebarContent.innerHTML = '<div class="loading">正在搜索…</div>';
+    
+    try {
+        // Try q parameter first, fallback to fetching all and filtering
+        let result;
+        try {
+            result = await rpcGet(`/rpc/events/query?q=${encodeURIComponent(keyword)}&limit=100`);
+        } catch (err) {
+            // Fallback: fetch all with limit and filter client-side
+            console.log('q parameter not supported, using fallback filter');
+            result = await rpcGet('/rpc/events/query?limit=500&orderBy=ASC');
+            const kw = keyword.toLowerCase();
+            result.events = result.events.filter(e => {
+                const payload = parsePayload(e);
+                const str = JSON.stringify(payload).toLowerCase();
+                return str.includes(kw);
+            });
+        }
+        
+        searchResults = result.events || [];
+        
+        // Derive boundary + active source from results (companion is fact source)
+        if (searchResults.length > 0) {
+            currentSourceId = searchResults[0].source_id;
+            let derived = deriveBoundary(searchResults);
+            // Search results may not contain boundary events; derive from the
+            // active source's full event stream (companion is the fact source).
+            if (derived === 'unknown') {
+                try {
+                    const srcResult = await rpcGet('/rpc/events/query?source_id=' +
+                        encodeURIComponent(currentSourceId) + '&limit=500&orderBy=ASC');
+                    derived = deriveBoundary(srcResult.events || []);
+                } catch (e) { /* keep unknown */ }
+            }
+            updateBoundaryUI(derived);
+            boundarySelect.disabled = false;
+        }
+        
+        renderSearchResults(searchResults);
+        
+        // Extract cards
+        const cards = searchResults.filter(e => {
+            const payload = parsePayload(e);
+            return e.event_type === 'material.card' || 
+                   (payload && payload.type === 'card');
+        });
+        
+        if (cards.length > 0) {
+            renderCards(cards);
+        }
+        
+    } catch (err) {
+        sidebarContent.innerHTML = '<div class="error-msg">搜索失败：' + esc(err.message) + '</div>';
+        searchResults = [];
+    }
+}
+
+/**
+ * Render search results list
+ */
+function renderSearchResults(events) {
+    const sorted = [...events].sort((a, b) => {
+        const sa = Number.isInteger(a.sequence_number) ? a.sequence_number : Infinity;
+        const sb = Number.isInteger(b.sequence_number) ? b.sequence_number : Infinity;
+        if (sa !== sb) return sa - sb;
+        return (a.created_at || '').localeCompare(b.created_at || '');
+    });
+    
+    const gaps = detectGaps(sorted);
+    const missing = gaps.reduce((s, g) => s + g.count, 0);
+    
+    let html = '';
+    
+    // Statistics
+    html += '<div class="stats">';
+    html += '<div class="stat"><b>' + sorted.length + '</b><span>已匹配</span></div>';
+    html += '<div class="stat' + (gaps.length ? ' bad' : '') + '"><b>' + gaps.length + '</b><span>缺口区间</span></div>';
+    html += '<div class="stat' + (missing ? ' bad' : '') + '"><b>' + missing + '</b><span>缺失数</span></div>';
+    html += '</div>';
+    
+    // Gap bars
+    if (gaps.length > 0) {
+        gaps.forEach(g => {
+            html += '<div class="gap-bar">';
+            html += '<span>缺口：<code>' + g.from + ' – ' + g.to + '</code> (缺失' + g.count + '条)</span>';
+            html += '<span class="view-btn" data-gap="' + g.from + ',' + g.to + '">查看上下文</span>';
+            html += '</div>';
+        });
+    } else {
+        html += '<div class="nogap">✓ 序列完整，无缺口</div>';
+    }
+    
+    // Results list
+    html += '<ul class="result-list" style="margin-top:12px;">';
+    sorted.forEach(e => {
+        const payload = parsePayload(e);
+        const role = payload && payload.role ? payload.role : '';
+        const text = payload && typeof payload.text === 'string' ? payload.text : null;
+        const hidden = shouldHideBody(e, currentBoundary);
+        
+        html += '<li class="result-item ' + (hidden ? 'hidden-body' : '') + '" data-event-id="' + esc(e.event_id || '') + '">';
+        html += '<h4>';
+        if (role) html += '<span class="etype">' + esc(role) + '</span>';
+        html += '<span class="etype">' + esc(e.event_type || '') + '</span>';
+        html += '</h4>';
+        html += '<div class="meta">';
+        html += '<span>seq ' + (Number.isInteger(e.sequence_number) ? e.sequence_number : '—') + '</span>';
+        html += '<span>' + esc(e.created_at || '') + '</span>';
+        html += '<span class="source">source: ' + esc(e.source_id || '') + '</span>';
+        html += '</div>';
+        
+        if (hidden) {
+            html += '<div class="summary"></div>';
+            html += '<div class="empty-placeholder">🔒 正文被隐藏（边界状态：不读取）</div>';
+        } else {
+            html += '<div class="summary">' + esc(text || '(无正文)') + '</div>';
+        }
+        
+        html += '</li>';
+    });
+    html += '</ul>';
+    
+    if (sorted.length === 0) {
+        html = '<div class="loading">未找到匹配事件</div>';
+    }
+    
+    sidebarContent.innerHTML = html;
+    
+    // Bind events
+    document.querySelectorAll('.result-item').forEach(item => {
+        item.addEventListener('click', () => {
+            document.querySelectorAll('.result-item').forEach(i => i.classList.remove('selected'));
+            item.classList.add('selected');
+            const eventId = item.getAttribute('data-event-id');
+            selectedEventId = eventId;
+            const event = sorted.find(e => e.event_id === eventId);
+            if (event) renderDetail(event);
+        });
+    });
+    
+    document.querySelectorAll('.view-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const [from, to] = btn.getAttribute('data-gap').split(',').map(Number);
+            alert('缺口区间：序列 ' + from + ' – ' + to + '\n\n这些事件在送达 companion 前丢失（可能由于 outbox 逐出、断连或扩展未运行）。\nDCF 如实验证缺口，不做推测补齐。');
+        });
+    });
+}
+
+/**
+ * Render cards
+ */
+function renderCards(cards) {
+    if (cards.length === 0) return;
+    
+    let html = '<div style="margin-top:16px;padding-top:12px;border-top:1px solid #e1e4e8;"><div style="font-weight:700;margin-bottom:8px;">可复用卡片（' + cards.length + '）</div>';
+    html += '<div class="cards-grid">';
+    
+    cards.forEach(e => {
+        const payload = parsePayload(e);
+        const cardType = e.event_type === 'material.card' ? (payload.type || 'card') : payload.type || 'card';
+        const title = payload.title || payload.name || '未命名卡片';
+        const content = payload.content || payload.body || JSON.stringify(payload, null, 2);
+        
+        html += '<div class="card" data-event-id="' + esc(e.event_id || '') + '">';
+        html += '<div class="card-header">';
+        html += '<span class="card-type">' + esc(cardType) + '</span>';
+        html += '</div>';
+        html += '<div class="card-title">' + esc(title) + '</div>';
+        html += '<div class="card-body">' + esc(content) + '</div>';
+        html += '<div class="card-actions">';
+        html += '<button class="btn-details" data-event-id="' + esc(e.event_id || '') + '">详情</button>';
+        html += '<button class="btn-launch" data-event-id="' + esc(e.event_id || '') + '">发射</button>';
+        html += '</div>';
+        html += '</div>';
+    });
+    
+    html += '</div></div>';
+    
+    sidebarContent.insertAdjacentHTML('beforeend', html);
+    
+    document.querySelectorAll('.card .btn-launch').forEach(btn => {
+        btn.addEventListener('click', () => prepareLaunch(btn.getAttribute('data-event-id')));
+    });
+    
+    document.querySelectorAll('.card .btn-details').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const eventId = btn.getAttribute('data-event-id');
+            const event = cards.find(e => e.event_id === eventId);
+            if (event) {
+                document.querySelectorAll('.result-item').forEach(i => i.classList.remove('selected'));
+                selectedEventId = eventId;
+                renderDetail(event);
+            }
+        });
+    });
+}
+
+/**
+ * Render detail panel
+ */
+function renderDetail(event) {
+    const payload = parsePayload(event);
+    
+    detailTitle.textContent = '事件详情 · ' + esc(event.event_id || '').substring(0, 10);
+    
+    let metaHtml = '';
+    metaHtml += '<span>📝 <b>' + esc(event.event_type || '') + '</b></span>';
+    metaHtml += '<span>🔢 Seq: ' + (Number.isInteger(event.sequence_number) ? event.sequence_number : '—') + '</span>';
+    metaHtml += '<span>⏱️ ' + esc(event.created_at || '') + '</span>';
+    metaHtml += '<span>🔗 Source: <code>' + esc(event.source_id || '') + '</code></span>';
+    metaHtml += '<span>🆔 ID: <code>' + esc(event.event_id || '').substring(0, 16) + '…</code></span>';
+    detailMeta.innerHTML = metaHtml;
+    
+    if (shouldHideBody(event, currentBoundary)) {
+        detailBody.innerHTML = '<div class="empty">🔒 正文被隐藏（边界状态：不读取）<br><br>仅显示元数据信息。</div>';
+    } else {
+        detailBody.textContent = JSON.stringify(payload, null, 2);
+    }
+}
+
+/**
+ * Prepare launch to clipboard
+ */
+function prepareLaunch(eventId) {
+    const event = searchResults.find(e => e.event_id === eventId);
+    if (!event) return;
+    
+    const payload = parsePayload(event);
+    const message = {
+        role: 'user',
+        content: [
+            { type: 'text', text: JSON.stringify(payload, null, 2) }
+        ]
+    };
+    
+    pendingLaunchCard = { event, payload, message };
+    
+    el('launchPayload').textContent = JSON.stringify(message, null, 2);
+    el('launchModal').classList.add('visible');
+}
+
+/**
+ * Launch action
+ */
+async function launchToClipboard() {
+    if (!pendingLaunchCard) return;
+    
+    try {
+        await navigator.clipboard.writeText(JSON.stringify(pendingLaunchCard.message, null, 2));
+        el('launchModal').classList.remove('visible');
+        alert('✅ 已成功复制到剪贴板！\n\n你可以粘贴到 ChatGPT 对话框中。');
+        pendingLaunchCard = null;
+    } catch (err) {
+        alert('❌ 剪贴板写入失败：' + err.message);
+    }
+}
+
+/**
+ * Set boundary
+ */
+async function setBoundary(state) {
+    if (!currentSourceId && searchResults.length > 0) {
+        currentSourceId = searchResults[0].source_id;
+    }
+    
+    if (!currentSourceId) {
+        alert('请先选择一个 source_id 进行边界设置');
+        return;
+    }
+    
+    try {
+        // 1) Update boundary_relations table via dedicated endpoint
+        await rpcPost('/rpc/boundary/update', {
+            source_id: currentSourceId,
+            boundary_state: state
+        });
+        // 2) Also record as event (event stream stays the audit trail / fact source)
+        await rpcPost('/rpc/events/ingest', {
+            id: 'surface-boundary-' + Date.now(),
+            event: {
+                event_id: generateULID(),
+                source_id: currentSourceId,
+                event_type: 'system.boundary.updated',
+                payload_json: { boundary_state: state, set_by: 'g2-surface', scope: 'conversation' },
+                created_at: new Date().toISOString()
+            }
+        });
+        updateBoundaryUI(state);
+        await refreshCurrentView();
+        updateBoundaryUI(state);
+        alert('✅ 边界状态已更新为：' + BOUNDARY_LABELS[state]);
+    } catch (err) {
+        alert('❌ 边界更新失败：' + err.message);
+    }
+}
+
+/**
+ * Refresh current view
+ */
+async function refreshCurrentView() {
+    if (el('searchInput').value.trim()) {
+        await searchEvents(el('searchInput').value.trim());
+    }
+}
+
+/**
+ * Check online status
+ */
+async function checkOnlineStatus() {
+    try {
+        await rpcGet('/rpc/health');
+        if (!isOnline) {
+            isOnline = true;
+            offlineBanner.classList.remove('visible');
+            // Refresh data on reconnection
+            if (el('searchInput').value.trim()) {
+                await refreshCurrentView();
+            }
+        }
+    } catch (err) {
+        if (isOnline) {
+            isOnline = false;
+            offlineBanner.classList.add('visible');
+        }
+    }
+}
+
+// Event listeners
+el('searchBtn').addEventListener('click', () => searchEvents(el('searchInput').value.trim()));
+el('searchInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') searchEvents(el('searchInput').value.trim());
+});
+
+boundarySelect.addEventListener('change', e => setBoundary(e.target.value));
+
+el('cancelLaunchBtn').addEventListener('click', () => {
+    el('launchModal').classList.remove('visible');
+    pendingLaunchCard = null;
+});
+
+el('confirmLaunchBtn').addEventListener('click', launchToClipboard);
+
+// Initialize
+checkOnlineStatus();
+setInterval(checkOnlineStatus, 2000);
+
+// Deep-link support: ?q=keyword auto search; &event_id=... auto-select for回跳原始现场
+const params = new URLSearchParams(location.search);
+if (params.get('q')) {
+    el('searchInput').value = params.get('q');
+    searchEvents(params.get('q')).then(() => {
+        const targetId = params.get('event_id');
+        if (targetId) {
+            const item = document.querySelector('.result-item[data-event-id="' + CSS.escape(targetId) + '"]');
+            if (item) { item.click(); item.scrollIntoView({ block: 'center' }); }
+        }
+    });
+}
+</script>
+</body>
+</html>

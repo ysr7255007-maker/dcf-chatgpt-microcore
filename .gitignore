@@ -1,3 +1,4 @@
 node_modules/
 dist/
 .qoder/
+.tmp-g2-reconnect/
