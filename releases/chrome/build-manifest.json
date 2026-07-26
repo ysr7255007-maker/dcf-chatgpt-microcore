@@ -1,0 +1,86 @@
+{
+  "code_unit_version_ledger": "releases/chrome/code-unit-version-ledger.json",
+  "default_snapshot_id": "sha256:5f3212944175ae1f88d73a576703a8df2ae0218c1c1388c6238a45dcb176b337",
+  "plugin_artifacts": [
+    {
+      "artifact_id": "sha256:7b389bdda948b25577461ff2b487e71b25689d4827a3f707c68ef4ff6737079e",
+      "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/shell/main.js",
+      "hash": "7b389bdda948b25577461ff2b487e71b25689d4827a3f707c68ef4ff6737079e",
+      "id": "dcf.firstparty.shell",
+      "version": "1.0.0-rc.2-shell.9"
+    },
+    {
+      "artifact_id": "sha256:325405d2e47096ef189fdeb7278789b2b3c330e62c8c6640f0b311232a235c6d",
+      "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/ammo/main.js",
+      "hash": "325405d2e47096ef189fdeb7278789b2b3c330e62c8c6640f0b311232a235c6d",
+      "id": "dcf.firstparty.ammo",
+      "version": "1.0.0-rc.2-ammo.5"
+    },
+    {
+      "artifact_id": "sha256:daae8c34c58af037d6ba7f9f05a39ce9e40c7500f915fdb2a4e1b1380100cfdb",
+      "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/conversation-performance/main.js",
+      "hash": "daae8c34c58af037d6ba7f9f05a39ce9e40c7500f915fdb2a4e1b1380100cfdb",
+      "id": "dcf.firstparty.conversation-performance",
+      "version": "1.0.0-rc.2-conversation-performance.1"
+    },
+    {
+      "artifact_id": "sha256:36ad385cf561bb18f2c5f93db10b29c2b7af7bad563330a7aedf278223afe842",
+      "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/attribution/main.js",
+      "hash": "36ad385cf561bb18f2c5f93db10b29c2b7af7bad563330a7aedf278223afe842",
+      "id": "dcf.firstparty.attribution",
+      "version": "1.0.0-rc.2-attribution.1"
+    },
+    {
+      "artifact_id": "sha256:832341f9062898d3fb027dde5271d3038cc555a0894ac52867cc96b95bdd99cb",
+      "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/appearance/main.js",
+      "hash": "832341f9062898d3fb027dde5271d3038cc555a0894ac52867cc96b95bdd99cb",
+      "id": "dcf.firstparty.appearance",
+      "version": "1.0.0-rc.2-appearance.3"
+    },
+    {
+      "artifact_id": "sha256:77b283df2d5fe808ca55e6a04828d2c2399ece566ec86af5270a509bc52af3f1",
+      "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/local-agent/main.js",
+      "hash": "77b283df2d5fe808ca55e6a04828d2c2399ece566ec86af5270a509bc52af3f1",
+      "id": "dcf.firstparty.local-agent",
+      "version": "1.0.0-rc.2-local-agent.7"
+    },
+    {
+      "artifact_id": "sha256:74d82c653ca86e5f54911527e8b2329c9424e1bee93d527fac5dafad16b97739",
+      "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/local-agent-dialogue/main.js",
+      "hash": "74d82c653ca86e5f54911527e8b2329c9424e1bee93d527fac5dafad16b97739",
+      "id": "dcf.firstparty.local-agent-dialogue",
+      "version": "1.0.0-rc.2-local-agent-dialogue.27"
+    },
+    {
+      "artifact_id": "sha256:3d354c37183a8a4eb4640ae7d04f0c94c7c0ec1d8457dfc210391faf06b7ea34",
+      "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/backup/main.js",
+      "hash": "3d354c37183a8a4eb4640ae7d04f0c94c7c0ec1d8457dfc210391faf06b7ea34",
+      "id": "dcf.firstparty.backup",
+      "version": "1.0.0-rc.2-backup.2"
+    },
+    {
+      "artifact_id": "sha256:1da02452063981312738baf964e7669b4c0829966c2e1903658bcdb35192dcb2",
+      "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/plugin-manager/main.js",
+      "hash": "1da02452063981312738baf964e7669b4c0829966c2e1903658bcdb35192dcb2",
+      "id": "dcf.firstparty.plugin-manager",
+      "version": "1.0.0-rc.2-plugin-manager.6"
+    },
+    {
+      "artifact_id": "sha256:e154e31f01617853af085f17b24fa0c57474889667aba9ddb2b1d3333030ee1b",
+      "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/diagnostics/main.js",
+      "hash": "e154e31f01617853af085f17b24fa0c57474889667aba9ddb2b1d3333030ee1b",
+      "id": "dcf.firstparty.diagnostics",
+      "version": "1.0.0-rc.2-diagnostics.4"
+    },
+    {
+      "artifact_id": "sha256:3ee3817b55436046a5af49fed7b0291ec2c447f7cf257a418259f91fb9f77e9a",
+      "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/page-diagnostics/main.js",
+      "hash": "3ee3817b55436046a5af49fed7b0291ec2c447f7cf257a418259f91fb9f77e9a",
+      "id": "dcf.firstparty.page-diagnostics",
+      "version": "1.0.0-rc.2-page-diagnostics.3"
+    }
+  ],
+  "plugin_index_ref": "rebuild/chrome-native-host-v2",
+  "schema": "dcf.chrome.release.manifest.v1",
+  "version": "1.0.0-rc.3"
+}
