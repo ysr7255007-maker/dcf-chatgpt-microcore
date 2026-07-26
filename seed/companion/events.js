@@ -1,11 +1,21 @@
 /**
  * G1 Companion - Event Processing Logic
  * Handles event ingestion, boundary management, and content retention policies
+ * G3 extension: material.* event validation (mandatory four-state
+ * assertion_attribution, forward-only transitions) + incremental
+ * materials_projection updates via the shared pure reducer.
  */
 
 const { generateULID } = require('./ulid');
-const { validateRawEvent, validateBoundaryRelation, BOUNDARY_STATES } = require('./types');
+const {
+    validateRawEvent,
+    validateBoundaryRelation,
+    validateMaterialEventPayload,
+    validateAttributionTransition,
+    BOUNDARY_STATES
+} = require('./types');
 const { CompanionDB } = require('./db');
+const { applyEventToDb } = require('./materials');
 
 class EventProcessor {
     constructor(db) {
@@ -39,6 +49,15 @@ class EventProcessor {
             }
         }
         
+        // G3: material.* events carry mandatory assertion_attribution and
+        // per-type required fields; missing/invalid -> honest rejection (400)
+        if (typeof event.event_type === 'string' && event.event_type.startsWith('material.')) {
+            const materialCheck = this.validateMaterialEvent(event);
+            if (!materialCheck.valid) {
+                return { success: false, error: materialCheck.error };
+            }
+        }
+        
         // Check for "don't read" content retention policy
         if (this.isContentRetentionBlocked(event)) {
             return {
@@ -65,6 +84,12 @@ class EventProcessor {
             };
         }
         
+        // Fix created_at BEFORE persistence so the incremental projection
+        // reducer and the DB row observe the exact same timestamp
+        if (!event.created_at) {
+            event.created_at = new Date().toISOString();
+        }
+        
         // Check boundary state before processing
         const boundaryState = this.getBoundaryState(event.source_id);
         if (boundaryState === 'NOT_OBSERVE') {
@@ -81,6 +106,14 @@ class EventProcessor {
         const result = this.db.insertEvent(event);
         
         if (result.success) {
+            // G3: incremental projection update via the SAME pure reducer
+            // used by full recomputation (recompute === incremental)
+            if (!result.duplicated
+                && typeof event.event_type === 'string'
+                && event.event_type.startsWith('material.')) {
+                applyEventToDb(this.db, event);
+            }
+            
             // Update boundary for derived entities if any
             await this.processInheritance(event);
             
@@ -107,6 +140,12 @@ class EventProcessor {
             const validation = validateRawEvent(event);
             if (!validation.valid) {
                 validationErrors.push(`Event ${event.event_id || '?'}: ${validation.errors.join(', ')}`);
+            }
+            if (typeof event.event_type === 'string' && event.event_type.startsWith('material.')) {
+                const materialCheck = this.validateMaterialEvent(event);
+                if (!materialCheck.valid) {
+                    validationErrors.push(`Event ${event.event_id || '?'}: ${materialCheck.error}`);
+                }
             }
         }
         
@@ -139,6 +178,10 @@ class EventProcessor {
             if (!event.event_id) {
                 event.event_id = generateULID();
             }
+            // Same timestamp for DB row and incremental reducer
+            if (!event.created_at) {
+                event.created_at = new Date().toISOString();
+            }
         }
         
         // Bulk insert with idempotency
@@ -146,6 +189,13 @@ class EventProcessor {
         
         // Track which ones were new vs duplicated
         if (result.success) {
+            // G3: incremental projection updates (same reducer as recompute)
+            for (const event of eligibleEvents) {
+                if (typeof event.event_type === 'string' && event.event_type.startsWith('material.')) {
+                    applyEventToDb(this.db, event);
+                }
+            }
+            
             await this.processInheritanceBatch(eligibleEvents);
             
             // Ensure default boundaries
@@ -233,19 +283,86 @@ class EventProcessor {
      * Get current boundary state for a source
      * @param {string} sourceId - Source ID
      * @returns {string} Boundary state or 'NOT_OBSERVE' as default
+     *
+     * #18 fix: match ALL boundary rows for this source_id, not only the
+     * canonical scope key. /rpc/boundary/update accepts arbitrary scope
+     * strings, and the export gate (getNotObserveSourceIds) already ignores
+     * scope — the ingest gate must not be blinder than the export gate.
+     * Strictest state wins (BOUNDARY_STATES is ordered strictest-first):
+     * zero content residue is a red line — refuse rather than leak.
+     * Chosen over rejecting custom scopes at write time because it also
+     * enforces rows ALREADY persisted under custom scopes, and it keeps
+     * /rpc/boundary/update backward-compatible for existing callers.
      */
     getBoundaryState(sourceId) {
         // Default is "只用于当前" per spec
         const DEFAULT_BOUNDARY = 'OBSERVE_CURRENT_ONLY';
         
-        // Try to get explicit boundary
-        const relation = this.db.getBoundaryRelation(sourceId, `${DEFAULT_BOUNDARY}:${sourceId}`);
+        const relations = this.getBoundaryRelationsBySource(sourceId);
         
-        if (relation) {
-            return relation.boundary_state;
+        if (relations.length === 0) {
+            return DEFAULT_BOUNDARY;
         }
         
-        return DEFAULT_BOUNDARY;
+        // Strictest wins across every scope declared for this source
+        let strictest = null;
+        for (const relation of relations) {
+            const rank = BOUNDARY_STATES.indexOf(relation.boundary_state);
+            if (rank === -1) continue; // unknown state rows carry no authority
+            if (strictest === null || rank < BOUNDARY_STATES.indexOf(strictest)) {
+                strictest = relation.boundary_state;
+            }
+        }
+        
+        return strictest || DEFAULT_BOUNDARY;
+    }
+    
+    /**
+     * Fetch every boundary relation declared for a source (any scope).
+     * @param {string} sourceId - Source ID
+     * @returns {Array<{source_id: string, scope: string, boundary_state: string}>}
+     */
+    getBoundaryRelationsBySource(sourceId) {
+        if (!this.db || !this.db.db) {
+            return [];
+        }
+        try {
+            if (this.db.db.isMock) {
+                const data = this.db.db.data || {};
+                return (data.boundary_relations || [])
+                    .filter(r => r && r.source_id === sourceId);
+            }
+            return this.db.db.prepare(
+                'SELECT source_id, scope, boundary_state FROM boundary_relations WHERE source_id = ?'
+            ).all(sourceId);
+        } catch (error) {
+            console.warn('getBoundaryRelationsBySource error:', error.message);
+            // Fail closed: no explicit grant means default OBSERVE_CURRENT_ONLY
+            return [];
+        }
+    }
+    
+    /**
+     * G3: collect source_ids currently under a NOT_OBSERVE boundary.
+     * Used by the export path to enforce the zero-residue principle.
+     * @returns {string[]} source_ids with NOT_OBSERVE boundary
+     */
+    getNotObserveSourceIds() {
+        try {
+            if (this.db.db && this.db.db.isMock) {
+                return [...new Set(
+                    (this.db.db.data.boundary_relations || [])
+                        .filter(r => r.boundary_state === 'NOT_OBSERVE')
+                        .map(r => r.source_id)
+                )];
+            }
+            const rows = this.db.db.prepare(
+                "SELECT DISTINCT source_id FROM boundary_relations WHERE boundary_state = 'NOT_OBSERVE'"
+            ).all();
+            return rows.map(r => r.source_id);
+        } catch (error) {
+            return [];
+        }
     }
     
     /**
@@ -310,6 +427,45 @@ class EventProcessor {
         for (const event of events) {
             await this.processInheritance(event);
         }
+    }
+    
+    /**
+     * G3: validate a material.* event before ingestion.
+     * - assertion_attribution is mandatory (four-state), else reject
+     * - attribution transitions must be forward-only and must truthfully
+     *   match the current projection state (regression -> reject)
+     */
+    validateMaterialEvent(event) {
+        let payload;
+        try {
+            payload = typeof event.payload_json === 'string'
+                ? JSON.parse(event.payload_json)
+                : event.payload_json;
+        } catch (error) {
+            return { valid: false, error: `Material event payload is not valid JSON: ${error.message}` };
+        }
+        
+        const check = validateMaterialEventPayload(event.event_type, payload);
+        if (!check.valid) {
+            return { valid: false, error: `Material event rejected: ${check.errors.join(', ')}` };
+        }
+        
+        if (event.event_type === 'material.attribution.transitioned') {
+            const transition = validateAttributionTransition(payload.from_state, payload.to_state);
+            if (!transition.valid) {
+                return { valid: false, error: `Attribution regression rejected: ${transition.error}` };
+            }
+            
+            const current = this.db.getMaterialProjection(payload.entity_id);
+            if (current && current.attribution_state && current.attribution_state !== payload.from_state) {
+                return {
+                    valid: false,
+                    error: `Attribution from_state mismatch: projection has ${current.attribution_state}, event claims ${payload.from_state}`
+                };
+            }
+        }
+        
+        return { valid: true };
     }
     
     /**

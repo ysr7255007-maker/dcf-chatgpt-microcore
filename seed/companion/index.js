@@ -5,6 +5,14 @@
  * localhost:8472 (configurable via --port flag)
  * 
  * JSON-RPC 2.0 over HTTP, using Node native http module (zero npm dependencies)
+ * 
+ * G3 extension: material metabolism endpoints
+ *   POST /rpc/material/revision     Submit revision candidate
+ *   POST /rpc/material/attribution  Four-state attribution transition
+ *   GET  /rpc/material/query        Query projections / material events
+ *   POST /rpc/sync/github/push      Push three-way-merged candidate to remote
+ *   POST /rpc/sync/github/pull      Pull-back detection of remote changes
+ *   GET/POST /rpc/export            Self-interpreting Markdown+JSONL export
  */
 
 const http = require('http');
@@ -15,8 +23,11 @@ const path = require('path');
 // Load modules
 const { CompanionDB } = require('./db');
 const { EventProcessor } = require('./events');
-const { validateRPCRequest, BOUNDARY_STATES } = require('./types');
+const { validateRPCRequest, BOUNDARY_STATES, ATTRIBUTION_STATES } = require('./types');
 const { runDoctor } = require('./doctor');
+const { GitHubSync, checkGhAuth, sha256 } = require('./github-sync');
+const { MaterialProcessor } = require('./materials');
+const { exportMaterials } = require('./export');
 
 // Configuration
 const DEFAULT_PORT = 8472;
@@ -27,6 +38,7 @@ let BASE_DIR = process.argv.find(arg => arg.startsWith('--dcf-dir='))?.split('='
 // Global state
 let companionDB = null;
 let eventProcessor = null;
+let materialProcessor = null;
 let server = null;
 
 /**
@@ -76,6 +88,12 @@ Endpoints:
   POST /rpc/boundary/update       Update boundary via JSON-RPC
   GET  /rpc/health                Health check
   GET  /rpc/stats                 Database statistics
+  POST /rpc/material/revision     Submit material revision candidate (G3)
+  POST /rpc/material/attribution  Attribution four-state transition (G3)
+  GET  /rpc/material/query        Query material projections/events (G3)
+  POST /rpc/sync/github/push      Push merged candidate to remote (G3)
+  POST /rpc/sync/github/pull      Pull-back remote changes (G3)
+  GET/POST /rpc/export            Self-interpreting export (G3)
 `);
 }
 
@@ -141,9 +159,13 @@ async function readRequestBody(req) {
  * Create JSON-RPC error response
  */
 function rpcError(code, message, data = null) {
+    const error = { code, message };
+    if (data !== null && data !== undefined) {
+        error.data = data;
+    }
     return {
         jsonrpc: '2.0',
-        error: { code, message },
+        error,
         id: null
     };
 }
@@ -178,7 +200,7 @@ async function handleEventsIngest(req, res, requestBody) {
                 duplicated: result.duplicated || false
             }, requestBody.id));
         } else {
-            return sendJSONResponse(res, 400, rpcError(-32000, result.error, requestBody.id));
+            return sendJSONResponse(res, 400, rpcError(-32000, result.error));
         }
     } catch (error) {
         console.error('Ingest error:', error);
@@ -206,7 +228,7 @@ async function handleEventsBatch(req, res, requestBody) {
                 duplicated: events.length - result.inserted
             }, requestBody.id));
         } else {
-            return sendJSONResponse(res, 400, rpcError(-32000, result.errors[0], requestBody.id));
+            return sendJSONResponse(res, 400, rpcError(-32000, result.errors[0]));
         }
     } catch (error) {
         console.error('Batch ingest error:', error);
@@ -324,6 +346,316 @@ async function handleBoundaryUpdate(req, res, requestBody) {
 }
 
 /**
+ * Handler: POST /rpc/material/revision (G3)
+ * Submit a material revision candidate.
+ * Required: entity_id, candidate_body, source_ref, assertion_attribution
+ * Optional: base_sha256, source_id
+ */
+async function handleMaterialRevision(req, res, requestBody) {
+    try {
+        const result = await materialProcessor.submitRevisionCandidate({
+            entity_id: requestBody.entity_id,
+            base_sha256: requestBody.base_sha256 || null,
+            candidate_body: requestBody.candidate_body,
+            source_ref: requestBody.source_ref,
+            assertion_attribution: requestBody.assertion_attribution,
+            source_id: requestBody.source_id || null
+        });
+        
+        if (result.success) {
+            return sendJSONResponse(res, 200, rpcResult({
+                event_id: result.event_id,
+                candidate_sha256: result.candidate_sha256
+            }, requestBody.id || null));
+        }
+        return sendJSONResponse(res, 400, rpcError(-32000, result.error));
+    } catch (error) {
+        console.error('Material revision error:', error);
+        return sendJSONResponse(res, 500, rpcError(-32603, 'Internal error: ' + error.message));
+    }
+}
+
+/**
+ * Handler: POST /rpc/material/attribution (G3)
+ * Four-state transition (forward-only). Regression -> 400 + rejection event.
+ * Required: entity_id, target_ref, from_state, to_state
+ * Optional: evidence_ref, source_id
+ */
+async function handleMaterialAttribution(req, res, requestBody) {
+    try {
+        const result = await materialProcessor.transitionAttribution({
+            entity_id: requestBody.entity_id,
+            target_ref: requestBody.target_ref,
+            from_state: requestBody.from_state,
+            to_state: requestBody.to_state,
+            evidence_ref: requestBody.evidence_ref || null,
+            source_id: requestBody.source_id || null
+        });
+        
+        if (result.success) {
+            return sendJSONResponse(res, 200, rpcResult({
+                event_id: result.event_id,
+                from_state: result.from_state,
+                to_state: result.to_state
+            }, requestBody.id || null));
+        }
+        return sendJSONResponse(res, 400, rpcError(-32000, result.error, {
+            rejected: result.rejected || false,
+            rejection_event_id: result.rejection_event_id || null
+        }));
+    } catch (error) {
+        console.error('Material attribution error:', error);
+        return sendJSONResponse(res, 500, rpcError(-32603, 'Internal error: ' + error.message));
+    }
+}
+
+/**
+ * Handler: GET /rpc/material/query (G3)
+ * Optional query param: entity_id
+ */
+function handleMaterialQuery(req, res) {
+    try {
+        const urlObj = url.parse(req.url, true);
+        const entityId = urlObj.query.entity_id || null;
+        
+        const result = materialProcessor.queryMaterials(entityId);
+        return sendJSONResponse(res, 200, rpcResult(result, null));
+    } catch (error) {
+        console.error('Material query error:', error);
+        return sendJSONResponse(res, 500, rpcError(-32603, 'Internal error: ' + error.message));
+    }
+}
+
+/**
+ * Handler: POST /rpc/sync/github/push (G3)
+ * Three-way merge and push a revision candidate; never overwrites the
+ * user's canonical file. Conflict -> no push, conflict recorded as event.
+ * Required: remote, entity_id, file_path
+ * Optional: candidate_body (default: latest projection candidate), default_branch
+ */
+async function handleSyncGithubPush(req, res, requestBody) {
+    try {
+        const { remote, entity_id, file_path } = requestBody;
+        if (!remote || !entity_id || !file_path) {
+            return sendJSONResponse(res, 400, rpcError(-32602, 'Missing required parameters: remote, entity_id, file_path'));
+        }
+        
+        // Real GitHub remotes require gh auth; local bare repos work via plain git
+        const isLocalRemote = remote.startsWith('/') || remote.startsWith('file://');
+        if (!isLocalRemote) {
+            const gh = await checkGhAuth();
+            if (!gh.available) {
+                return sendJSONResponse(res, 503, rpcError(-32001,
+                    `GitHub sync unavailable (local-only mode): ${gh.detail}`));
+            }
+        }
+        
+        // Candidate body: explicit or latest projection candidate
+        let candidateBody = requestBody.candidate_body;
+        if (typeof candidateBody !== 'string') {
+            const projection = companionDB.getMaterialProjection(entity_id);
+            if (!projection || typeof projection.latest_candidate_body !== 'string') {
+                return sendJSONResponse(res, 400, rpcError(-32000,
+                    `No candidate_body provided and no revision candidate found for entity ${entity_id}`));
+            }
+            candidateBody = projection.latest_candidate_body;
+        }
+        
+        // base = content at last sync point (stored per remote+file)
+        const syncKey = `sync:${remote}:${file_path}`;
+        const baseContent = companionDB.getSyncMetadata(syncKey) || '';
+        
+        const sync = new GitHubSync({
+            remote,
+            defaultBranch: requestBody.default_branch || 'main'
+        });
+        
+        try {
+            const pushResult = await sync.pushCandidate({
+                entityId: entity_id,
+                filePath: file_path,
+                candidateBody,
+                baseContent
+            });
+            
+            if (pushResult.hasConflict) {
+                // Honest stop: record conflict verbatim, no push
+                const conflictEvent = await materialProcessor.recordSyncEvent(
+                    'material.sync.conflict_detected',
+                    {
+                        entity_id,
+                        remote,
+                        file_path,
+                        conflict_text: pushResult.conflictText
+                    }
+                );
+                return sendJSONResponse(res, 409, {
+                    jsonrpc: '2.0',
+                    error: {
+                        code: -32002,
+                        message: 'Three-way merge conflict: candidate NOT pushed. Conflict recorded for user decision.',
+                        data: {
+                            conflict_text: pushResult.conflictText,
+                            conflict_event_id: conflictEvent.success ? conflictEvent.event_id : null
+                        }
+                    },
+                    id: requestBody.id || null
+                });
+            }
+            
+            if (!pushResult.success) {
+                return sendJSONResponse(res, 502, rpcError(-32003, `Push failed: ${pushResult.error}`));
+            }
+            
+            // Record the push fact + advance the sync point to the merged content
+            const pushEvent = await materialProcessor.recordSyncEvent('material.sync.pushed', {
+                entity_id,
+                remote,
+                file_path,
+                candidate_path: pushResult.candidatePath,
+                branch: pushResult.branch,
+                merged_sha256: pushResult.mergedSha256,
+                commit_sha: pushResult.commitSha
+            });
+            companionDB.setSyncMetadata(syncKey, pushResult.mergedContent);
+            
+            return sendJSONResponse(res, 200, rpcResult({
+                pushed: true,
+                candidate_path: pushResult.candidatePath,
+                branch: pushResult.branch,
+                merged_sha256: pushResult.mergedSha256,
+                commit_sha: pushResult.commitSha,
+                sync_event_id: pushEvent.success ? pushEvent.event_id : null
+            }, requestBody.id || null));
+        } finally {
+            if (requestBody.cleanup_clone === true) sync.cleanup();
+        }
+    } catch (error) {
+        console.error('GitHub push error:', error);
+        return sendJSONResponse(res, 500, rpcError(-32603, 'Internal error: ' + error.message));
+    }
+}
+
+/**
+ * Handler: POST /rpc/sync/github/pull (G3)
+ * Pull-back detection: compare the remote canonical file against the last
+ * sync point sha256; changed content is ingested as an evolution fact.
+ * Required: remote, entity_id, file_path
+ * Optional: default_branch
+ */
+async function handleSyncGithubPull(req, res, requestBody) {
+    try {
+        const { remote, entity_id, file_path } = requestBody;
+        if (!remote || !entity_id || !file_path) {
+            return sendJSONResponse(res, 400, rpcError(-32602, 'Missing required parameters: remote, entity_id, file_path'));
+        }
+        
+        const isLocalRemote = remote.startsWith('/') || remote.startsWith('file://');
+        if (!isLocalRemote) {
+            const gh = await checkGhAuth();
+            if (!gh.available) {
+                return sendJSONResponse(res, 503, rpcError(-32001,
+                    `GitHub sync unavailable (local-only mode): ${gh.detail}`));
+            }
+        }
+        
+        const sync = new GitHubSync({
+            remote,
+            defaultBranch: requestBody.default_branch || 'main'
+        });
+        
+        try {
+            const fetchResult = await sync.fetchCanonical(file_path);
+            if (!fetchResult.success) {
+                return sendJSONResponse(res, 502, rpcError(-32003, `Pull failed: ${fetchResult.error}`));
+            }
+            
+            const syncKey = `sync:${remote}:${file_path}`;
+            const baseContent = companionDB.getSyncMetadata(syncKey);
+            const baseSha = baseContent != null ? sha256(baseContent) : null;
+            
+            if (!fetchResult.exists) {
+                return sendJSONResponse(res, 200, rpcResult({
+                    changed: false,
+                    exists: false,
+                    remote_sha256: null,
+                    last_sync_sha256: baseSha
+                }, requestBody.id || null));
+            }
+            
+            const changed = fetchResult.sha256 !== baseSha;
+            
+            if (!changed) {
+                return sendJSONResponse(res, 200, rpcResult({
+                    changed: false,
+                    exists: true,
+                    remote_sha256: fetchResult.sha256,
+                    last_sync_sha256: baseSha
+                }, requestBody.id || null));
+            }
+            
+            // Changed: ingest the remote change as an evolution fact + advance sync point
+            const pullEvent = await materialProcessor.recordSyncEvent('material.sync.pulled_back', {
+                entity_id,
+                remote,
+                file_path,
+                remote_sha256: fetchResult.sha256,
+                previous_sha256: baseSha,
+                remote_content: fetchResult.content
+            });
+            companionDB.setSyncMetadata(syncKey, fetchResult.content);
+            
+            return sendJSONResponse(res, 200, rpcResult({
+                changed: true,
+                exists: true,
+                remote_sha256: fetchResult.sha256,
+                last_sync_sha256: baseSha,
+                pull_event_id: pullEvent.success ? pullEvent.event_id : null
+            }, requestBody.id || null));
+        } finally {
+            if (requestBody.cleanup_clone === true) sync.cleanup();
+        }
+    } catch (error) {
+        console.error('GitHub pull error:', error);
+        return sendJSONResponse(res, 500, rpcError(-32603, 'Internal error: ' + error.message));
+    }
+}
+
+/**
+ * Handler: GET/POST /rpc/export (G3)
+ * Self-interpreting Markdown + JSONL export with NOT_OBSERVE zero residue.
+ * Optional (POST body or query): output_dir
+ */
+async function handleExport(req, res, requestBody = {}) {
+    try {
+        const urlObj = url.parse(req.url, true);
+        const outputDir = requestBody.output_dir || urlObj.query.output_dir || null;
+        
+        const events = companionDB.getAllRawEventsOfType('material.');
+        const projections = companionDB.getAllMaterialProjections();
+        const notObserveSourceIds = eventProcessor.getNotObserveSourceIds();
+        
+        const result = await exportMaterials({
+            events,
+            projections,
+            notObserveSourceIds,
+            outputDir
+        });
+        
+        if (result.success) {
+            return sendJSONResponse(res, 200, rpcResult({
+                export_path: result.exportPath,
+                stats: result.stats
+            }, requestBody.id || null));
+        }
+        return sendJSONResponse(res, 400, rpcError(-32000, result.error));
+    } catch (error) {
+        console.error('Export error:', error);
+        return sendJSONResponse(res, 500, rpcError(-32603, 'Internal error: ' + error.message));
+    }
+}
+
+/**
  * Main request handler
  */
 async function handleRequest(req, res) {
@@ -348,6 +680,14 @@ async function handleRequest(req, res) {
             return handleEventsQuery(req, res);
         }
         
+        if (pathname === '/rpc/material/query' && req.method === 'GET') {
+            return handleMaterialQuery(req, res);
+        }
+        
+        if (pathname === '/rpc/export' && req.method === 'GET') {
+            return handleExport(req, res, {});
+        }
+        
         // For POST endpoints, need to read body
         if (['POST', 'PUT'].includes(req.method)) {
             const requestBody = await readRequestBody(req);
@@ -362,6 +702,26 @@ async function handleRequest(req, res) {
             
             if (pathname === '/rpc/boundary/update') {
                 return handleBoundaryUpdate(req, res, requestBody);
+            }
+            
+            if (pathname === '/rpc/material/revision') {
+                return handleMaterialRevision(req, res, requestBody);
+            }
+            
+            if (pathname === '/rpc/material/attribution') {
+                return handleMaterialAttribution(req, res, requestBody);
+            }
+            
+            if (pathname === '/rpc/sync/github/push') {
+                return handleSyncGithubPush(req, res, requestBody);
+            }
+            
+            if (pathname === '/rpc/sync/github/pull') {
+                return handleSyncGithubPull(req, res, requestBody);
+            }
+            
+            if (pathname === '/rpc/export') {
+                return handleExport(req, res, requestBody);
             }
             
             // Default to /rpc/events/ingest if not matched
@@ -392,6 +752,9 @@ async function initializeServer() {
         // Initialize event processor
         eventProcessor = new EventProcessor(companionDB);
         
+        // Initialize material processor (G3)
+        materialProcessor = new MaterialProcessor({ db: companionDB, eventProcessor });
+        
         // Create HTTP server
         server = http.createServer(handleRequest);
         
@@ -404,6 +767,8 @@ async function initializeServer() {
                 console.log(`  POST http://127.0.0.1:${PORT}/rpc/events/batch`);
                 console.log(`  GET  http://127.0.0.1:${PORT}/rpc/events/query?source_id=xxx`);
                 console.log(`  GET  http://127.0.0.1:${PORT}/rpc/health`);
+                console.log(`  POST http://127.0.0.1:${PORT}/rpc/material/revision`);
+                console.log(`  GET  http://127.0.0.1:${PORT}/rpc/material/query`);
                 console.log('');
                 console.log('Press Ctrl+C to stop');
                 resolve();

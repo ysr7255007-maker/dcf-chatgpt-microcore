@@ -1,12 +1,31 @@
 /**
  * G1 Companion - Type Validation (Zero Dependency)
  * Manual JSON Schema-like validation without external dependencies
+ * G3 extension: attribution states + material event payload validation
  */
 
 const { isValidULID } = require('./ulid');
 
 // Boundary state constants
 const BOUNDARY_STATES = ['NOT_OBSERVE', 'OBSERVE_CURRENT_ONLY', 'OBSERVE_AND_ARCHIVE'];
+
+// G3: Attribution state constants (four-state progression, forward-only)
+const ATTRIBUTION_STATES = ['ai_proposed', 'user_tentative', 'user_confirmed', 'reality_verified'];
+const ATTRIBUTION_STATE_TRANSITIONS = {
+    'ai_proposed': ['user_tentative', 'user_confirmed', 'reality_verified'],  // can skip levels
+    'user_tentative': ['user_confirmed', 'reality_verified'],
+    'user_confirmed': ['reality_verified'],
+    'reality_verified': []  // terminal state
+};
+
+// G3: material event types that REQUIRE assertion_attribution in payload
+const MATERIAL_EVENT_TYPES = [
+    'material.revision_candidate.created',
+    'material.continuation_point.created',
+    'material.attribution.transitioned',
+    'material.sync.pushed',
+    'material.sync.pulled_back'
+];
 
 /**
  * Validate SHA-256 hash format
@@ -35,8 +54,8 @@ function validateEventType(eventType) {
         return { valid: false, error: 'Event type must be a non-empty string' };
     }
     
-    // Pattern: lowercase words separated by dots
-    if (!/^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)*$/.test(eventType)) {
+    // Pattern: lowercase words (underscores allowed inside a segment) separated by dots
+    if (!/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/.test(eventType)) {
         return { valid: false, error: `Invalid event type format: ${eventType}` };
     }
     
@@ -266,15 +285,142 @@ function validateRPCRequest(request) {
     };
 }
 
+/**
+ * Validate attribution state value (G3)
+ * @param {string} state - Attribution state
+ * @returns {{valid: boolean, error?: string}}
+ */
+function validateAttributionState(state) {
+    if (!ATTRIBUTION_STATES.includes(state)) {
+        return {
+            valid: false,
+            error: `Invalid attribution state: ${state}. Must be one of: ${ATTRIBUTION_STATES.join(', ')}`
+        };
+    }
+    
+    return { valid: true };
+}
+
+/**
+ * Validate attribution state transition (forward-only, can skip levels)
+ * @param {string} fromState - Current state
+ * @param {string} toState - Target state
+ * @returns {{valid: boolean, error?: string}}
+ */
+function validateAttributionTransition(fromState, toState) {
+    if (!validateAttributionState(fromState).valid) {
+        return { valid: false, error: `Invalid fromState: ${fromState}` };
+    }
+    
+    if (!validateAttributionState(toState).valid) {
+        return { valid: false, error: `Invalid toState: ${toState}` };
+    }
+    
+    const allowedTransitions = ATTRIBUTION_STATE_TRANSITIONS[fromState];
+    if (!allowedTransitions.includes(toState)) {
+        return {
+            valid: false,
+            error: `Cannot transition from ${fromState} to ${toState}. Allowed: ${allowedTransitions.join(', ') || '(none, terminal state)'}`
+        };
+    }
+    
+    return { valid: true };
+}
+
+/**
+ * Validate a material.* event payload (G3).
+ * assertion_attribution is MANDATORY for every material event; per-type
+ * required fields are checked so ingest can reject with a truthful error.
+ * @param {string} eventType - material.* event type
+ * @param {Object|null} payload - parsed payload object
+ * @returns {{valid: boolean, errors: string[]}}
+ */
+function validateMaterialEventPayload(eventType, payload) {
+    const errors = [];
+
+    if (payload === null || typeof payload !== 'object') {
+        return { valid: false, errors: ['Material events require a payload object'] };
+    }
+
+    // Four-state attribution is mandatory for ALL material events
+    if (!payload.assertion_attribution) {
+        errors.push(`Material event ${eventType} missing required field: assertion_attribution (must be one of ${ATTRIBUTION_STATES.join(', ')})`);
+    } else if (!ATTRIBUTION_STATES.includes(payload.assertion_attribution)) {
+        errors.push(`Invalid assertion_attribution: ${payload.assertion_attribution}. Must be one of: ${ATTRIBUTION_STATES.join(', ')}`);
+    }
+
+    if (!payload.entity_id || !isValidULID(payload.entity_id)) {
+        errors.push(`Material event ${eventType} requires a valid ULID entity_id`);
+    }
+
+    switch (eventType) {
+        case 'material.revision_candidate.created':
+            if (typeof payload.candidate_body !== 'string') {
+                errors.push('material.revision_candidate.created requires candidate_body (string)');
+            }
+            if (payload.candidate_sha256 !== undefined && payload.candidate_sha256 !== null) {
+                const shaCheck = validateSHA256(payload.candidate_sha256);
+                if (!shaCheck.valid) errors.push(shaCheck.error);
+            }
+            if (payload.base_sha256 !== undefined && payload.base_sha256 !== null) {
+                const baseCheck = validateSHA256(payload.base_sha256);
+                if (!baseCheck.valid) errors.push(baseCheck.error);
+            }
+            if (payload.source_ref === undefined || payload.source_ref === null || payload.source_ref === '') {
+                errors.push('material.revision_candidate.created requires source_ref (provenance)');
+            }
+            break;
+
+        case 'material.continuation_point.created':
+            if (!payload.from_event_id || !isValidULID(payload.from_event_id)) {
+                errors.push('material.continuation_point.created requires a valid ULID from_event_id');
+            }
+            if (payload.context_ref === undefined || payload.context_ref === null || payload.context_ref === '') {
+                errors.push('material.continuation_point.created requires context_ref');
+            }
+            break;
+
+        case 'material.attribution.transitioned':
+            if (!payload.from_state || !ATTRIBUTION_STATES.includes(payload.from_state)) {
+                errors.push('material.attribution.transitioned requires valid from_state');
+            }
+            if (!payload.to_state || !ATTRIBUTION_STATES.includes(payload.to_state)) {
+                errors.push('material.attribution.transitioned requires valid to_state');
+            }
+            if (payload.target_ref === undefined || payload.target_ref === null || payload.target_ref === '') {
+                errors.push('material.attribution.transitioned requires target_ref');
+            }
+            break;
+
+        case 'material.sync.pushed':
+        case 'material.sync.pulled_back':
+            if (!payload.remote || typeof payload.remote !== 'string') {
+                errors.push(`${eventType} requires remote (repository reference)`);
+            }
+            break;
+
+        default:
+            break;
+    }
+
+    return { valid: errors.length === 0, errors };
+}
+
 module.exports = {
     validateSHA256,
     validateEventType,
     validateBoundaryState,
+    validateAttributionState,
+    validateAttributionTransition,
+    validateMaterialEventPayload,
     validatePayload,
     validateISO8601,
     validateSequenceNumber,
     validateRawEvent,
     validateBoundaryRelation,
     validateRPCRequest,
-    BOUNDARY_STATES
+    BOUNDARY_STATES,
+    ATTRIBUTION_STATES,
+    ATTRIBUTION_STATE_TRANSITIONS,
+    MATERIAL_EVENT_TYPES
 };

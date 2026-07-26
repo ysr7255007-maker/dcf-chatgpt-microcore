@@ -616,6 +616,226 @@ e combination
             mock_mode: true
         };
     }
+    
+    // ==========================================================
+    // G3: Materials Projection CRUD & Recomputation
+    // ==========================================================
+    
+    /**
+     * Upsert materials projection record
+     */
+    upsertMaterialProjection(materialData) {
+        if (this.db.isMock) {
+            return this.upsertMaterialProjectionMock(materialData);
+        }
+        
+        try {
+            const stmt = this.db.prepare(`
+                INSERT OR REPLACE INTO materials_projection
+                    (entity_id, latest_candidate_sha256, latest_candidate_body, attribution_state,
+                     continuation_points_json, source_ref, assertion_attribution, last_updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            `);
+            
+            const pointsJson = materialData.continuation_points ? JSON.stringify(materialData.continuation_points) : null;
+            
+            stmt.run(
+                materialData.entity_id,
+                materialData.latest_candidate_sha256 || null,
+                materialData.latest_candidate_body || null,
+                materialData.attribution_state,
+                pointsJson,
+                materialData.source_ref || null,
+                materialData.assertion_attribution
+            );
+            
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    }
+    
+    /**
+     * Mock upsert
+     */
+    upsertMaterialProjectionMock(materialData) {
+        const idx = this.db.data.materials_projection?.findIndex(m => m.entity_id === materialData.entity_id) ?? -1;
+        const record = {
+            entity_id: materialData.entity_id,
+            latest_candidate_sha256: materialData.latest_candidate_sha256 || null,
+            latest_candidate_body: materialData.latest_candidate_body || null,
+            attribution_state: materialData.attribution_state,
+            continuation_points_json: materialData.continuation_points ? JSON.stringify(materialData.continuation_points) : null,
+            source_ref: materialData.source_ref || null,
+            assertion_attribution: materialData.assertion_attribution,
+            last_updated_at: new Date().toISOString()
+        };
+        
+        if (!this.db.data.materials_projection) {
+            this.db.data.materials_projection = [];
+        }
+        
+        if (idx >= 0) {
+            this.db.data.materials_projection[idx] = record;
+        } else {
+            this.db.data.materials_projection.push(record);
+        }
+        
+        return { success: true };
+    }
+    
+    /**
+     * Get projection by entity_id
+     */
+    getMaterialProjection(entityId) {
+        if (this.db.isMock) {
+            return this.getMaterialProjectionMock(entityId);
+        }
+        
+        try {
+            const stmt = this.db.prepare('SELECT * FROM materials_projection WHERE entity_id = ?');
+            return stmt.get(entityId) || null;
+        } catch (error) {
+            return null;
+        }
+    }
+    
+    getMaterialProjectionMock(entityId) {
+        return (this.db.data.materials_projection || []).find(m => m.entity_id === entityId) || null;
+    }
+    
+    /**
+     * Get all projections
+     */
+    getAllMaterialProjections() {
+        if (this.db.isMock) {
+            return [...(this.db.data.materials_projection || [])];
+        }
+        
+        try {
+            const stmt = this.db.prepare('SELECT * FROM materials_projection');
+            return stmt.all();
+        } catch (error) {
+            return [];
+        }
+    }
+    
+    /**
+     * Sync metadata table operations
+     */
+    setSyncMetadata(key, value) {
+        if (this.db.isMock) {
+            return this.setSyncMetadataMock(key, value);
+        }
+        
+        try {
+            const stmt = this.db.prepare("INSERT OR REPLACE INTO sync_metadata (key, value, updated_at) VALUES (?, ?, datetime('now'))");
+            stmt.run(key, value);
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    }
+    
+    setSyncMetadataMock(key, value) {
+        const idx = this.db.data.sync_metadata?.findIndex(m => m.key === key) ?? -1;
+        const record = { key, value, updated_at: new Date().toISOString() };
+        
+        if (!this.db.data.sync_metadata) {
+            this.db.data.sync_metadata = [record];
+        } else if (idx >= 0) {
+            this.db.data.sync_metadata[idx] = record;
+        } else {
+            this.db.data.sync_metadata.push(record);
+        }
+        
+        return { success: true };
+    }
+    
+    getSyncMetadata(key) {
+        if (this.db.isMock) {
+            return this.getSyncMetadataMock(key);
+        }
+        
+        try {
+            const stmt = this.db.prepare('SELECT value FROM sync_metadata WHERE key = ?');
+            const row = stmt.get(key);
+            return row ? row.value : null;
+        } catch (error) {
+            return null;
+        }
+    }
+    
+    getSyncMetadataMock(key) {
+        const record = (this.db.data.sync_metadata || []).find(r => r.key === key);
+        return record ? record.value : null;
+    }
+    
+    /**
+     * Reconstruct materials_projection from raw_events (idempotent recomputation)
+     * Delegates to the SAME pure reducer used by the incremental ingest path
+     * (materials.reduceMaterialEvents), so recompute === incremental by construction.
+     */
+    recomputeMaterialsProjection() {
+        // Lazy require avoids circular dependency at module load
+        const { reduceMaterialEvents } = require('./materials');
+
+        const events = this.getAllRawEventsOfType('material.');
+        const projectionsMap = reduceMaterialEvents(events);
+
+        // Persist recomputed projections (NOT NULL columns require seeded states)
+        let persisted = 0;
+        for (const [entityId, data] of projectionsMap.entries()) {
+            if (!data.attribution_state || !data.assertion_attribution) continue;
+            this.upsertMaterialProjection({
+                entity_id: entityId,
+                latest_candidate_sha256: data.latest_candidate_sha256,
+                latest_candidate_body: data.latest_candidate_body,
+                attribution_state: data.attribution_state,
+                continuation_points: data.continuation_points,
+                assertion_attribution: data.assertion_attribution,
+                source_ref: data.source_ref
+            });
+            persisted++;
+        }
+
+        return {
+            success: true,
+            recomputedCount: persisted
+        };
+    }
+
+    /**
+     * Get all raw events with optional type prefix filter (log order)
+     */
+    getAllRawEventsOfType(typePrefix = null) {
+        if (this.db.isMock) {
+            return this.getAllRawEventsOfTypeMock(typePrefix);
+        }
+
+        try {
+            let stmt;
+            if (typePrefix) {
+                stmt = this.db.prepare("SELECT * FROM raw_events WHERE event_type LIKE ? ORDER BY rowid ASC");
+                return stmt.all(typePrefix + '%');
+            } else {
+                stmt = this.db.prepare('SELECT * FROM raw_events ORDER BY rowid ASC');
+                return stmt.all();
+            }
+        } catch (error) {
+            return [];
+        }
+    }
+
+    getAllRawEventsOfTypeMock(typePrefix = null) {
+        let events = [...(this.db.data.raw_events || [])];
+
+        if (typePrefix) {
+            events = events.filter(e => e.event_type.startsWith(typePrefix));
+        }
+
+        return events;
+    }
 }
 
 module.exports = { CompanionDB, DATABASE_SYNC_AVAILABLE };

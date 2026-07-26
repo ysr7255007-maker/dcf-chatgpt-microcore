@@ -60,12 +60,41 @@ CREATE TABLE IF NOT EXISTS boundary_relations (
     CHECK (boundary_state IN ('NOT_OBSERVE', 'OBSERVE_CURRENT_ONLY', 'OBSERVE_AND_ARCHIVE'))
 );
 
+-- ----------------------------------------------------------------------------
+-- G3: materials_projection - computed projection from material evolution events
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS materials_projection (
+    entity_id TEXT PRIMARY KEY,              -- ULID of the material entity
+    latest_candidate_sha256 TEXT,            -- SHA-256 of current candidate body
+    latest_candidate_body TEXT,              -- candidate content (for quick access)
+    attribution_state TEXT NOT NULL,         -- ai_proposed | user_tentative | user_confirmed | reality_verified
+    continuation_points_json TEXT,           -- JSON array of continuation point refs
+    source_ref TEXT,                         -- last known source reference
+    assertion_attribution TEXT NOT NULL,     -- ai_proposed | user_tentative | user_confirmed | reality_verified (required for material events)
+    last_updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    
+    CHECK (attribution_state IN ('ai_proposed', 'user_tentative', 'user_confirmed', 'reality_verified')),
+    CHECK (assertion_attribution IN ('ai_proposed', 'user_tentative', 'user_confirmed', 'reality_verified'))
+);
+
+-- ----------------------------------------------------------------------------
+-- G3: sync_metadata - GitHub synchronization tracking
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS sync_metadata (
+    key TEXT PRIMARY KEY,                    -- e.g., 'github_last_sync_point'
+    value TEXT NOT NULL,                     -- sha256 or other metadata
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Create indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_raw_events_source_id ON raw_events(source_id);
 CREATE INDEX IF NOT EXISTS idx_raw_events_created_at ON raw_events(created_at);
 CREATE INDEX IF NOT EXISTS idx_raw_events_event_type ON raw_events(event_type);
 CREATE INDEX IF NOT EXISTS idx_boundary_relations_scope ON boundary_relations(scope);
 CREATE INDEX IF NOT EXISTS idx_boundary_relations_source_id ON boundary_relations(source_id);
+
+-- G3: Index for material-related event types
+CREATE INDEX IF NOT EXISTS idx_raw_events_event_type_g3 ON raw_events(event_type) WHERE event_type LIKE 'material.%';
 
 -- View for querying events by source_id (simplified, no window function)
 -- Create VIEW IF NOT EXISTS v_events_by_source AS
