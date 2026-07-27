@@ -17,5 +17,7 @@
     "doctor": "node scripts/doctor.js",
     "publish:chrome": "node scripts/publish-chrome-web-store.js"
   },
-  "devDependencies": {}
+  "dependencies": {
+    "node-fetch": "^3.3.2"
+  }
 }

@@ -316,3 +316,113 @@ CREATE TABLE IF NOT EXISTS patch_environment_projections (
 
 CREATE INDEX IF NOT EXISTS idx_patch_env_patch_id ON patch_environment_projections(patch_id);
 CREATE INDEX IF NOT EXISTS idx_patch_env_file_path ON patch_environment_projections(file_path);
+
+-- ----------------------------------------------------------------------------
+-- G3 (phase 3): adapter_commands - persistent Surface -> Adapter command queue
+-- Companion is the durable queue; WS /ws/adapter-wake only signals
+-- "command available" (no business data), chrome.alarms is the recovery net.
+-- Status machine: queued -> delivered -> done|failed, or -> expired (timeout).
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS adapter_commands (
+    command_id TEXT PRIMARY KEY,                 -- ULID, unique command identifier
+    kind TEXT NOT NULL,                          -- read-conversation | send-card | list-conversations | read-by-id
+    payload_json TEXT,                           -- JSON payload for the command
+    status TEXT NOT NULL DEFAULT 'queued'        -- queue lifecycle status
+        CHECK (status IN ('queued', 'delivered', 'done', 'failed', 'expired')),
+    result_json TEXT,                            -- adapter-reported result or error (JSON)
+    timeout_ms INTEGER,                          -- optional expiry window from created_at
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+
+    CHECK (command_id IS NOT NULL AND command_id != ''),
+    CHECK (kind IN ('read-conversation', 'send-card', 'list-conversations', 'read-by-id'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_adapter_commands_status ON adapter_commands(status);
+CREATE INDEX IF NOT EXISTS idx_adapter_commands_created_at ON adapter_commands(created_at);
+
+-- ----------------------------------------------------------------------------
+-- G4 (phase 4): ai_cards - AI digest card projections
+-- Produced by AI归纳 from OBSERVE_AND_ARCHIVE conversations.
+-- Attribution four-state machine (forward-only, same as materials_projection).
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS ai_cards (
+    card_id TEXT PRIMARY KEY,                    -- ULID, unique card identifier
+    title TEXT NOT NULL,                         -- card title (≤40 chars)
+    summary TEXT NOT NULL,                       -- card summary (100-300 chars)
+    evidence_json TEXT NOT NULL,                 -- JSON array of evidence strings
+    boundary_inherit TEXT NOT NULL,              -- inherited boundary state from source
+    source_conversation TEXT NOT NULL,           -- source conversation source_id
+    source_event_ids TEXT,                       -- JSON array of source event_ids
+    markdown_body TEXT,                          -- human-readable Markdown version
+    json_body TEXT,                              -- structured JSON version
+    attribution_state TEXT NOT NULL DEFAULT 'ai_proposed', -- four-state machine
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+
+    CHECK (card_id IS NOT NULL AND card_id != ''),
+    CHECK (title IS NOT NULL AND title != ''),
+    CHECK (summary IS NOT NULL AND summary != ''),
+    CHECK (boundary_inherit IN ('NOT_OBSERVE', 'OBSERVE_CURRENT_ONLY', 'OBSERVE_AND_ARCHIVE'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_cards_attribution_state ON ai_cards(attribution_state);
+CREATE INDEX IF NOT EXISTS idx_ai_cards_source_conversation ON ai_cards(source_conversation);
+CREATE INDEX IF NOT EXISTS idx_ai_cards_created_at ON ai_cards(created_at);
+
+-- ----------------------------------------------------------------------------
+-- G4 (phase 4): ai_maintenance_tasks - AI digest maintenance task projections
+-- Produced by AI归纳 from OBSERVE_AND_ARCHIVE conversations.
+-- Attribution four-state machine (forward-only).
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS ai_maintenance_tasks (
+    task_id TEXT PRIMARY KEY,                    -- ULID, unique task identifier
+    task TEXT NOT NULL,                          -- task description (actionable)
+    criteria_json TEXT NOT NULL,                 -- JSON array of acceptance criteria
+    risk TEXT,                                   -- risk description
+    rollback_plan TEXT,                          -- rollback plan
+    priority INTEGER NOT NULL DEFAULT 5,         -- 1 (highest) to 9 (lowest)
+    boundary_inherit TEXT NOT NULL,              -- inherited boundary state from source
+    source_conversation TEXT NOT NULL,           -- source conversation source_id
+    source_event_ids TEXT,                       -- JSON array of source event_ids
+    markdown_body TEXT,                          -- human-readable Markdown version
+    json_body TEXT,                              -- structured JSON version
+    attribution_state TEXT NOT NULL DEFAULT 'ai_proposed', -- four-state machine
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+
+    CHECK (task_id IS NOT NULL AND task_id != ''),
+    CHECK (task IS NOT NULL AND task != ''),
+    CHECK (priority >= 1 AND priority <= 9),
+    CHECK (boundary_inherit IN ('NOT_OBSERVE', 'OBSERVE_CURRENT_ONLY', 'OBSERVE_AND_ARCHIVE'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_maintenance_tasks_attribution_state ON ai_maintenance_tasks(attribution_state);
+CREATE INDEX IF NOT EXISTS idx_ai_maintenance_tasks_source_conversation ON ai_maintenance_tasks(source_conversation);
+CREATE INDEX IF NOT EXISTS idx_ai_maintenance_tasks_priority ON ai_maintenance_tasks(priority);
+CREATE INDEX IF NOT EXISTS idx_ai_maintenance_tasks_created_at ON ai_maintenance_tasks(created_at);
+
+-- ----------------------------------------------------------------------------
+-- G4 (phase 4): digest_jobs - AI digest job queue (in-memory + SQLite persistence)
+-- Status: queued -> running -> done | failed
+-- Idempotent by conversation_id: only one non-terminal job per conversation.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS digest_jobs (
+    job_id TEXT PRIMARY KEY,                     -- ULID, unique job identifier
+    conversation_id TEXT NOT NULL,               -- source conversation source_id
+    event_ids_json TEXT,                         -- JSON array of source event_ids
+    status TEXT NOT NULL DEFAULT 'queued',       -- queued | running | done | failed
+    source_level TEXT,                           -- api | local | opencode | none
+    error_message TEXT,                          -- failure reason (if failed)
+    products_json TEXT,                          -- JSON array of produced product IDs
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+
+    CHECK (job_id IS NOT NULL AND job_id != ''),
+    CHECK (conversation_id IS NOT NULL AND conversation_id != ''),
+    CHECK (status IN ('queued', 'running', 'done', 'failed'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_digest_jobs_status ON digest_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_digest_jobs_conversation_id ON digest_jobs(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_digest_jobs_created_at ON digest_jobs(created_at);
