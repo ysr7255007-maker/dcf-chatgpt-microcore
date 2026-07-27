@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<!-- DCF Surface - Reflection View (Lens 3): Spotify-Wrapped-style weekly digest. -->
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>本周回顾 — DCF Surface</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "SF Pro Text", sans-serif;
+      background: linear-gradient(160deg, #2d1b4e, #1a1033 60%, #0f0a1f);
+      color: #f0ecf9;
+      min-height: 100vh;
+    }
+
+    /* Header */
+    .view-header {
+      padding: 14px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(20px) saturate(180%);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .view-title { font-size: 18px; font-weight: 700; }
+    .view-nav { display: flex; gap: 8px; }
+
+    .view-toggle-btn {
+      padding: 6px 12px;
+      border: none;
+      border-radius: 8px;
+      background: rgba(207, 34, 110, 0.25);
+      color: #ff9ecb;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .view-toggle-btn:hover { background: rgba(207, 34, 110, 0.45); }
+
+    /* Feed container */
+    .reflection-feed {
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      max-width: 640px;
+      margin: 0 auto;
+    }
+
+    /* Glassmorphism cards on dark gradient */
+    .card {
+      background: rgba(255, 255, 255, 0.07);
+      backdrop-filter: blur(20px) saturate(180%);
+      border-radius: 16px;
+      padding: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+    }
+
+    .digest-title { font-size: 22px; font-weight: 800; margin-bottom: 4px; }
+    .digest-week { font-size: 13px; color: #b7a8d9; margin-bottom: 16px; }
+
+    /* Stat chips */
+    .stats-row { display: flex; gap: 10px; flex-wrap: wrap; }
+    .stat-chip {
+      flex: 1;
+      min-width: 88px;
+      padding: 12px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.08);
+      text-align: center;
+    }
+    .stat-chip .value { font-size: 20px; font-weight: 800; }
+    .stat-chip .label { font-size: 12px; color: #b7a8d9; margin-top: 4px; }
+
+    /* Topic distribution bars */
+    .card h3 { font-size: 15px; margin-bottom: 12px; }
+    .topic-bar { margin-bottom: 10px; }
+    .topic-bar .row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+    .topic-bar .track {
+      height: 8px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.1);
+      overflow: hidden;
+    }
+    .topic-bar .fill {
+      height: 100%;
+      border-radius: 4px;
+      background: linear-gradient(90deg, #cf226e, #8b5cf6);
+      width: 0;
+      transition: width 0.8s ease;
+    }
+
+    /* Key decisions + highlights */
+    .decision-list { list-style: none; }
+    .decision-list li {
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.06);
+      font-size: 13px;
+      line-height: 1.5;
+      border-left: 3px solid #8b5cf6;
+    }
+
+    .highlight-item {
+      padding: 12px;
+      margin-bottom: 10px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.06);
+    }
+    .highlight-item .snippet {
+      font-size: 14px;
+      line-height: 1.55;
+      margin-bottom: 6px;
+    }
+    .highlight-item .context { font-size: 12px; color: #b7a8d9; }
+
+    /* Empty / offline state */
+    .empty-state { text-align: center; padding: 48px 20px; color: #b7a8d9; }
+    .empty-state .icon { font-size: 44px; opacity: 0.6; margin-bottom: 12px; }
+
+    /* Footer actions */
+    .digest-actions { display: flex; gap: 10px; }
+    .btn-primary, .btn-secondary {
+      flex: 1;
+      padding: 10px 16px;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .btn-primary { background: linear-gradient(90deg, #cf226e, #8b5cf6); color: #fff; }
+    .btn-primary:hover { filter: brightness(1.15); }
+    .btn-secondary { background: rgba(255, 255, 255, 0.12); color: #f0ecf9; }
+    .btn-secondary:hover { background: rgba(255, 255, 255, 0.22); }
+
+    /* Week switcher */
+    .week-switcher { display: flex; align-items: center; gap: 12px; justify-content: center; }
+    .week-switcher button {
+      padding: 6px 12px;
+      border: none;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.1);
+      color: #f0ecf9;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .week-switcher button:hover { background: rgba(255, 255, 255, 0.2); }
+    .week-switcher .current-week { font-size: 14px; font-weight: 700; }
+
+    /* Feedback bubble */
+    .feedback-bubble {
+      position: fixed;
+      bottom: 40px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(255, 255, 255, 0.92);
+      color: #2d1b4e;
+      padding: 12px 24px;
+      border-radius: 24px;
+      font-size: 14px;
+      font-weight: 600;
+      z-index: 1000;
+      animation: fadeInUp 0.3s ease;
+    }
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateX(-50%) translateY(10px); }
+      to { opacity: 1; transform: translateX(-50%) translateY(0); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .topic-bar .fill { transition: none; }
+      .feedback-bubble { animation: none; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <header class="view-header">
+    <h1 class="view-title">💭 本周回顾</h1>
+    <nav class="view-nav">
+      <button class="view-toggle-btn" onclick="switchView('task')">📋 任务</button>
+      <button class="view-toggle-btn" onclick="switchView('exploration')">🔍 图谱</button>
+    </nav>
+  </header>
+
+  <!-- Reflection Feed -->
+  <main class="reflection-feed" id="reflection-feed">
+    <!-- Week switcher -->
+    <div class="card week-switcher">
+      <button onclick="prevWeek()" aria-label="上一周">← 上一周</button>
+      <span class="current-week" id="current-week-label">—</span>
+      <button onclick="nextWeek()" aria-label="下一周">下一周 →</button>
+    </div>
+
+    <!-- Digest content rendered here by feed.js -->
+    <div id="digest-root"></div>
+  </main>
+
+  <!-- Scripts -->
+  <script src="../companion-client.js"></script>
+  <script src="../voice-command-bar.js"></script>
+  <script src="feed.js"></script>
+</body>
+</html>
