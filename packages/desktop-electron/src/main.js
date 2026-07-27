@@ -12,35 +12,66 @@
 
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
+const { CompanionAdapterClient } = require('./companion-adapter-client');
 
 /**
  * Companion HTTP RPC base URL.
  * @type {string}
  */
-const COMPANION_BASE = 'http://127.0.0.1:8472';
+const COMPANION_BASE = process.env.DCF_COMPANION_URL || 'http://127.0.0.1:8472';
 
 /**
- * Path to the existing DCF Surface dashboard page.
- *
- * In development (npm start): resolves from src/ -> desktop-electron/ -> packages/ -> root -> seed/surface/
- * In packaged app: resolves from process.resourcesPath/seed/surface/ (extraResources config)
- *
- * @type {string}
+ * Adapter command client (enqueue + wait, honest failures).
+ * @type {CompanionAdapterClient}
  */
-const SURFACE_HTML = app.isPackaged
-  ? path.join(process.resourcesPath, 'seed', 'surface', 'g2-dashboard.html')
-  : path.join(__dirname, '../../../seed/surface/g2-dashboard.html');
+const adapterClient = new CompanionAdapterClient({ baseUrl: COMPANION_BASE });
+
+/** Panel geometry per task spec: 340 wide x 1200 tall. */
+const PANEL_WIDTH = 340;
+const PANEL_HEIGHT = 1200;
+/** Collapsed floating-ball window size. */
+const BALL_SIZE = 72;
+
+/**
+ * Path to DCF Surface views (Three Cognitive Lens Architecture)
+ *
+ * In development (npm start):
+ *   - Task View: seed/surface/views/task/index.html
+ *   - Exploration View: seed/surface/views/exploration/index.html
+ *   - Reflection View: seed/surface/views/reflection/index.html
+ * 
+ * In packaged app: resolves from process.resourcesPath/seed/surface/views/
+ */
+const SURFACE_VIEWS = {
+  task: app.isPackaged
+    ? path.join(process.resourcesPath, 'seed', 'surface', 'views', 'task', 'index.html')
+    : path.join(__dirname, '../../../seed/surface/views/task/index.html'),
+  
+  exploration: app.isPackaged
+    ? path.join(process.resourcesPath, 'seed', 'surface', 'views', 'exploration', 'index.html')
+    : path.join(__dirname, '../../../seed/surface/views/exploration/index.html'),
+  
+  reflection: app.isPackaged
+    ? path.join(process.resourcesPath, 'seed', 'surface', 'views', 'reflection', 'index.html')
+    : path.join(__dirname, '../../../seed/surface/views/reflection/index.html')
+};
+
+/** Current view mode: 'task' | 'exploration' | 'reflection' */
+let currentViewMode = 'task';
 
 /** @type {BrowserWindow|null} */
 let mainWindow = null;
+/** @type {BrowserWindow|null} */
+let ballWindow = null;
 
 /**
- * Create the floating surface window.
+ * Create the floating surface panel window with specified view mode.
+ * @param {string} viewMode - 'task', 'exploration', or 'reflection'
  */
-function createSurfaceWindow() {
+function createSurfaceWindow(viewMode = 'task') {
   mainWindow = new BrowserWindow({
-    width: 400,
-    height: 600,
+    width: PANEL_WIDTH,
+    height: PANEL_HEIGHT,
     alwaysOnTop: true,
     transparent: true,
     frame: false,
@@ -53,11 +84,112 @@ function createSurfaceWindow() {
     }
   });
 
-  mainWindow.loadFile(SURFACE_HTML);
+  const viewPath = SURFACE_VIEWS[viewMode] || SURFACE_VIEWS.task;
+  mainWindow.loadFile(viewPath);
+
+  // Inject collapse control for each view
+  mainWindow.webContents.on('did-finish-load', () => {
+    mainWindow.webContents.executeJavaScript(`(function () {
+      if (document.getElementById('dcf-collapse-btn')) return;
+      var btn = document.createElement('button');
+      btn.id = 'dcf-collapse-btn';
+      btn.textContent = '\u25CF';
+      btn.title = '\u6536\u8d77\u4e3a\u60ac\u6d6e\u7403';
+      btn.style.cssText = 'position:fixed;top:6px;right:6px;z-index:99999;' +
+        'width:24px;height:24px;border-radius:50%;border:none;cursor:pointer;' +
+        'background:rgba(64,100,210,0.85);color:#fff;font-size:10px;line-height:1;';
+      btn.addEventListener('click', function () {
+        if (window.dcfBridge && window.dcfBridge.collapsePanel) {
+          window.dcfBridge.collapsePanel();
+        }
+      });
+      document.body.appendChild(btn);
+    })();`).catch(() => { /* injection is cosmetic; never fatal */ });
+  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+}
+
+/**
+ * Create the collapsed floating-ball window (small translucent sphere).
+ */
+function createBallWindow() {
+  ballWindow = new BrowserWindow({
+    width: BALL_SIZE,
+    height: BALL_SIZE,
+    alwaysOnTop: true,
+    transparent: true,
+    frame: false,
+    skipTaskbar: true,
+    resizable: false,
+    hasShadow: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    }
+  });
+
+  ballWindow.loadFile(path.join(__dirname, 'ball.html'));
+
+  ballWindow.on('closed', () => {
+    ballWindow = null;
+  });
+}
+
+/**
+ * Collapse: hide the 340x1200 panel and show the floating ball near the
+ * panel's previous top-right corner.
+ */
+function collapseToBall() {
+  if (!ballWindow) {
+    createBallWindow();
+  }
+  if (mainWindow) {
+    const [x, y] = mainWindow.getPosition();
+    ballWindow.setPosition(x + PANEL_WIDTH - BALL_SIZE, y);
+    mainWindow.hide();
+  }
+  ballWindow.show();
+}
+
+/**
+ * Expand: hide the ball and restore the panel at the ball's location.
+ */
+function expandToPanel() {
+  if (!mainWindow) {
+    createSurfaceWindow(currentViewMode);
+  }
+  if (ballWindow) {
+    const [x, y] = ballWindow.getPosition();
+    mainWindow.setPosition(Math.max(0, x - PANEL_WIDTH + BALL_SIZE), y);
+    ballWindow.hide();
+  }
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+/**
+ * Switch between different cognitive lens views
+ * @param {string} newViewMode - 'task', 'exploration', or 'reflection'
+ */
+function switchViewMode(newViewMode) {
+  const validModes = ['task', 'exploration', 'reflection'];
+  if (!validModes.includes(newViewMode)) {
+    console.error('Invalid view mode:', newViewMode);
+    return;
+  }
+  
+  currentViewMode = newViewMode;
+  
+  // Reload current window with new view
+  if (mainWindow) {
+    const viewPath = SURFACE_VIEWS[newViewMode];
+    mainWindow.loadFile(viewPath);
+  }
 }
 
 /**
@@ -109,27 +241,45 @@ ipcMain.handle('dcf-rpc', async (_event, method, rpcPath, data) => {
 });
 
 /**
- * dcf-request-read: Phase 3 placeholder.
- * Real implementation will pull a read snapshot from the active browser surface.
+ * dcf-request-read: enqueue a read-conversation command through the
+ * companion durable queue and wait (500ms poll, 15s default timeout) for
+ * the Chrome adapter to execute it against the active tab.
+ * Honest outcome: {ok:false, error} on timeout/failure — no fake 501.
  */
-ipcMain.handle('dcf-request-read', async () => {
-  return {
-    ok: false,
-    status: 501,
-    body: { error: 'not-implemented', phase: 3, message: 'dcf-request-read is a Phase 3 placeholder' }
-  };
+ipcMain.handle('dcf-request-read', async (_event, options) => {
+  const payload = { limit: (options && options.limit) || 20 };
+  return adapterClient.execute('read-conversation', payload, options && options.timeout_ms);
 });
 
 /**
- * dcf-send-card: Phase 3 placeholder.
- * Real implementation will push a card payload into the active conversation surface.
+ * dcf-send-card: enqueue a send-card command (inject only by default;
+ * auto_send must be explicitly true to click send) and wait for the result.
+ * Honest outcome: {ok:false, error} on timeout/failure — no fake 501.
  */
-ipcMain.handle('dcf-send-card', async (_event, _cardData) => {
-  return {
-    ok: false,
-    status: 501,
-    body: { error: 'not-implemented', phase: 3, message: 'dcf-send-card is a Phase 3 placeholder' }
+ipcMain.handle('dcf-send-card', async (_event, cardData) => {
+  const payload = {
+    text: (cardData && cardData.text) || '',
+    auto_send: Boolean(cardData && cardData.auto_send)
   };
+  if (!payload.text) {
+    return { ok: false, error: 'send-card requires a non-empty text payload' };
+  }
+  return adapterClient.execute('send-card', payload, cardData && cardData.timeout_ms);
+});
+
+/** dcf-collapse-panel: switch to the floating-ball state. */
+ipcMain.on('dcf-collapse-panel', () => {
+  collapseToBall();
+});
+
+/** dcf-expand-panel: restore the 340x1200 panel from the ball. */
+ipcMain.on('dcf-expand-panel', () => {
+  expandToPanel();
+});
+
+/** dcf-switch-view: switch between Task/Exploration/Reflection views */
+ipcMain.on('dcf-switch-view', (_event, newViewMode) => {
+  switchViewMode(newViewMode);
 });
 
 // ---------------------------------------------------------------------------
@@ -137,11 +287,11 @@ ipcMain.handle('dcf-send-card', async (_event, _cardData) => {
 // ---------------------------------------------------------------------------
 
 app.whenReady().then(() => {
-  createSurfaceWindow();
+  createSurfaceWindow('task');  // Default to Task View (Lens 1)
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createSurfaceWindow();
+      createSurfaceWindow(currentViewMode);
     }
   });
 });

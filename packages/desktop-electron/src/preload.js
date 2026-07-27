@@ -26,17 +26,33 @@ const dcfBridge = {
   rpc: (method, path, data) => ipcRenderer.invoke('dcf-rpc', method, path, data),
 
   /**
-   * Request a read snapshot from the active surface (Phase 3 placeholder).
-   * @returns {Promise<*>}
+   * Request a read snapshot of the active conversation via the companion
+   * durable command queue (read-conversation).
+   * @param {{limit?:number, timeout_ms?:number}} [options]
+   * @returns {Promise<{ok:boolean, result?:*, error?:string}>}
    */
-  requestRead: () => ipcRenderer.invoke('dcf-request-read'),
+  requestRead: (options) => ipcRenderer.invoke('dcf-request-read', options),
 
   /**
-   * Push a card payload into the active conversation surface (Phase 3 placeholder).
-   * @param {*} cardData - Card payload to send.
-   * @returns {Promise<*>}
+   * Push a card payload into the active conversation surface via the
+   * companion durable command queue (send-card; inject-only unless
+   * cardData.auto_send === true).
+   * @param {{text:string, auto_send?:boolean, timeout_ms?:number}} cardData
+   * @returns {Promise<{ok:boolean, result?:*, error?:string}>}
    */
   sendCard: (cardData) => ipcRenderer.invoke('dcf-send-card', cardData),
+
+  /** Collapse the 340x1200 panel into the floating ball. */
+  collapsePanel: () => ipcRenderer.send('dcf-collapse-panel'),
+
+  /** Expand the floating ball back into the panel. */
+  expandPanel: () => ipcRenderer.send('dcf-expand-panel'),
+
+  /**
+   * Switch between the three cognitive lens views.
+   * @param {'task'|'exploration'|'reflection'} viewName
+   */
+  switchView: (viewName) => ipcRenderer.send('dcf-switch-view', viewName),
 
   /**
    * Subscribe to read-result events pushed from the main process.

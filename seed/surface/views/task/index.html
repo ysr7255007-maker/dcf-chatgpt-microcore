@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>我的任务 — DCF Surface</title>
+  <style>
+    /* Bento Grid Layout + Glassmorphism Design System */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "SF Pro Text", sans-serif;
+      background: rgba(255, 255, 255, 0.7);
+      backdrop-filter: blur(20px) saturate(180%);
+      color: #24292f;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    
+    /* Header */
+    .view-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+      background: linear-gradient(135deg, rgba(255,255,255,0.9), rgba(255,255,255,0.7));
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    
+    .view-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: #1a1a1a;
+    }
+    
+    .view-toggle-btn {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 8px;
+      background: rgba(9, 105, 218, 0.1);
+      color: #0969da;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    
+    .view-toggle-btn:hover {
+      background: rgba(9, 105, 218, 0.2);
+      transform: translateY(-1px);
+    }
+    
+    /* Bento Grid Container */
+    .bento-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      padding: 20px;
+    }
+    
+    /* Card Styles (Glassmorphism) */
+    .card {
+      background: linear-gradient(135deg, rgba(255,255,255,0.9), rgba(255,255,255,0.7));
+      backdrop-filter: blur(20px) saturate(180%);
+      border-radius: 12px;
+      padding: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    
+    .card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+    }
+    
+    .card h2 {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      color: #1a1a1a;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    /* Priority Tags */
+    .priority-tag {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    
+    .priority-tag.high {
+      background: #ffeef0;
+      color: #cf222e;
+    }
+    
+    .priority-tag.medium {
+      background: #fff8c5;
+      color: #9a6700;
+    }
+    
+    .priority-tag.low {
+      background: #f6f8fa;
+      color: #656d76;
+    }
+    
+    /* Task Card */
+    .task-card {
+      background: rgba(255, 255, 255, 0.5);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 10px;
+      border: 1px solid rgba(0, 0, 0, 0.05);
+      transition: all 0.2s ease;
+    }
+    
+    .task-card:hover {
+      background: rgba(255, 255, 255, 0.8);
+      transform: translateX(2px);
+    }
+    
+    .task-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    
+    .maturity-score {
+      font-size: 12px;
+      color: #586069;
+      font-weight: 600;
+    }
+    
+    .task-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #1a1a1a;
+      margin-bottom: 6px;
+      line-height: 1.4;
+    }
+    
+    .task-summary {
+      font-size: 13px;
+      color: #586069;
+      line-height: 1.5;
+      margin-bottom: 10px;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    
+    .task-actions {
+      display: flex;
+      gap: 8px;
+    }
+    
+    .task-actions button {
+      flex: 1;
+      padding: 6px 12px;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    
+    .btn-accept {
+      background: rgba(26, 127, 55, 0.1);
+      color: #1a7f37;
+    }
+    
+    .btn-accept:hover {
+      background: rgba(26, 127, 55, 0.2);
+    }
+    
+    .btn-dismiss {
+      background: rgba(207, 34, 46, 0.1);
+      color: #cf222e;
+    }
+    
+    .btn-dismiss:hover {
+      background: rgba(207, 34, 46, 0.2);
+    }
+    
+    /* Empty State */
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: #586069;
+    }
+    
+    .empty-state-icon {
+      font-size: 48px;
+      margin-bottom: 12px;
+      opacity: 0.5;
+    }
+    
+    .empty-state-text {
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+    
+    /* Footer */
+    .view-footer {
+      padding: 16px 20px;
+      border-top: 1px solid rgba(255, 255, 255, 0.3);
+      background: rgba(255, 255, 255, 0.5);
+      display: flex;
+      gap: 12px;
+    }
+    
+    .view-footer button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    
+    .btn-primary {
+      background: rgba(9, 105, 218, 0.9);
+      color: white;
+    }
+    
+    .btn-primary:hover {
+      background: rgba(9, 105, 218, 1);
+      transform: translateY(-1px);
+    }
+    
+    .btn-secondary {
+      background: rgba(207, 216, 225, 0.5);
+      color: #24292f;
+    }
+    
+    .btn-secondary:hover {
+      background: rgba(207, 216, 225, 0.8);
+    }
+    
+    /* Feedback Bubble */
+    .feedback-bubble {
+      position: fixed;
+      bottom: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(26, 26, 26, 0.9);
+      color: white;
+      padding: 12px 24px;
+      border-radius: 24px;
+      font-size: 14px;
+      font-weight: 500;
+      z-index: 1000;
+      animation: fadeInUp 0.3s ease;
+    }
+    
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+      }
+    }
+    
+    /* Responsive adjustments for narrow viewport */
+    @media (max-width: 400px) {
+      .bento-grid {
+        grid-template-columns: 1fr;
+      }
+      
+      .card {
+        grid-column: span 3;
+      }
+    }
+    
+    /* A11y: respect reduced motion preference (WCAG 2.1) */
+    @media (prefers-reduced-motion: reduce) {
+      .card, .task-card, .view-toggle-btn, .view-footer button {
+        transition: none;
+      }
+      .card:hover, .task-card:hover, .view-toggle-btn:hover, .btn-primary:hover {
+        transform: none;
+      }
+      .feedback-bubble {
+        animation: none;
+      }
+    }
+    
+    /* A11y: high-contrast mode support */
+    @media (prefers-contrast: more) {
+      .card, .task-card {
+        border: 1px solid #24292f;
+        background: #ffffff;
+      }
+      .task-summary, .maturity-score {
+        color: #24292f;
+      }
+    }
+    
+    /* A11y: visible keyboard focus */
+    button:focus-visible {
+      outline: 2px solid #0969da;
+      outline-offset: 2px;
+    }
+    
+
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <header class="view-header">
+    <h1 class="view-title">📋 我的任务</h1>
+    <button class="view-toggle-btn" onclick="switchView('exploration')" aria-label="切换到探索图谱视图">🔍 探索图谱</button>
+  </header>
+  
+  <!-- Bento Grid Main Container -->
+  <main class="bento-grid" id="view-root">
+    <!-- High Priority Section -->
+    <section class="card high-priority" aria-labelledby="high-priority-heading">
+      <h2 id="high-priority-heading">🔥 高优先级</h2>
+      <div class="task-list" id="high-priority-tasks" role="list" aria-live="polite">
+        <!-- Tasks will be dynamically loaded here -->
+      </div>
+    </section>
+    
+    <!-- Medium Priority Section -->
+    <section class="card medium-priority" aria-labelledby="medium-priority-heading">
+      <h2 id="medium-priority-heading">⚡ 中等优先级</h2>
+      <div class="task-list" id="medium-priority-tasks" role="list" aria-live="polite"></div>
+    </section>
+    
+    <!-- Low Priority Section -->
+    <section class="card low-priority" aria-labelledby="low-priority-heading">
+      <h2 id="low-priority-heading">💭 低优先级</h2>
+      <div class="task-list" id="low-priority-tasks" role="list" aria-live="polite"></div>
+    </section>
+  </main>
+  
+  <!-- Footer Actions -->
+  <footer class="view-footer">
+    <button class="btn-primary" onclick="createNewTask()" aria-label="新建任务">+ 新建任务</button>
+    <button class="btn-secondary" onclick="refreshTasks()" aria-label="刷新任务列表">↻ 刷新</button>
+  </footer>
+  
+  <!-- Scripts -->
+  <script src="../companion-client.js"></script>
+  <script src="../voice-command-bar.js"></script>
+  <script src="controller.js"></script>
+</body>
+</html>

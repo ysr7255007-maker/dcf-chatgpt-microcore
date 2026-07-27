@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<!--
+  DCF Surface - collapsed floating-ball state.
+
+  A small transparent always-on-top window rendered as a translucent sphere.
+  The outer ring is a drag region (movable), the center is a no-drag click
+  target that asks the main process to expand back to the 340x1200 panel.
+-->
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>DCF</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    overflow: hidden;
+    user-select: none;
+  }
+  .ball {
+    position: absolute;
+    inset: 4px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 32% 28%,
+      rgba(140, 180, 255, 0.92),
+      rgba(64, 100, 210, 0.78) 55%,
+      rgba(30, 48, 120, 0.72));
+    box-shadow: 0 4px 14px rgba(20, 30, 80, 0.45),
+                inset 0 2px 6px rgba(255, 255, 255, 0.35);
+    -webkit-app-region: drag; /* whole ball is movable */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: breathe 3s ease-in-out infinite;
+  }
+  /* Breathing-light idle effect (plan 1.4) */
+  @keyframes breathe {
+    0%, 100% { transform: scale(1); opacity: 0.85; }
+    50% { transform: scale(1.05); opacity: 1; }
+  }
+  /* Pulse when a new recommendation arrives */
+  @keyframes pulse-new-recommendation {
+    0%, 100% { box-shadow: 0 4px 14px rgba(64, 100, 210, 0.45),
+                           inset 0 2px 6px rgba(255, 255, 255, 0.35); }
+    50% { box-shadow: 0 4px 28px rgba(139, 92, 246, 0.85),
+                      inset 0 2px 6px rgba(255, 255, 255, 0.35); }
+  }
+  .ball.has-new {
+    animation: breathe 3s ease-in-out infinite,
+               pulse-new-recommendation 2s ease-in-out 3;
+  }
+  /* Accessibility: respect reduced-motion preference */
+  @media (prefers-reduced-motion: reduce) {
+    .ball, .ball.has-new { animation: none; }
+  }
+  .core {
+    width: 46%;
+    height: 46%;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.28);
+    border: none;
+    color: #fff;
+    font: 700 11px/1 -apple-system, sans-serif;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    -webkit-app-region: no-drag; /* clickable expand target */
+  }
+  .core:hover { background: rgba(255, 255, 255, 0.45); }
+</style>
+</head>
+<body>
+  <div class="ball" id="ball-indicator" role="button" tabindex="0" aria-label="DCF 悬浮球：点击展开面板">
+    <button class="core" id="expand" title="展开 DCF 面板">DCF</button>
+  </div>
+  <script>
+    document.getElementById('expand').addEventListener('click', () => {
+      if (window.dcfBridge && window.dcfBridge.expandPanel) {
+        window.dcfBridge.expandPanel();
+      }
+    });
+
+    // ---- New-recommendation pulse (plan 1.4) ----
+    // Poll the Companion task projection every 5 minutes; when fresh
+    // recommendations exist, flash the pulse animation on the ball.
+    const CHECK_INTERVAL_MS = 5 * 60 * 1000;
+
+    function rpcGet(path) {
+      if (window.dcfBridge && window.dcfBridge.rpc) {
+        return window.dcfBridge.rpc('GET', path);
+      }
+      return fetch('http://127.0.0.1:8472' + path)
+        .then((res) => res.json().then((body) => ({ ok: res.ok, status: res.status, body })))
+        .catch((err) => ({ ok: false, status: 0, body: { error: String(err) } }));
+    }
+
+    async function checkForNewRecommendations() {
+      const res = await rpcGet('/rpc/projection/tasks?status=recommended&limit=1');
+      if (!res.ok || !res.body || res.body.ok === false) return; // honest failure: stay quiet
+      const items = res.body.data || [];
+      if (items.length === 0) return;
+
+      const latestTs = items[0].lastActivityTs || items[0].last_activity_ts || 0;
+      const lastSeen = Number(localStorage.getItem('dcf-last-seen-recommendation-ts') || 0);
+      if (latestTs && latestTs <= lastSeen) return; // nothing new since last flash
+
+      const ball = document.getElementById('ball-indicator');
+      ball.classList.add('has-new');
+      // pulse runs 3 iterations x 2s; remove the class afterwards
+      setTimeout(() => ball.classList.remove('has-new'), 6500);
+      localStorage.setItem('dcf-last-seen-recommendation-ts', String(latestTs || Date.now()));
+    }
+
+    checkForNewRecommendations();
+    setInterval(checkForNewRecommendations, CHECK_INTERVAL_MS);
+  </script>
+</body>
+</html>
