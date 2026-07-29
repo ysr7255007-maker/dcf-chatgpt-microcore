@@ -110,8 +110,11 @@ function parseAIResponse(rawText) {
     const jsonIdx = rawText.indexOf(jsonMarker);
 
     if (mdIdx === -1 || jsonIdx === -1 || jsonIdx < mdIdx) {
-        // No valid delimiter structure — return raw text as markdown, no products
-        return { markdown: rawText.trim(), products: [], parseError: null };
+        // No delimiter structure — real local models (Ollama qwen 等) 常直接输出
+        // ```json 代码块或裸 JSON。降级：尽力从代码块/裸 JSON 提取产物，
+        // 提取不到时把全文当 markdown（不伪造产物）。
+        const fallback = extractProductsFallback(rawText);
+        return { markdown: rawText.trim(), products: fallback, parseError: null };
     }
 
     const markdown = rawText.slice(mdIdx + mdMarker.length, jsonIdx).trim();
@@ -134,6 +137,46 @@ function parseAIResponse(rawText) {
     } catch (e) {
         return { markdown, products: [], parseError: `JSON parse error: ${e.message}` };
     }
+}
+
+/**
+ * 降级产物提取：当模型未按 <<<MARKDOWN>>>/<<<JSON>>> 分隔符输出时，
+ * 从 ```json 代码块或裸 JSON 中尽力解析出 card/maintenance_task 产物。
+ * 提取失败返回空数组（不伪造）。
+ *
+ * @param {string} rawText
+ * @returns {Array} products（可能为空）
+ */
+function extractProductsFallback(rawText) {
+    const candidates = [];
+    // 1) ```json ... ``` 代码块
+    const fenceRe = /```(?:json)?\s*([\s\S]*?)```/gi;
+    let m;
+    while ((m = fenceRe.exec(rawText)) !== null) {
+        if (m[1] && m[1].trim()) candidates.push(m[1].trim());
+    }
+    // 2) 首个 { ... } 或 [ ... ] 裸 JSON 片段（去除 qwen <think> 噪声后）
+    const cleaned = rawText.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+    const firstObj = cleaned.indexOf('{');
+    const firstArr = cleaned.indexOf('[');
+    if (firstArr !== -1 && (firstArr < firstObj || firstObj === -1)) {
+        const lastArr = cleaned.lastIndexOf(']');
+        if (lastArr > firstArr) candidates.push(cleaned.slice(firstArr, lastArr + 1));
+    } else if (firstObj !== -1) {
+        const lastObj = cleaned.lastIndexOf('}');
+        if (lastObj > firstObj) candidates.push(cleaned.slice(firstObj, lastObj + 1));
+    }
+
+    for (const c of candidates) {
+        try {
+            const parsed = JSON.parse(c);
+            const arr = Array.isArray(parsed) ? parsed : [parsed];
+            const valid = arr.filter(p => p && typeof p === 'object'
+                && (p.type === 'card' || p.type === 'maintenance_task'));
+            if (valid.length > 0) return valid;
+        } catch (_) { /* 尝试下一个候选 */ }
+    }
+    return [];
 }
 
 // ---------------------------------------------------------------------------
@@ -463,7 +506,8 @@ class AIDigestEngine {
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: `对话 source_id: ${conversationId}\n\n材料内容:\n${material}` }
             ],
-            stream: false
+            stream: false,
+            think: false
         });
 
         const result = await this._httpPost(ollamaUrl, { 'Content-Type': 'application/json' }, body);

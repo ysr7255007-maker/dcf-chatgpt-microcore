@@ -1,0 +1,47 @@
+{
+  "wave": 2,
+  "at": "2026-07-29T21:26:36.059Z",
+  "config_path": "/tmp/dcf-ai-test/ai-config.json",
+  "ai_status": {
+    "level": "local",
+    "label": "本地可用",
+    "indicator": "🔵",
+    "detail": {
+      "ollama_url": "http://localhost:11434/api/chat",
+      "model": "qwen3:0.6b"
+    }
+  },
+  "conversation_id": "01KYQWB6PZE53JV6Y9VYQPHTN0",
+  "seeded_event_ids": [
+    "01KYQWB6Q025D568BX9EJBEKYW",
+    "01KYQWB6Q0ADN7SN7ZSE6Q9T4T"
+  ],
+  "digest": {
+    "success": true,
+    "source_level": "local",
+    "product_count": 1,
+    "elapsed_ms": 5170,
+    "error": null
+  },
+  "products": [
+    {
+      "type": "card",
+      "id": "01KYQWBBRRDZ2CAP25YV8KDM6K",
+      "title": "DCF 三层架构",
+      "summary": "DCF 的三层架构包括 Core（内核事件总线）、Functions（模块化能力）和 Target Adapter（观察与目标平台交互），其中 Target Adapter 负责从网页读取并送入 companion。",
+      "source_conversation": "01KYQWB6PZE53JV6Y9VYQPHTN0",
+      "source_event_ids": "[\"01KYQWB6Q025D568BX9EJBEKYW\",\"01KYQWB6Q0ADN7SN7ZSE6Q9T4T\"]",
+      "attribution_state": "ai_proposed"
+    }
+  ],
+  "checks": {
+    "ai_status_reported": true,
+    "ai_status_honest_local": true,
+    "digest_ran_real_model": true,
+    "product_produced": true,
+    "source_conversation_traced": true,
+    "source_event_ids_traced": true,
+    "candidate_not_user_stance": true
+  },
+  "passed": true
+}
