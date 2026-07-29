@@ -410,14 +410,14 @@ test('seed/adapters/chrome/background.js natively 支持 dcf.observation + Outbo
   assert.ok(bg.includes('dcf-outbox-flush'), 'SW 必须设置 dcf-outbox-flush alarm');
 });
 
-test('构建产物 dist/web-capture/index.js 在 VM 中可完整执行（引擎启动）', () => {
-  const bundlePath = path.join(__dirname, '..', 'dist', 'dcf-chrome-extension', 'web-capture', 'index.js');
-  if (!fs.existsSync(bundlePath)) {
-    console.log('    (跳过：dist 未构建，先跑 npm run build:chrome)');
-    return;
-  }
+test('G1 构建产物 seed/adapters/chrome/web-capture/bundle.js 在 VM 中可完整执行且注册全部适配器', () => {
+  const bundlePath = path.join(__dirname, '..', 'seed', 'adapters', 'chrome', 'web-capture', 'bundle.js');
+  assert.ok(fs.existsSync(bundlePath), 'bundle.js 必须存在（先跑 npm run build:g1）');
   const code = fs.readFileSync(bundlePath, 'utf8');
   assert.ok(!/\brequire\s*\(/.test(code), '构建产物不得含 require(');
+  // 回归守卫：bundle 必须把 __SITE_* 常量接线进 __DCF_WEB_CAPTURE__ 注册表，
+  // 否则 index.js 读到 undefined → 全部隔离 → loaded=0 → 真实浏览器零采集
+  assert.ok(/__DCF_WEB_CAPTURE__\[/.test(code), 'bundle 必须包含注册表接线（__DCF_WEB_CAPTURE__[key]=__SITE_*）');
 
   const attrSet = {};
   const documentEl = {

@@ -983,7 +983,20 @@ const __SITE_CLAUDE_AI = {
   ],
 
   verified: true // 2026-07-29 BrowserClaw 验收通过（conv c434f3f0-a22f-4a59-9091-2c0def764bbf，6/6 断言）
-};/**
+};
+(function(g){ g.__DCF_WEB_CAPTURE__ = g.__DCF_WEB_CAPTURE__ || {}; const __DCF_WEB_CAPTURE__ = g.__DCF_WEB_CAPTURE__;
+__DCF_WEB_CAPTURE__["claude-ai"] = __SITE_CLAUDE_AI;
+__DCF_WEB_CAPTURE__["deepseek"] = __SITE_DEEPSEEK;
+__DCF_WEB_CAPTURE__["doubao"] = __SITE_DOUBAO;
+__DCF_WEB_CAPTURE__["gemini"] = __SITE_GEMINI;
+__DCF_WEB_CAPTURE__["grok"] = __SITE_GROK;
+__DCF_WEB_CAPTURE__["kimi"] = __SITE_KIMI;
+__DCF_WEB_CAPTURE__["minimax"] = __SITE_MINIMAX;
+__DCF_WEB_CAPTURE__["xiaomimimo"] = __SITE_XIAOMIMIMO;
+__DCF_WEB_CAPTURE__["yuanbao"] = __SITE_YUANBAO;
+__DCF_WEB_CAPTURE__["z-ai"] = __SITE_Z_AI;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+/**
  * Web Capture Entry — code-unit 入口（页面运行时）
  *
  * 加载期笼子（spec §3.3 强约束 + 隔离）：
