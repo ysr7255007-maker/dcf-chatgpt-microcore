@@ -14,6 +14,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { validateAiConfig, isFullyAbsent, isFullyPresent } = require('./ai-config.contract');
 
 /**
  * Default config file location.
@@ -62,12 +63,21 @@ function getConfig(configPath) {
         return { configured: false };
     }
 
-    // Validate required API fields
-    const apiValid = REQUIRED_API_FIELDS.every(
-        f => raw[f] && typeof raw[f] === 'string' && raw[f].trim() !== ''
-    );
+    // 正确性体质：非法配置不可表示。
+    // 三条不变量皆为跨字段约束，无论 API 是否存在都校验：
+    //   1. api 三字段全有或全无（2. 本地兜底完整性（3. 兜底通道互斥
+    // 违反 → fail loud（configured:false + invalid:true），不静默降级。
+    const validation = validateAiConfig(raw);
+    if (!validation.valid) {
+        return {
+            configured: false,
+            invalid: true,
+            errors: validation.errors
+        };
+    }
 
-    if (!apiValid) {
+    // API 三字段全无 = 合法的无 API 态（可能仅启用本地/OpenCode 兜底）
+    if (isFullyAbsent(raw) || !isFullyPresent(raw)) {
         return { configured: false };
     }
 
@@ -120,9 +130,27 @@ function getStatus(configPath) {
         };
     }
 
+    // 正确性体质：非法配置如实报告（fail loud，不静默降级）。
+    // 非法配置 = 无可用 AI 能力 → 归入 ⚪未配置（spec 仅定义 🟢/🔵/⚪ 三态），
+    // 但 detail 携带 invalid 标志与具体错误，供上层与用户定位。
+    if (config.invalid) {
+        console.warn('[ai-config] 非法配置（fail loud）:', JSON.stringify(config.errors));
+        return {
+            level: 'unconfigured',
+            label: '未配置（配置非法）',
+            indicator: '⚪',
+            detail: {
+                invalid: true,
+                hint: 'ai-config.json 违反 contract，请修正后重试',
+                errors: config.errors
+            }
+        };
+    }
+
     // Check if local fallback alone is available
     const raw = readConfigFile(configPath);
-    if (raw && raw.local_fallback && raw.local_fallback.ollama_url && raw.local_fallback.model) {
+    if (raw && raw.local_fallback && raw.local_fallback.enabled === true
+        && raw.local_fallback.ollama_url && raw.local_fallback.model) {
         return {
             level: 'local',
             label: '本地可用',
