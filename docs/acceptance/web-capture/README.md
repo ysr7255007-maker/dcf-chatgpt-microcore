@@ -1,5 +1,27 @@
 # 网页端多站点采集适配 — BrowserClaw 验收记录（终版）
 
+> **归位声明（2026-07-30）**：采集能力已从 spec 过渡形态（`chrome-extension/code-units/web-capture/`）迁至 G1 Target Adapter 终态（`seed/adapters/chrome/web-capture/`）。详见 ADR: [2026-07-30-dcf-web-capture-target-adapter.md](../../adr/2026-07-30-dcf-web-capture-target-adapter.md)。
+
+## 归位后链路（G1 终态）
+
+```
+Target Page (8站) → seed/adapters/chrome/web-capture/bundle.js (content_script)
+  → engine.js MutationObserver → CapturedEvent
+  → chrome.runtime.sendMessage({type:'dcf.observation'})
+  → G1 background.js (原生 SW，importScripts ulid+outbox-core)
+  → OutboxCore.recordObservation → chrome.storage.local (容量 8)
+  → dcf-outbox-flush alarm (0.5min) → POST companion /rpc/events/batch
+  → raw_events
+```
+
+与旧世界差异：
+- 消息类型 `web-capture.observation` → `dcf.observation`（G1 background.js 原生 handler）
+- 无需 host-main 委派（G1 adapter 原生拥有 service worker）
+- 旧 `chrome-extension/src/web-capture-background.js` 已删除
+- 构建脚本 `scripts/build-g1-adapter.js` 拼接 bundle.js（零依赖）
+
+---
+
 任务：`网页端多站点采集适配_task-03a.md`（v2 四原则合规）
 站点清单：以用户 2026-07-29 指示为准——**豆包 / Gemini / Grok / Kimi / Z.ai / DeepSeek / MiniMax / 小米 MiMo**（替换原清单的 Claude.ai 与元宝；两者适配器文件保留但不在用户目标清单内，verified:false）
 执行时间：2026-07-29
@@ -56,8 +78,10 @@ CF 管理式质询「正在进行安全验证」不会自动放行；质询 ifra
 ## 复验入口
 
 ```bash
+node scripts/build-g1-adapter.js                        # 构建 G1 web-capture bundle
+node tests/chrome-web-capture.unit.test.js              # 30 项 web-capture 单测（指向 seed/adapters/chrome）
 npm run verify:chrome                                    # 全量单测 + 构建 + JSON 校验
-node scripts/web-capture-accept-site.cjs <site>          # 单站真实验收（8 站均可）
+node scripts/web-capture-accept-site.cjs <site>          # 单站真实验收（G1 EXT_ID 从 manifest 推导）
 # site ∈ gemini|doubao|kimi|deepseek|grok|z-ai|minimax|xiaomimimo
 ```
 
