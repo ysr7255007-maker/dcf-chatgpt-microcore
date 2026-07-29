@@ -10,7 +10,7 @@
  * - 入库前过 assertCapturedEvent 笼子；经 chrome.runtime.sendMessage 交给背景 durable outbox
  * - SPA 导航：轮询 location.href，会话切换时重建基线会话
  *
- * 对外通信唯一通道：chrome.runtime.sendMessage({type:'web-capture.observation', ...})
+ * 对外通信唯一通道：chrome.runtime.sendMessage({type:'dcf.observation', ...})
  * 引擎零 require，由 tests/chrome-web-capture.unit.test.js 机器断言。
  */
 (function (global) {
@@ -198,7 +198,7 @@
             scheduleRetry();
             return;
         }
-        chrome.runtime.sendMessage(Object.assign({ type: 'web-capture.observation' }, obs))
+        chrome.runtime.sendMessage(Object.assign({ type: 'dcf.observation' }, obs))
             .then(() => flushPending())
             .catch(() => {
                 pendingOutbox.push(obs);
