@@ -1,9 +1,10 @@
 # DCF ADR canonical status index
 
-Updated: 2026-07-26
+Updated: 2026-07-30
 
 ## Current
 
+- `2026-07-30-dcf-web-capture-target-adapter.md` — **accepted; 采集能力从 spec 过渡形态归位至 G1 Target Adapter 终态**；web-capture 移入 `seed/adapters/chrome/web-capture/`，消息类型统一为 `dcf.observation`，manifest 扩展 8 站，`build-g1-adapter.js` 生成零依赖 bundle；8 站 BrowserClaw 真实验收（Wave 1.6）pending
 - `../vision/2026-07-26-dcf-from-zero-vision-adr.md` — **current evolving vision**; defines the authorized-life-material boundary, user ownership, DCF-owned visible Surface, cross-AI continuity and long-term value direction without inheriting old implementation structure
 - `2026-07-26-dcf-minimal-live-loop-growth-blueprint.md` — **accepted and executable**; P0 preserves and normalizes the old world, then `seed/` grows strictly from G1 “authorize—recover—save—review” through G7, with Companion as the only persistent core, DCF Surface owned by DCF, and target adapters kept silent and non-authoritative
 - `2026-07-21-dcf-control-plane-desired-observed-committed-reconcile.md` — **accepted for the retained rc.3 old-world control plane; fact-ownership method retained, universal business state machine rejected for seed**; CodeUnit identity is content-addressed inside that old implementation, Current/LKG commit after Canary loaded proof, Stable requires explicit behavior acceptance, and page migration cannot roll back Current
