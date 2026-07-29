@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>知识卡片库 — DCF Surface</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+      background: linear-gradient(160deg, #f6f8fa 0%, #eef1f6 100%);
+      color: #24292f; line-height: 1.55; min-height: 100vh;
+      display: flex; flex-direction: column;
+    }
+
+    .view-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 20px; position: sticky; top: 0; z-index: 100;
+      background: rgba(255, 255, 255, 0.75);
+      backdrop-filter: blur(20px) saturate(180%);
+      border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    }
+    .view-title { font-size: 17px; font-weight: 700; }
+    .view-actions { display: flex; gap: 8px; }
+    .view-actions button {
+      border: 1px solid #d0d7de; background: #fff; color: #24292f;
+      padding: 6px 12px; border-radius: 8px; font-size: 13px; cursor: pointer;
+    }
+    .view-actions button:hover { background: #f3f4f6; }
+
+    .card-list { flex: 1; padding: 16px 20px 80px; display: grid; gap: 12px; }
+
+    .knowledge-card {
+      background: linear-gradient(135deg, rgba(255,255,255,0.92), rgba(255,255,255,0.78));
+      backdrop-filter: blur(20px) saturate(180%);
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      border-radius: 12px; padding: 16px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .knowledge-card:hover { transform: translateY(-2px); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12); }
+
+    .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+    .card-title { font-size: 15px; font-weight: 700; }
+    .card-state {
+      font-size: 11px; padding: 2px 8px; border-radius: 10px; white-space: nowrap;
+      background: #fff8c5; color: #9a6700;
+    }
+    .card-state.reality_verified { background: #dafbe1; color: #1a7f37; }
+    .card-summary { font-size: 13px; color: #57606a; margin-top: 8px; }
+    .card-evidence { margin-top: 10px; padding-left: 16px; }
+    .card-evidence li { font-size: 12px; color: #656d76; margin-bottom: 4px; }
+    .card-meta { margin-top: 10px; font-size: 11px; color: #8b949e; font-family: ui-monospace, monospace; }
+
+    .empty-state { text-align: center; color: #8b949e; padding: 60px 20px; font-size: 14px; }
+
+    .feedback-bubble {
+      position: fixed; bottom: 60px; left: 50%; transform: translateX(-50%);
+      background: #24292f; color: #fff; padding: 10px 18px;
+      border-radius: 20px; font-size: 13px; z-index: 1000;
+      animation: bubble-in 0.25s ease;
+    }
+    @keyframes bubble-in { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+    button:focus-visible { outline: 2px solid #0969da; outline-offset: 2px; }
+    @media (prefers-reduced-motion: reduce) {
+      .knowledge-card, .feedback-bubble { transition: none; animation: none; }
+    }
+    @media (prefers-contrast: more) {
+      .knowledge-card { border: 1px solid #24292f; background: #fff; }
+    }
+  </style>
+</head>
+<body>
+  <header class="view-header">
+    <h1 class="view-title">🧠 知识卡片库</h1>
+    <div class="view-actions">
+      <button onclick="generateCards()" aria-label="让 AI 基于储存的对话归纳知识卡片">🧠 生成卡片</button>
+      <button onclick="loadCards()" aria-label="刷新卡片库">↻ 刷新</button>
+    </div>
+  </header>
+
+  <main class="card-list" id="card-list" role="list" aria-live="polite">
+    <div class="empty-state">正在加载卡片库…</div>
+  </main>
+
+  <script src="../companion-client.js"></script>
+  <script src="../voice-command-bar.js"></script>
+  <script>
+  (function (global) {
+    'use strict';
+
+    var listEl = document.getElementById('card-list');
+
+    function showFeedback(message) {
+      var bubble = document.createElement('div');
+      bubble.className = 'feedback-bubble';
+      bubble.textContent = message;
+      document.body.appendChild(bubble);
+      setTimeout(function () { bubble.remove(); }, 2400);
+    }
+
+    function describeError(res) {
+      if (!res) return 'unknown';
+      var body = res.body;
+      if (body && body.error && typeof body.error === 'object') return String(body.error.message || 'error');
+      if (body && body.message) return String(body.message);
+      if (body && body.error) return String(body.error);
+      return 'HTTP ' + res.status;
+    }
+
+    var STATE_LABELS = {
+      ai_proposed: 'AI 提议',
+      user_tentative: '用户暂定',
+      reality_verified: '现实验证',
+      superseded: '已被取代'
+    };
+
+    function renderCard(card) {
+      var el = document.createElement('article');
+      el.className = 'knowledge-card';
+      el.setAttribute('role', 'listitem');
+
+      var head = document.createElement('div');
+      head.className = 'card-head';
+      var title = document.createElement('h2');
+      title.className = 'card-title';
+      title.textContent = card.title || '（无标题）';
+      var state = document.createElement('span');
+      state.className = 'card-state ' + (card.attribution_state || '');
+      state.textContent = STATE_LABELS[card.attribution_state] || card.attribution_state || '';
+      head.appendChild(title);
+      head.appendChild(state);
+      el.appendChild(head);
+
+      var summary = document.createElement('p');
+      summary.className = 'card-summary';
+      summary.textContent = card.summary || '';
+      el.appendChild(summary);
+
+      var evidence = Array.isArray(card.evidence) ? card.evidence : [];
+      if (evidence.length) {
+        var ul = document.createElement('ul');
+        ul.className = 'card-evidence';
+        evidence.forEach(function (ev) {
+          var li = document.createElement('li');
+          li.textContent = ev;
+          ul.appendChild(li);
+        });
+        el.appendChild(ul);
+      }
+
+      var meta = document.createElement('div');
+      meta.className = 'card-meta';
+      meta.textContent = (card.created_at || '') + ' · ' + (card.card_id || '');
+      el.appendChild(meta);
+
+      return el;
+    }
+
+    function loadCards() {
+      global.CompanionClient.getCards().then(function (res) {
+        listEl.innerHTML = '';
+        if (!res.ok || !res.body) {
+          listEl.innerHTML = '<div class="empty-state">无法连接 Companion：' + describeError(res) + '</div>';
+          return;
+        }
+        var cards = res.body.cards || [];
+        if (!cards.length) {
+          listEl.innerHTML = '<div class="empty-state">还没有知识卡片。点击「🧠 生成卡片」让 AI 基于储存的对话归纳。</div>';
+          return;
+        }
+        cards.forEach(function (card) { listEl.appendChild(renderCard(card)); });
+      });
+    }
+
+    function generateCards() {
+      global.CompanionClient.requestCardGeneration().then(function (res) {
+        if (res.ok && res.body && res.body.ok !== false) {
+          var data = res.body.data || {};
+          showFeedback(data.adapter_notified
+            ? '🧠 已基于 ' + (data.conversations_included || 0) + ' 条对话发出归纳请求，AI 回复后卡片将自动出现'
+            : '归纳请求已入队，但适配器离线（打开目标页面后生效）');
+          return;
+        }
+        showFeedback('归纳请求失败：' + describeError(res));
+      });
+    }
+
+    global.loadCards = loadCards;
+    global.generateCards = generateCards;
+    document.addEventListener('DOMContentLoaded', loadCards);
+  })(window);
+  </script>
+</body>
+</html>

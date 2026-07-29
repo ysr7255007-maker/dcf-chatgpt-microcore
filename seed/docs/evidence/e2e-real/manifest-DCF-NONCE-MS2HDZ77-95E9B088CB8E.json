@@ -1,0 +1,47 @@
+{
+  "run_id": "DCF-NONCE-MS2HDZ77-95E9B088CB8E",
+  "started_at": "2026-07-27T00:20:49.972Z",
+  "finished_at": "2026-07-27T00:21:35.158Z",
+  "nonce": "DCF-NONCE-MS2HDZ77-95E9B088CB8E",
+  "conversation_url_before": "https://chatgpt.com/",
+  "conversation_url_after": "https://chatgpt.com/c/6a66a466-a078-83ee-a5e6-aa4a98fee472",
+  "message_count_before": 0,
+  "message_count_after": 2,
+  "assistant_reply": {
+    "message_id": "7eae923d-1440-4967-bebb-8d8451d1331b",
+    "text": "DCF-NONCE-MS2HDZ77-95E9B088CB8E"
+  },
+  "dom_user_message_id": "beef2701-9882-42f8-8e8b-2f18c6fb8fcb",
+  "dom_assistant_message_id": "7eae923d-1440-4967-bebb-8d8451d1331b",
+  "companion_event_ids": [],
+  "screenshots": [
+    {
+      "path": "/Users/looy/Documents/dcf/seed/docs/evidence/e2e-real/DCF-NONCE-MS2HDZ77-95E9B088CB8E-final.jpg",
+      "label": "after-assistant-reply",
+      "sha256": "9c718a72074631bfa860084ea40eac0f0e369d19fa1cd76c30e18cdb7627b29c"
+    }
+  ],
+  "checks": [
+    {
+      "name": "消息计数增量 ≥ 2",
+      "ok": true
+    },
+    {
+      "name": "nonce 出现在 baseline 之后新增的 user 消息",
+      "ok": true
+    },
+    {
+      "name": "assistant 回复包含本轮 nonce",
+      "ok": true
+    },
+    {
+      "name": "companion raw_events 与 DOM 观测对账一致（message_id + nonce）",
+      "ok": false,
+      "error": "30s 内 companion 未查到含 nonce 的事件。最可能原因：DCF 扩展未在 BrowserClaw 中加载，页面采集→SW 投递链未运行。此项单列 FAIL，不掩盖，不影响上面浏览器侧断言的真实性。"
+    }
+  ],
+  "verdict": "degraded",
+  "degraded_reason": "companion 事件缺失或与 DOM message_id 对账不一致（采集链未闭合或疑似伪造入库）",
+  "generated_at": "2026-07-27T00:21:35.158Z",
+  "note": "判定只依赖机器可验证信号（nonce/计数增量/companion 回查）；screenshots 仅作附件。"
+}

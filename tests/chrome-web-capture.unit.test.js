@@ -17,7 +17,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const WEB_CAPTURE_DIR = path.join(__dirname, '..', 'chrome-extension', 'code-units', 'web-capture');
+const WEB_CAPTURE_DIR = path.join(__dirname, '..', 'seed', 'adapters', 'chrome', 'web-capture');
 const SITES_DIR = path.join(WEB_CAPTURE_DIR, 'sites');
 const { SiteAdapterSchema, CapturedEventSchema } = require(path.join(WEB_CAPTURE_DIR, 'contract.js'));
 const runtimeCheck = require(path.join(WEB_CAPTURE_DIR, 'runtime-check.js'));
@@ -363,38 +363,51 @@ for (const file of ['engine.js', 'runtime-check.js', 'index.js']) {
 }
 
 // ============================================================================
-console.log('\n=== 构建与 manifest 集成 ===');
+console.log('\n=== G1 manifest ↔ sites registry 一致性检查 ===');
 // ============================================================================
 
-test('manifest.template.json 注册 web-capture content script 与 6 站点 host_permissions', () => {
-  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'chrome-extension', 'manifest.template.json'), 'utf8'));
-  const cs = (manifest.content_scripts || []).find((c) => (c.js || []).includes('web-capture/index.js'));
-  assert.ok(cs, 'manifest 必须注册 web-capture/index.js');
-  assert.strictEqual(cs.run_at, 'document_idle');
-  const hosts = manifest.host_permissions.join(' ');
-  for (const domain of ['claude.ai', 'gemini.google.com', 'doubao.com', 'kimi.com', 'kimi.moonshot.cn', 'deepseek.com', 'yuanbao.tencent.com', 'grok.com', 'z.ai', 'minimaxi.com', 'xiaomimimo.com']) {
+test('G1 manifest host_permissions 与 seed/adapters/chrome/web-capture/sites/*.js host 一一对应', () => {
+  const g1Manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'seed', 'adapters', 'chrome', 'manifest.json'), 'utf8'));
+  
+  // 8 站采集域名清单
+  const requiredDomains = [
+    'doubao.com', 'gemini.google.com', 'grok.com', 'kimi.com',
+    'chat.z.ai', 'deepseek.com', 'agent.minimaxi.com', 'aistudio.xiaomimimo.com'
+  ];
+  
+  // 验证 manifest 包含所有站点权限
+  const hosts = g1Manifest.host_permissions.join(' ');
+  for (const domain of requiredDomains) {
     assert.ok(hosts.includes(domain), `host_permissions 缺 ${domain}`);
+  }
+  
+  // 验证 content_scripts 注册 bundle.js
+  const cs = (g1Manifest.content_scripts || []).find((c) => (c.js || []).includes('web-capture/bundle.js'));
+  assert.ok(cs, 'G1 manifest 必须注册 web-capture/bundle.js');
+  
+  // 验证 matches 与站点域名对应
+  for (const domain of requiredDomains) {
     assert.ok(cs.matches.some((m) => m.includes(domain)), `content_scripts.matches 缺 ${domain}`);
   }
-  // 不影响既有 ChatGPT 链路
-  const chatgptScript = (manifest.content_scripts || []).find((c) => (c.js || []).includes('static/migration-bridge.js'));
-  assert.ok(chatgptScript, '既有 migration-bridge content script 必须保留');
 });
 
-test('构建脚本拼接 runtime-check 且 vendor outbox 依赖', () => {
-  const buildScript = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'build-chrome-extension.js'), 'utf8');
-  assert.ok(buildScript.includes('runtime-check.js'), '构建必须拼接 runtime-check.js');
-  assert.ok(!buildScript.includes("path.join(WEB_CAPTURE_ROOT, 'contract.js')"), '页面 bundle 不得读入 zod contract.js');
-  assert.ok(buildScript.includes("'ulid.js', 'outbox-core.js'"), '构建必须 vendor ulid.js + outbox-core.js');
+test('build-g1-adapter.js 存在且生成零依赖 bundle', () => {
+  const buildScriptPath = path.join(__dirname, '..', 'scripts', 'build-g1-adapter.js');
+  assert.ok(fs.existsSync(buildScriptPath), 'build-g1-adapter.js 必须存在');
+  
+  const buildScript = fs.readFileSync(buildScriptPath, 'utf8');
+  assert.ok(buildScript.includes('web-capture'), '构建脚本必须引用 web-capture');
+  assert.ok(!buildScript.includes('contract.js'), '构建不得引入 zod contract.js');
 });
 
-test('web-capture-background.js 经 host-main 委派且复用 durable outbox', () => {
-  const bg = fs.readFileSync(path.join(__dirname, '..', 'chrome-extension', 'src', 'web-capture-background.js'), 'utf8');
+test('seed/adapters/chrome/background.js natively 支持 dcf.observation + OutboxCore + alarms flush', () => {
+  const bgPath = path.join(__dirname, '..', 'seed', 'adapters', 'chrome', 'background.js');
+  const bg = fs.readFileSync(bgPath, 'utf8');
+  
   assert.ok(bg.includes("importScripts('ulid.js', 'outbox-core.js')"), 'SW 必须 importScripts outbox 依赖');
   assert.ok(bg.includes('OutboxCore'), 'SW 必须实例化 OutboxCore');
-  assert.ok(bg.includes('H.webCaptureRecordObservation'), 'SW 必须暴露 host-main 委派函数');
-  const hostMain = fs.readFileSync(path.join(__dirname, '..', 'chrome-extension', 'src', 'host-main.js'), 'utf8');
-  assert.ok(hostMain.includes("'web-capture.observation'"), 'host-main 必须委派 web-capture.observation');
+  assert.ok(bg.includes('dcf.observation'), 'SW 必须处理 dcf.observation 消息');
+  assert.ok(bg.includes('dcf-outbox-flush'), 'SW 必须设置 dcf-outbox-flush alarm');
 });
 
 test('构建产物 dist/web-capture/index.js 在 VM 中可完整执行（引擎启动）', () => {

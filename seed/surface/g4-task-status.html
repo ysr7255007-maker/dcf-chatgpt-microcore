@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DCF — OpenCode 任务状态</title>
+<style>
+:root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-muted: #8b949e;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --red: #f85149;
+    --yellow: #d29922;
+    --purple: #bc8cff;
+    --orange: #db6d28;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px;
+}
+h1 { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+.subtitle { color: var(--text-muted); font-size: 13px; margin-bottom: 24px; }
+.panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 16px;
+}
+.input-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+input[type="text"] {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    color: var(--text);
+    font-size: 14px;
+}
+input[type="text"]:focus { outline: none; border-color: var(--accent); }
+button {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-size: 14px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+button:hover { opacity: 0.9; }
+button.secondary { background: var(--surface); border: 1px solid var(--border); color: var(--text); }
+button.danger { background: var(--red); }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+.status-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+}
+.status-dispatched { background: rgba(88,166,255,0.15); color: var(--accent); }
+.status-running { background: rgba(210,153,34,0.15); color: var(--yellow); }
+.status-completed { background: rgba(63,185,80,0.15); color: var(--green); }
+.status-failed { background: rgba(248,81,73,0.15); color: var(--red); }
+.status-aborted { background: rgba(139,148,158,0.15); color: var(--text-muted); }
+.status-unknown { background: rgba(139,148,158,0.1); color: var(--text-muted); }
+.flow {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin: 16px 0;
+    flex-wrap: wrap;
+}
+.flow-step {
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-muted);
+}
+.flow-step.active {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(88,166,255,0.1);
+}
+.flow-step.done {
+    border-color: var(--green);
+    color: var(--green);
+    background: rgba(63,185,80,0.1);
+}
+.flow-step.error {
+    border-color: var(--red);
+    color: var(--red);
+    background: rgba(248,81,73,0.1);
+}
+.flow-arrow { color: var(--text-muted); font-size: 12px; }
+.detail-grid {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    gap: 8px 16px;
+    font-size: 13px;
+}
+.detail-label { color: var(--text-muted); }
+.detail-value { word-break: break-all; }
+.detail-value a { color: var(--accent); text-decoration: none; }
+.detail-value a:hover { text-decoration: underline; }
+.product-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px;
+    margin-top: 8px;
+}
+.product-title { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+.product-summary { color: var(--text-muted); font-size: 13px; }
+.error-box {
+    background: rgba(248,81,73,0.08);
+    border: 1px solid rgba(248,81,73,0.3);
+    border-radius: 6px;
+    padding: 12px;
+    margin-top: 12px;
+    font-size: 13px;
+    color: var(--red);
+}
+.empty { color: var(--text-muted); text-align: center; padding: 40px; font-size: 14px; }
+.poll-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+.poll-toggle input { width: auto; }
+.section-title {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--text);
+}
+</style>
+</head>
+<body>
+<h1>OpenCode 任务状态</h1>
+<p class="subtitle">Phase 5 — Deep Link + HTTP API/SSE + 标准化输出回读</p>
+
+<div class="panel">
+    <div class="input-row">
+        <input type="text" id="task-id-input" placeholder="输入 task_id（如 dcf-oc-...）" />
+        <button id="query-btn">查询</button>
+        <button id="abort-btn" class="danger" disabled>中止</button>
+    </div>
+    <div class="poll-toggle">
+        <input type="checkbox" id="auto-poll" checked />
+        <label for="auto-poll">自动轮询（2s）</label>
+        <span id="last-updated" style="margin-left:auto"></span>
+    </div>
+</div>
+
+<div id="task-display" class="panel" style="display:none">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+        <span id="task-status-badge" class="status-badge"></span>
+        <span id="task-id-label" style="font-size:13px;color:var(--text-muted)"></span>
+    </div>
+
+    <div class="flow" id="status-flow"></div>
+
+    <div class="detail-grid" id="detail-grid"></div>
+
+    <div id="error-display"></div>
+    <div id="products-display"></div>
+    <div id="evidence-display"></div>
+</div>
+
+<div id="empty-state" class="panel empty">
+    输入 task_id 查询 OpenCode 任务状态
+</div>
+
+<script>
+const COMPANION_BASE = 'http://127.0.0.1:8472';
+let currentTaskId = null;
+let pollTimer = null;
+
+const STATUS_FLOW = ['dispatched', 'running', 'completed'];
+const TERMINAL_STATES = ['completed', 'failed', 'aborted'];
+
+function $(id) { return document.getElementById(id); }
+
+async function fetchStatus(taskId) {
+    try {
+        const res = await fetch(`${COMPANION_BASE}/rpc/opencode/status/${encodeURIComponent(taskId)}`);
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: { message: `HTTP ${res.status}` } }));
+            throw new Error(err.error?.message || `HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        return data.result;
+    } catch (e) {
+        return { status: 'unknown', error: e.message };
+    }
+}
+
+async function abortTask(taskId) {
+    try {
+        const res = await fetch(`${COMPANION_BASE}/rpc/opencode/abort/${encodeURIComponent(taskId)}`, { method: 'POST' });
+        const data = await res.json();
+        return data.result || data.error;
+    } catch (e) {
+        return { status: 'failed', error: e.message };
+    }
+}
+
+function renderStatus(status) {
+    const display = $('task-display');
+    const empty = $('empty-state');
+    if (!status || status.status === 'unknown') {
+        display.style.display = 'none';
+        empty.style.display = 'block';
+        empty.textContent = status?.error ? `查询失败: ${status.error}` : '未找到任务';
+        return;
+    }
+    display.style.display = 'block';
+    empty.style.display = 'none';
+
+    // Status badge
+    const badge = $('task-status-badge');
+    badge.className = `status-badge status-${status.status}`;
+    badge.textContent = status.status;
+
+    // Task ID
+    $('task-id-label').textContent = status.task_id || '';
+
+    // Status flow
+    const flow = $('status-flow');
+    flow.innerHTML = '';
+    const steps = ['dispatched', 'running', 'completed'];
+    const failedFlow = status.status === 'failed' || status.status === 'aborted';
+
+    steps.forEach((step, i) => {
+        const el = document.createElement('span');
+        el.className = 'flow-step';
+        el.textContent = step;
+
+        if (status.status === step) {
+            el.classList.add('active');
+        } else if (steps.indexOf(status.status) > i && !failedFlow) {
+            el.classList.add('done');
+        } else if (failedFlow && steps.indexOf(status.status) >= 0 && i <= steps.indexOf(status.status)) {
+            el.classList.add('active');
+        }
+
+        flow.appendChild(el);
+        if (i < steps.length - 1) {
+            const arrow = document.createElement('span');
+            arrow.className = 'flow-arrow';
+            arrow.textContent = '→';
+            flow.appendChild(arrow);
+        }
+    });
+
+    if (status.status === 'failed') {
+        const arrow = document.createElement('span');
+        arrow.className = 'flow-arrow';
+        arrow.textContent = '→';
+        flow.appendChild(arrow);
+        const failStep = document.createElement('span');
+        failStep.className = 'flow-step error';
+        failStep.textContent = 'failed';
+        flow.appendChild(failStep);
+    } else if (status.status === 'aborted') {
+        const arrow = document.createElement('span');
+        arrow.className = 'flow-arrow';
+        arrow.textContent = '→';
+        flow.appendChild(arrow);
+        const abortStep = document.createElement('span');
+        abortStep.className = 'flow-step error';
+        abortStep.textContent = 'aborted';
+        flow.appendChild(abortStep);
+    }
+
+    // Detail grid
+    const grid = $('detail-grid');
+    grid.innerHTML = '';
+    const details = [
+        ['session_id', status.session_id],
+        ['output_path', status.output_path],
+        ['created_at', status.created_at],
+        ['deep_link', status.deep_link?.url],
+        ['api_status', status.api_status?.status]
+    ];
+    details.forEach(([label, value]) => {
+        if (!value) return;
+        const labelEl = document.createElement('div');
+        labelEl.className = 'detail-label';
+        labelEl.textContent = label;
+        const valueEl = document.createElement('div');
+        valueEl.className = 'detail-value';
+        if (label === 'deep_link' && value) {
+            const a = document.createElement('a');
+            a.href = value;
+            a.textContent = value;
+            valueEl.appendChild(a);
+        } else {
+            valueEl.textContent = value;
+        }
+        grid.appendChild(labelEl);
+        grid.appendChild(valueEl);
+    });
+
+    // Error display
+    const errBox = $('error-display');
+    errBox.innerHTML = '';
+    if (status.error) {
+        const box = document.createElement('div');
+        box.className = 'error-box';
+        box.textContent = status.error;
+        errBox.appendChild(box);
+    }
+
+    // Products
+    const prodDisplay = $('products-display');
+    prodDisplay.innerHTML = '';
+    if (status.result?.products && status.result.products.length > 0) {
+        const title = document.createElement('div');
+        title.className = 'section-title';
+        title.textContent = `产物 (${status.result.products.length})`;
+        prodDisplay.appendChild(title);
+        status.result.products.forEach(p => {
+            const card = document.createElement('div');
+            card.className = 'product-card';
+            const t = document.createElement('div');
+            t.className = 'product-title';
+            t.textContent = p.title || p.task || '(untitled)';
+            const s = document.createElement('div');
+            s.className = 'product-summary';
+            s.textContent = p.summary || p.type || '';
+            card.appendChild(t);
+            card.appendChild(s);
+            prodDisplay.appendChild(card);
+        });
+    }
+
+    // Evidence
+    const evDisplay = $('evidence-display');
+    evDisplay.innerHTML = '';
+    if (status.result?.evidence) {
+        const title = document.createElement('div');
+        title.className = 'section-title';
+        title.textContent = '证据';
+        evDisplay.appendChild(title);
+        const ev = status.result.evidence;
+        const grid2 = document.createElement('div');
+        grid2.className = 'detail-grid';
+        Object.entries(ev).forEach(([k, v]) => {
+            const l = document.createElement('div');
+            l.className = 'detail-label';
+            l.textContent = k;
+            const val = document.createElement('div');
+            val.className = 'detail-value';
+            val.textContent = typeof v === 'object' ? JSON.stringify(v) : String(v);
+            grid2.appendChild(l);
+            grid2.appendChild(val);
+        });
+        evDisplay.appendChild(grid2);
+    }
+
+    // Abort button
+    $('abort-btn').disabled = TERMINAL_STATES.includes(status.status);
+
+    // Last updated
+    $('last-updated').textContent = `更新于 ${new Date().toLocaleTimeString()}`;
+}
+
+async function queryAndRender() {
+    if (!currentTaskId) return;
+    const status = await fetchStatus(currentTaskId);
+    renderStatus(status);
+}
+
+function startPolling() {
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(queryAndRender, 2000);
+}
+
+function stopPolling() {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+$('query-btn').addEventListener('click', () => {
+    const tid = $('task-id-input').value.trim();
+    if (!tid) return;
+    currentTaskId = tid;
+    queryAndRender();
+    if ($('auto-poll').checked) startPolling();
+});
+
+$('task-id-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') $('query-btn').click();
+});
+
+$('auto-poll').addEventListener('change', () => {
+    if ($('auto-poll').checked && currentTaskId) startPolling();
+    else stopPolling();
+});
+
+$('abort-btn').addEventListener('click', async () => {
+    if (!currentTaskId) return;
+    $('abort-btn').disabled = true;
+    await abortTask(currentTaskId);
+    setTimeout(queryAndRender, 500);
+});
+
+// URL param support: ?task_id=dcf-oc-...
+const params = new URLSearchParams(location.search);
+const paramTaskId = params.get('task_id');
+if (paramTaskId) {
+    $('task-id-input').value = paramTaskId;
+    currentTaskId = paramTaskId;
+    queryAndRender();
+    startPolling();
+}
+</script>
+</body>
+</html>

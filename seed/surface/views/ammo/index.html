@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>语言弹药库 — DCF Surface</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+      background: linear-gradient(160deg, #f6f8fa 0%, #eef1f6 100%);
+      color: #24292f; line-height: 1.55; min-height: 100vh;
+      display: flex; flex-direction: column;
+    }
+
+    .view-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 20px; position: sticky; top: 0; z-index: 100;
+      background: rgba(255, 255, 255, 0.75);
+      backdrop-filter: blur(20px) saturate(180%);
+      border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    }
+    .view-title { font-size: 17px; font-weight: 700; }
+    .view-nav { display: flex; gap: 8px; }
+    .view-nav button {
+      border: 1px solid #d0d7de; background: #fff; color: #24292f;
+      padding: 6px 12px; border-radius: 8px; font-size: 13px; cursor: pointer;
+    }
+    .view-nav button:hover { background: #f3f4f6; }
+
+    .ammo-list { flex: 1; padding: 16px 20px 80px; display: grid; gap: 12px; }
+
+    .ammo-card {
+      background: linear-gradient(135deg, rgba(255,255,255,0.92), rgba(255,255,255,0.78));
+      backdrop-filter: blur(20px) saturate(180%);
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      border-radius: 12px; padding: 16px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .ammo-card:hover { transform: translateY(-2px); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12); }
+
+    .ammo-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+    .ammo-title { font-size: 15px; font-weight: 700; }
+    .ammo-id { font-size: 11px; color: #8b949e; font-family: ui-monospace, monospace; }
+    .ammo-purpose { font-size: 13px; color: #57606a; margin-top: 6px; }
+    .ammo-body {
+      font-size: 12px; color: #656d76; margin-top: 8px;
+      max-height: 60px; overflow: hidden; position: relative;
+    }
+    .ammo-body.expanded { max-height: none; }
+    .ammo-tags { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+    .ammo-tag {
+      font-size: 11px; padding: 2px 8px; border-radius: 10px;
+      background: #f0f6fc; color: #0969da;
+    }
+
+    .ammo-actions { display: flex; gap: 8px; margin-top: 12px; }
+    .ammo-actions button {
+      border: none; border-radius: 8px; padding: 7px 14px;
+      font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+    .btn-fire { background: linear-gradient(135deg, #4064d2, #8b5cf6); color: #fff; }
+    .btn-fire:hover { filter: brightness(1.08); }
+    .btn-copy { background: #f3f4f6; color: #24292f; border: 1px solid #d0d7de !important; }
+    .btn-expand { background: transparent; color: #0969da; }
+
+    .empty-state { text-align: center; color: #8b949e; padding: 60px 20px; font-size: 14px; }
+
+    .feedback-bubble {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: #24292f; color: #fff; padding: 10px 18px;
+      border-radius: 20px; font-size: 13px; z-index: 1000;
+      animation: bubble-in 0.25s ease;
+    }
+    @keyframes bubble-in { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+    button:focus-visible { outline: 2px solid #0969da; outline-offset: 2px; }
+    @media (prefers-reduced-motion: reduce) {
+      .ammo-card, .feedback-bubble { transition: none; animation: none; }
+    }
+    @media (prefers-contrast: more) {
+      .ammo-card { border: 1px solid #24292f; background: #fff; }
+    }
+  </style>
+</head>
+<body>
+  <header class="view-header">
+    <h1 class="view-title">🔫 语言弹药库</h1>
+    <nav class="view-nav" aria-label="视图切换">
+      <select id="ide-select" aria-label="选择用于生成的 IDE" title="选择 IDE" style="border:1px solid #d0d7de;border-radius:8px;padding:5px 8px;font-size:13px;"></select>
+      <button onclick="requestExtraction()" aria-label="从当前对话提取弹药">⚡ 从对话提取</button>
+      <button onclick="loadLibrary()" aria-label="刷新弹药库">↻ 刷新</button>
+    </nav>
+  </header>
+
+  <main class="ammo-list" id="ammo-list" role="list" aria-live="polite">
+    <div class="empty-state">正在装填弹药库…</div>
+  </main>
+
+  <script src="../companion-client.js"></script>
+  <script src="../voice-command-bar.js"></script>
+  <script>
+  (function (global) {
+    'use strict';
+
+    var listEl = document.getElementById('ammo-list');
+
+    function showFeedback(message) {
+      var bubble = document.createElement('div');
+      bubble.className = 'feedback-bubble';
+      bubble.textContent = message;
+      document.body.appendChild(bubble);
+      setTimeout(function () { bubble.remove(); }, 2200);
+    }
+
+    function fireAmmo(id, title) {
+      global.CompanionClient.fireAmmo(id).then(function (res) {
+        if (res.ok && res.body && res.body.ok !== false) {
+          var data = res.body.data || {};
+          if (data.adapter_notified) {
+            showFeedback('🔫 已发射「' + title + '」到目标输入框');
+          } else {
+            // No adapter connected: fall back to clipboard.
+            copyText(data.invocation_text || '');
+            showFeedback('适配器离线，已复制弹药到剪贴板');
+          }
+          return;
+        }
+        showFeedback('发射失败：' + describeError(res));
+      });
+    }
+
+    function copyAmmo(item) {
+      copyText(item.body || '');
+      showFeedback('已复制「' + item.title + '」正文');
+    }
+
+    function copyText(text) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).catch(function () { fallbackCopy(text); });
+      } else {
+        fallbackCopy(text);
+      }
+    }
+
+    function fallbackCopy(text) {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch (_) {}
+      ta.remove();
+    }
+
+    function describeError(res) {
+      if (!res) return 'unknown';
+      if (res.body && res.body.error) return String(res.body.error);
+      if (res.body && res.body.message) return String(res.body.message);
+      return 'HTTP ' + res.status;
+    }
+
+    function renderItem(item) {
+      var card = document.createElement('article');
+      card.className = 'ammo-card';
+      card.setAttribute('role', 'listitem');
+
+      var head = document.createElement('div');
+      head.className = 'ammo-head';
+      var title = document.createElement('h2');
+      title.className = 'ammo-title';
+      title.textContent = item.title || item.id;
+      var idEl = document.createElement('span');
+      idEl.className = 'ammo-id';
+      idEl.textContent = item.id;
+      head.appendChild(title);
+      head.appendChild(idEl);
+      card.appendChild(head);
+
+      if (item.purpose) {
+        var purpose = document.createElement('p');
+        purpose.className = 'ammo-purpose';
+        purpose.textContent = item.purpose;
+        card.appendChild(purpose);
+      }
+
+      var body = document.createElement('div');
+      body.className = 'ammo-body';
+      body.textContent = item.body || '';
+      card.appendChild(body);
+
+      if (Array.isArray(item.tags) && item.tags.length) {
+        var tags = document.createElement('div');
+        tags.className = 'ammo-tags';
+        item.tags.forEach(function (tag) {
+          var t = document.createElement('span');
+          t.className = 'ammo-tag';
+          t.textContent = tag;
+          tags.appendChild(t);
+        });
+        card.appendChild(tags);
+      }
+
+      var actions = document.createElement('div');
+      actions.className = 'ammo-actions';
+
+      var fireBtn = document.createElement('button');
+      fireBtn.className = 'btn-fire';
+      fireBtn.textContent = '🔫 发射';
+      fireBtn.setAttribute('aria-label', '发射弹药：' + (item.title || item.id));
+      fireBtn.addEventListener('click', function () { fireAmmo(item.id, item.title || item.id); });
+
+      var copyBtn = document.createElement('button');
+      copyBtn.className = 'btn-copy';
+      copyBtn.textContent = '⧉ 复制';
+      copyBtn.setAttribute('aria-label', '复制弹药正文：' + (item.title || item.id));
+      copyBtn.addEventListener('click', function () { copyAmmo(item); });
+
+      var expandBtn = document.createElement('button');
+      expandBtn.className = 'btn-expand';
+      expandBtn.textContent = '展开全文';
+      expandBtn.addEventListener('click', function () {
+        var expanded = body.classList.toggle('expanded');
+        expandBtn.textContent = expanded ? '收起' : '展开全文';
+      });
+
+      actions.appendChild(fireBtn);
+      actions.appendChild(copyBtn);
+      actions.appendChild(expandBtn);
+      card.appendChild(actions);
+
+      return card;
+    }
+
+    function loadLibrary() {
+      global.CompanionClient.getAmmoLibrary().then(function (res) {
+        listEl.innerHTML = '';
+        if (!res.ok || !res.body || res.body.ok === false) {
+          listEl.innerHTML = '<div class="empty-state">无法连接 Companion：' + describeError(res) + '</div>';
+          return;
+        }
+        var items = (res.body.data && res.body.data.items) || [];
+        if (!items.length) {
+          listEl.innerHTML = '<div class="empty-state">弹药库为空。接受任务或在对话中提取弹药后会自动装填。</div>';
+          return;
+        }
+        items.forEach(function (item) { listEl.appendChild(renderItem(item)); });
+      });
+    }
+
+    global.loadLibrary = loadLibrary;
+
+    /** IDE selector helpers. */
+    function getSelectedIde() {
+      var sel = document.getElementById('ide-select');
+      return sel && sel.value ? sel.value : undefined;
+    }
+    function populateIdeSelect() {
+      var sel = document.getElementById('ide-select');
+      if (!sel || sel.dataset.loaded) return;
+      sel.dataset.loaded = '1';
+      var saved = null;
+      try { saved = localStorage.getItem('dcf-ide'); } catch (_) {}
+      global.CompanionClient.getIdeTargets().then(function (res) {
+        var targets = (res.ok && res.body && res.body.data && res.body.data.targets) || [];
+        targets.forEach(function (t) {
+          var opt = document.createElement('option');
+          opt.value = t.id; opt.textContent = t.name; sel.appendChild(opt);
+        });
+        if (saved && targets.some(function (t) { return t.id === saved; })) sel.value = saved;
+        sel.addEventListener('change', function () {
+          try { localStorage.setItem('dcf-ide', sel.value); } catch (_) {}
+        });
+      });
+    }
+
+    /** Ask the AI in the target conversation to distill one reusable ammo. */
+    global.requestExtraction = function () {
+      global.CompanionClient.requestAmmoExtraction(undefined, getSelectedIde()).then(function (res) {
+        if (res.ok && res.body && res.body.ok !== false) {
+          var data = res.body.data || {};
+          var ide = data.ide_name || 'IDE';
+          if (data.autosubmit) {
+            showFeedback('⚡ 已交给 ' + ide + ' 自动处理，完成后弹药将自动装填');
+          } else if (data.ide === 'qoder') {
+            showFeedback('⚡ 已在 ' + ide + ' 新对话预填提示词，请确认发送；AI 写出结果后将自动装填');
+          } else {
+            showFeedback('⚡ 已唤起 ' + ide + '，提示词已复制到剪贴板，请粘贴发送；AI 写出结果后将自动装填');
+          }
+          return;
+        }
+        showFeedback('提取请求失败：' + describeError(res));
+      });
+    };
+
+    document.addEventListener('DOMContentLoaded', function () { populateIdeSelect(); loadLibrary(); });
+  })(window);
+  </script>
+</body>
+</html>

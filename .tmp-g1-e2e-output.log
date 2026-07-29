@@ -1,0 +1,36 @@
+G1 real E2E acceptance starting…
+  companion: http://127.0.0.1:8472（只读白名单访问）
+  mcp:       http://127.0.0.1:9010/mcp
+✓ companion healthy: {"status":"healthy","database":"real","event_count":8,"timestamp":"2026-07-27T03:20:46.488Z"}
+✓ MCP 握手成功，session=4b6bb0ef-aa2e-4153-af08-94472de230bf，tools=17 (tabs, tab_groups, navigate, snapshot, diff, act, download, upload, read, grep, screenshot, pdf, wait, windows, evaluate, run, name_session)
+✓ 自建标签 page id=40（tabs new）
+
+[Fix 2] 尝试通过 run 工具 browser.cdp 注入采集桥接...
+[Fix 2] run/browser.cdp 注入失败: tool run isError: error: run: syntax error - unexpected end of string
+
+📦 ① 校验落地 URL 并记录基线
+✓ 落地验证通过: https://chatgpt.com/
+✓ 基线: url=https://chatgpt.com/, 消息=0（assistant=0）
+
+📦 ② 注入本轮 nonce 消息: "请原样复述以下代码：DCF-NONCE-MS2NTNQ4-83A854C01A99"
+✓ 注入成功: method=execCommand.insertText, selector=#prompt-textarea
+✓ 回读完整 + 发送按钮真实 enabled（React 状态已接收输入）
+
+📦 ③ 点击真实发送按钮，等待新 assistant 回复（占位符跳过 + 多信号稳定判定）
+✓ 新回复：messageId=c43f2c8c-8efc-4a5c-8588-cce3c12b94a6, 31 字符，预览="DCF-NONCE-MS2NTNQ4-83A854C01A99"
+✓ 发送后: url=https://chatgpt.com/c/6a66cea1-9f00-83ee-8800-2a2c67de6a7c, 消息=2
+✓ DOM 锚点: user message_id=d3554a85-c165-42a4-8c0f-3f73f18692d7, assistant message_id=c43f2c8c-8efc-4a5c-8588-cce3c12b94a6
+
+📦 ④ 防造假断言
+  ✅ PASS: 消息计数增量 ≥ 2
+  ✅ PASS: nonce 出现在 baseline 之后新增的 user 消息
+  ✅ PASS: assistant 回复包含本轮 nonce
+
+📦 ⑤ companion raw_events 回查（q=nonce，只读接口，30s 轮询，message_id 对账）
+  ❌ FAIL: companion raw_events 与 DOM 观测对账一致（message_id + nonce）
+     └ companion 事件与 DOM 观测不一致：需要 user message_id=d3554a85-c165-42a4-8c0f-3f73f18692d7（含 nonce）命中=false，assistant message_id=c43f2c8c-8efc-4a5c-8588-cce3c12b94a6 命中=true。库内观测到的 message_id：[c43f2c8c-8efc-4a5c-8588-cce3c12b94a6]。若事件含 nonce 但 message_id 对不上 DOM，疑似脚本绕过采集链直写 Companion 伪造入库。
+📸 截图附件: /Users/looy/Documents/dcf/seed/docs/evidence/e2e-real/DCF-NONCE-MS2NTNQ4-83A854C01A99-final.jpg
+
+📄 取证 manifest: /Users/looy/Documents/dcf/seed/docs/evidence/e2e-real/manifest-DCF-NONCE-MS2NTNQ4-83A854C01A99.json
+
+Summary: 3 passed, 1 failed, verdict=degraded

@@ -1,0 +1,48 @@
+{
+  "run_id": "DCF-NONCE-MS2G66WJ-FFC761FBB3DE",
+  "started_at": "2026-07-26T23:46:46.590Z",
+  "finished_at": "2026-07-26T23:47:24.890Z",
+  "nonce": "DCF-NONCE-MS2G66WJ-FFC761FBB3DE",
+  "conversation_url_before": "https://chatgpt.com/",
+  "conversation_url_after": "https://chatgpt.com/c/WEB:7bbb2281-59cf-4463-9511-7add83b0005a",
+  "message_count_before": 0,
+  "message_count_after": 2,
+  "assistant_reply": {
+    "message_id": "request-placeholder-request-WEB:7bbb2281-59cf-4463-9511-7add83b0005a-0",
+    "text": "正在思考"
+  },
+  "dom_user_message_id": "a9601aca-78fa-4b91-b22f-14c362a2208e",
+  "dom_assistant_message_id": "request-placeholder-request-WEB:7bbb2281-59cf-4463-9511-7add83b0005a-0",
+  "companion_event_ids": [],
+  "screenshots": [
+    {
+      "path": "/Users/looy/Documents/dcf/seed/docs/evidence/e2e-real/DCF-NONCE-MS2G66WJ-FFC761FBB3DE-final.jpg",
+      "label": "after-assistant-reply",
+      "sha256": "80abd08a5b161209fa4de7d27f3ef6be4e768b7cc278962fc8e5d278fa23186f"
+    }
+  ],
+  "checks": [
+    {
+      "name": "消息计数增量 ≥ 2",
+      "ok": true
+    },
+    {
+      "name": "nonce 出现在 baseline 之后新增的 user 消息",
+      "ok": true
+    },
+    {
+      "name": "assistant 回复包含本轮 nonce",
+      "ok": false,
+      "error": "回复未包含本轮 nonce，疑似读取预存消息。期望包含 \"DCF-NONCE-MS2G66WJ-FFC761FBB3DE\"，实际回复（前 120 字符）：\"正在思考\"。预存的历史回复在结构上不可能包含本轮唯一 nonce，此断言失败即判定造假路径。"
+    },
+    {
+      "name": "companion raw_events 与 DOM 观测对账一致（message_id + nonce）",
+      "ok": false,
+      "error": "30s 内 companion 未查到含 nonce 的事件。最可能原因：DCF 扩展未在 BrowserClaw 中加载，页面采集→SW 投递链未运行。此项单列 FAIL，不掩盖，不影响上面浏览器侧断言的真实性。"
+    }
+  ],
+  "verdict": "fail",
+  "degraded_reason": "companion 事件缺失或与 DOM message_id 对账不一致（采集链未闭合或疑似伪造入库）",
+  "generated_at": "2026-07-26T23:47:24.890Z",
+  "note": "判定只依赖机器可验证信号（nonce/计数增量/companion 回查）；screenshots 仅作附件。"
+}

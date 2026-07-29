@@ -1,0 +1,208 @@
+{
+  "task": "#13 真机逐个串行读取历史对话并验证 SQLite 入库",
+  "transport": "browserclaw-evaluate-direct-ingest",
+  "path": "B",
+  "transport_note": "BrowserClaw evaluate 串行采集 + companion 官方 /rpc/events/batch 入库；非 MV3 扩展链（扩展未安装，命令队列无消费者，见 probe 证据）。这是被授权的数据采集路径，不冒充扩展链验证。",
+  "started_at": "2026-07-27T10:53:45.015Z",
+  "finished_at": "2026-07-27T10:55:33.982Z",
+  "companion_url": "http://127.0.0.1:8472",
+  "mcp_url": "http://127.0.0.1:9010/mcp",
+  "db_path": "/Users/looy/.dcf/dcf.db",
+  "probe": {
+    "enqueue_http": 400,
+    "enqueue_body": {
+      "jsonrpc": "2.0",
+      "error": {
+        "code": -32602,
+        "message": "Invalid kind: must be 'read-conversation' or 'send-card'"
+      },
+      "id": null
+    }
+  },
+  "event_count_before": 4,
+  "event_count_after": 31,
+  "event_count_delta": 27,
+  "conversations_enumerated": 10,
+  "conversations_ok": 9,
+  "conversations_failed": 1,
+  "per_conversation": [
+    {
+      "index": 1,
+      "conversation_id": "6a66f4de-4c70-83ee-9d08-b48170aa2eb2",
+      "title": "代码复述请求",
+      "url": "/c/6a66f4de-4c70-83ee-9d08-b48170aa2eb2",
+      "status": "ok",
+      "message_count": 2,
+      "source_id": "X87SN5DDP0M8VMY60HB9WV9QXG",
+      "reason": null,
+      "inserted": 2,
+      "duplicated": 0,
+      "db_message_events": 2
+    },
+    {
+      "index": 2,
+      "conversation_id": "6a66cf7a-4578-83ee-9fc5-0667ebb707ea",
+      "title": "复述代码请求",
+      "url": "/c/6a66cf7a-4578-83ee-9fc5-0667ebb707ea",
+      "status": "ok",
+      "message_count": 2,
+      "source_id": "4XGB9AMVCA581D5G3TSEW9M9QB",
+      "reason": null,
+      "inserted": 2,
+      "duplicated": 0,
+      "db_message_events": 2
+    },
+    {
+      "index": 3,
+      "conversation_id": "6a66cea1-9f00-83ee-8800-2a2c67de6a7c",
+      "title": "原样复述代码",
+      "url": "/c/6a66cea1-9f00-83ee-8800-2a2c67de6a7c",
+      "status": "ok",
+      "message_count": 2,
+      "source_id": "NM1EQT5YN588DNMP513ZQW27X9",
+      "reason": null,
+      "inserted": 1,
+      "duplicated": 1,
+      "db_message_events": 2
+    },
+    {
+      "index": 4,
+      "conversation_id": "6a66c949-c530-83ee-8423-1a92369af12f",
+      "title": "复述代码请求",
+      "url": "/c/6a66c949-c530-83ee-8423-1a92369af12f",
+      "status": "ok",
+      "message_count": 2,
+      "source_id": "2NRZWK01M21RFJ10P5B5DX1CGC",
+      "reason": null,
+      "inserted": 2,
+      "duplicated": 0,
+      "db_message_events": 2
+    },
+    {
+      "index": 5,
+      "conversation_id": "6a66c884-6950-83ee-9811-c9c3bd22fd2d",
+      "title": "原样复述代码",
+      "url": "/c/6a66c884-6950-83ee-9811-c9c3bd22fd2d",
+      "status": "ok",
+      "message_count": 2,
+      "source_id": "1NYHK37HYRCSY1TXKT9SYQZNTR",
+      "reason": null,
+      "inserted": 2,
+      "duplicated": 0,
+      "db_message_events": 2
+    },
+    {
+      "index": 6,
+      "conversation_id": "6a66c5ec-c874-83ee-b4fb-5efc54dd556e",
+      "title": "原样复述代码",
+      "url": "/c/6a66c5ec-c874-83ee-b4fb-5efc54dd556e",
+      "status": "ok",
+      "message_count": 2,
+      "source_id": "N9X0ZFGCKXQCNYKBW67FB7DC3Q",
+      "reason": null,
+      "inserted": 1,
+      "duplicated": 1,
+      "db_message_events": 2
+    },
+    {
+      "index": 7,
+      "conversation_id": "6a66a466-a078-83ee-a5e6-aa4a98fee472",
+      "title": "代码复述请求",
+      "url": "/c/6a66a466-a078-83ee-a5e6-aa4a98fee472",
+      "status": "ok",
+      "message_count": 2,
+      "source_id": "C96FZ58R70566JWY0677KKH03R",
+      "reason": null,
+      "inserted": 1,
+      "duplicated": 1,
+      "db_message_events": 2
+    },
+    {
+      "index": 8,
+      "conversation_id": "6a669c6b-402c-83e8-b67b-68f558120faa",
+      "title": "原样复述代码",
+      "url": "/c/6a669c6b-402c-83e8-b67b-68f558120faa",
+      "status": "ok",
+      "message_count": 2,
+      "source_id": "C0YP615V5AV8X83WAK4ZB8TYSP",
+      "reason": null,
+      "inserted": 1,
+      "duplicated": 1,
+      "db_message_events": 2
+    },
+    {
+      "index": 9,
+      "conversation_id": "6a643f03-a7b0-83e8-8a6b-002bde13fa02",
+      "title": "重新编织DCF工作dcf",
+      "url": "/c/6a643f03-a7b0-83e8-8a6b-002bde13fa02",
+      "status": "fail",
+      "message_count": 0,
+      "source_id": "QP5W2DMYHQEPBDP1SEY0Y6YW2T",
+      "reason": "导航未落到目标对话（当前 undefined）",
+      "inserted": 0,
+      "duplicated": 0,
+      "db_message_events": 0
+    },
+    {
+      "index": 10,
+      "conversation_id": "6a65c2cf-f560-83ee-82ff-c8897cce7803",
+      "title": "Cantus模型定价分析工作",
+      "url": "/c/6a65c2cf-f560-83ee-82ff-c8897cce7803",
+      "status": "ok",
+      "message_count": 5,
+      "source_id": "2Y1FS2TT4AXSB0QJ651RBBYT56",
+      "reason": null,
+      "inserted": 5,
+      "duplicated": 0,
+      "db_message_events": 5
+    }
+  ],
+  "dedup_verification": {
+    "conversation_id": "6a66f4de-4c70-83ee-9d08-b48170aa2eb2",
+    "replay_event_count": 2,
+    "ingest_result": {
+      "inserted": 0,
+      "total": 2,
+      "duplicated": 2
+    },
+    "count_before": 31,
+    "count_after": 31,
+    "idempotent": true
+  },
+  "constraints": {
+    "serial_one_at_a_time": true,
+    "throttle_ms_min": 2000,
+    "throttle_jitter_ms_max": 1500,
+    "no_concurrency": true,
+    "no_batch_pagination": true
+  },
+  "sqlite_verification": {
+    "db_path": "/Users/looy/.dcf/dcf.db",
+    "total_after": 31,
+    "by_event_type": [
+      "conversation.message.received:12",
+      "conversation.message.sent:12",
+      "conversation.baseline.established:6",
+      "patch.proposed:1"
+    ],
+    "reconciliation": "31 total = 17 driver_tagged + 14 untagged",
+    "per_conversation_message_events": [
+      "6a65c2cf-f560-83ee-82ff-c8897cce7803:5",
+      "(null):3",
+      "6a66f4de-4c70-83ee-9d08-b48170aa2eb2:2",
+      "6a66cf7a-4578-83ee-9fc5-0667ebb707ea:2",
+      "6a66cea1-9f00-83ee-8800-2a2c67de6a7c:2",
+      "6a66c949-c530-83ee-8423-1a92369af12f:2",
+      "6a66c884-6950-83ee-9811-c9c3bd22fd2d:2",
+      "6a66c5ec-c874-83ee-b4fb-5efc54dd556e:2",
+      "6a66a466-a078-83ee-a5e6-aa4a98fee472:2",
+      "6a669c6b-402c-83e8-b67b-68f558120faa:2"
+    ]
+  },
+  "deviations_and_findings": [
+    "Path B taken: the RUNNING companion on :8472 is a STALE instance that rejects kind=list-conversations/read-by-id (\"Invalid kind: must be read-conversation or send-card\"), predating Taylor delivery. A-path could not even be enqueued (probe.enqueue_http=400).",
+    "CONCURRENT LIVE DCF OBSERVER detected during the run: 6 conversation.baseline.established events (only real content.js emits these) + message events with DETERMINISTIC event_ids at 10:54-10:55Z (exact run window). Its ids COLLIDED with driver-derived ids (batches reported duplicated=1 on 4 conversations), proving the driver event_id derivation is byte-identical to the real extension/outbox contract. Partially contradicts the stated premise that the extension is not installed; the passive observation chain appears live. Flagged for leader/Chris to reconcile.",
+    "event_count delta (27) = 17 driver-tagged inserts + 10 concurrent-observer events (6 baseline + 4 messages). 4 driver message events were absorbed as duplicates (id collision with the concurrent observer).",
+    "Conversation #9 (6a643f03-a7b0-83e8-8a6b-002bde13fa02) FAILED: navigation did not settle on target within 20s (conversation_id undefined). Recorded and skipped per hard constraint; loop continued."
+  ]
+}
