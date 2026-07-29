@@ -304,7 +304,7 @@ test('新 user 消息实时入库；assistant 静默 >=1.5s 且无停止按钮�
   env.setMessages([userEl]);
   env.mutate();
   assert.strictEqual(env.sent.length, 1, 'user 消息必须即时上报');
-  assert.strictEqual(env.sent[0].type, 'web-capture.observation');
+  assert.strictEqual(env.sent[0].type, 'dcf.observation');
   assert.strictEqual(env.sent[0].event_type, 'conversation.message.sent');
   assert.strictEqual(env.sent[0].payload.role, 'user');
   assert.strictEqual(env.sent[0].payload.text, 'DCF 采集验证问题');
