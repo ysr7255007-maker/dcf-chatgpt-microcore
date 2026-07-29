@@ -391,6 +391,20 @@ test('G1 manifest host_permissions 与 seed/adapters/chrome/web-capture/sites/*.
   }
 });
 
+test('G1 manifest version 必须是 Chrome 合法版本号（1-4 段点分整数，否则扩展无法加载）', () => {
+  // 回归守卫：version 'x.y.z-suffix' 会被 Chrome 拒绝加载整个扩展（Extensions.loadUnpacked
+  // 报 "Required value 'version' ... 1-4 dot-separated integers"），真实浏览器零加载。
+  const g1Manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'seed', 'adapters', 'chrome', 'manifest.json'), 'utf8'));
+  const parts = String(g1Manifest.version).split('.');
+  assert.ok(parts.length >= 1 && parts.length <= 4, `version 必须是 1-4 段，实际 ${g1Manifest.version}`);
+  for (const p of parts) {
+    assert.ok(/^\d+$/.test(p), `version 段必须为纯整数，实际含非法段 '${p}'（version=${g1Manifest.version}）`);
+    assert.ok(Number(p) >= 0 && Number(p) <= 65536, `version 段必须在 0-65536，实际 ${p}`);
+  }
+  // 非数字后缀（如 -g1）应放 version_name，不得污染 version
+  assert.ok(!/[^0-9.]/.test(g1Manifest.version), `version 不得含非数字字符（用 version_name 承载标签），实际 ${g1Manifest.version}`);
+});
+
 test('build-g1-adapter.js 存在且生成零依赖 bundle', () => {
   const buildScriptPath = path.join(__dirname, '..', 'scripts', 'build-g1-adapter.js');
   assert.ok(fs.existsSync(buildScriptPath), 'build-g1-adapter.js 必须存在');

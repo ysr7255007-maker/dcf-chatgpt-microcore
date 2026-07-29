@@ -1,7 +1,8 @@
 {
   "manifest_version": 3,
   "name": "DCF Chrome Adapter - G1",
-  "version": "0.1.0-g1",
+  "version": "0.1.0",
+  "version_name": "0.1.0-g1",
   "description": "G1 Chrome adapter for observing ChatGPT conversations and sending events to Companion Core",
   "permissions": [
     "storage",

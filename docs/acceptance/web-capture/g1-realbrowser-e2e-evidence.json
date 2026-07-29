@@ -1,0 +1,47 @@
+{
+  "wave": "1.6-realbrowser-e2e",
+  "at": "2026-07-29T22:22:32.529Z",
+  "chain": "real Chrome (Extensions.loadUnpacked) → content_script bundle.js (isolated world) → engine → dcf.observation → G1 SW → OutboxCore → companion /rpc/events/batch → raw_events",
+  "extension_id": "godkibnfgeceleoaeklgeldahdpnpjck",
+  "beacon": {
+    "started": true,
+    "host": "localhost",
+    "conv": "realchain",
+    "at": 1785363749013,
+    "scan": "realchain",
+    "elements": 2,
+    "baseline_done": true,
+    "emitted": 2,
+    "last_role": "assistant"
+  },
+  "source_id": "RKQHV9P6GCM2496HRMG443FEFX",
+  "event_count": 2,
+  "events": [
+    {
+      "event_type": "conversation.message.sent",
+      "role": "user",
+      "text": "DCF-G1-E2E-MARKER-REALCHAIN DCF 观察职责归属哪层？",
+      "transport": "web-capture",
+      "conversation_id": "realchain"
+    },
+    {
+      "event_type": "conversation.message.received",
+      "role": "assistant",
+      "text": "观察职责属于 Target Adapter（seed/adapters/chrome），经 dcf.observation 送 companion。",
+      "transport": "web-capture",
+      "conversation_id": "realchain"
+    }
+  ],
+  "checks": {
+    "extension_loads_in_real_chrome": true,
+    "content_script_injected": true,
+    "engine_started_and_emitted": true,
+    "events_delivered_via_g1_chain": true,
+    "user_marker_present": true,
+    "assistant_present": true,
+    "transport_web_capture": true,
+    "source_id_consistent": true
+  },
+  "passed": true,
+  "note": "localhost 合成对话 + 测试适配器；证明迁移+修复后 G1 bundle 在真实 Chrome 端到端可采集并交付。8 品牌站真实登录态复验以 BrowserClaw 为准。"
+}

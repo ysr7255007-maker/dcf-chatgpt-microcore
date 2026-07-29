@@ -49,16 +49,21 @@
 
 ## 二、待真实复验（pending，如实标注，不伪造）
 
-### 2.0 真实浏览器 E2E 尝试与发现（2026-07-30）
+### 2.0 真实浏览器 E2E（已通过，2026-07-30）
 
-- **尝试**：真实 Google Chrome（150/152）以 `--load-extension` + `--disable-extensions-except`
-  加载 G1 扩展，配合 localhost 合成对话页 + 测试适配器，验证 content script → dcf.observation
-  → G1 SW → companion 全链。
-- **发现（高价值）**：过程中暴露 bundle 注册表接线缺陷（见 §1.2b），已修复并加回归守卫。
-  这正是真实浏览器验收相对单测的价值——单测直接 require 源文件，漏掉了 bundle 层缺陷。
-- **环境限制**：本环境 Chrome 150/152 headless 与 headed 均未注入 CLI 加载的未打包扩展 content script
-  （beacon 为 null，无扩展 SW target），属该 Chrome 构建对 `--load-extension` 的处理限制，非 DCF 缺陷。
-  真实 8 站 E2E 仍以 BrowserClaw（用户登录态浏览器）为准。
+- **方法**：`scripts/g1-realbrowser-e2e.cjs` —— 真实 Google Chrome + CDP `Extensions.loadUnpacked`
+  加载 G1 扩展（绕过 `--load-extension` CLI 限制），localhost 合成对话页 + 测试适配器。
+- **证据**：`g1-realbrowser-e2e-evidence.json`，8/8 checks passed：
+  extension_loads_in_real_chrome ✓ / content_script_injected ✓ / engine_started_and_emitted ✓
+  / events_delivered_via_g1_chain ✓(2 事件) / user_marker_present ✓ / assistant_present ✓
+  / transport_web_capture ✓ / source_id_consistent ✓。
+  链路：real Chrome → content_script bundle.js（isolated world）→ engine 捕获 → dcf.observation
+  → G1 SW → OutboxCore → companion `/rpc/events/batch` → raw_events（查回 2 条，含唯一标记）。
+- **发现并修复的两个致命缺陷**（均仅真实浏览器可检出，单测直接 require 源文件漏检）：
+  1. bundle 未接线 `__SITE_*` 进 `__DCF_WEB_CAPTURE__` 注册表 → loaded=0 零采集（见 §1.2b）
+  2. manifest version `0.1.0-g1` 非法 → Chrome 拒绝加载整个扩展（已改 `0.1.0` + version_name，并加回归守卫）
+- **范围说明**：此 E2E 为 localhost 合成对话，证明迁移+修复后 G1 链在真实浏览器端到端可采集并交付。
+  8 品牌站（含真实登录态 + 站点选择器）复验仍以 BrowserClaw 为准。
 
 ### 2.1 8 站 G1 链真实浏览器复验
 
