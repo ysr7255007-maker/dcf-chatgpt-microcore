@@ -49,6 +49,17 @@
 
 ## 二、待真实复验（pending，如实标注，不伪造）
 
+### 2.0 真实浏览器 E2E 尝试与发现（2026-07-30）
+
+- **尝试**：真实 Google Chrome（150/152）以 `--load-extension` + `--disable-extensions-except`
+  加载 G1 扩展，配合 localhost 合成对话页 + 测试适配器，验证 content script → dcf.observation
+  → G1 SW → companion 全链。
+- **发现（高价值）**：过程中暴露 bundle 注册表接线缺陷（见 §1.2b），已修复并加回归守卫。
+  这正是真实浏览器验收相对单测的价值——单测直接 require 源文件，漏掉了 bundle 层缺陷。
+- **环境限制**：本环境 Chrome 150/152 headless 与 headed 均未注入 CLI 加载的未打包扩展 content script
+  （beacon 为 null，无扩展 SW target），属该 Chrome 构建对 `--load-extension` 的处理限制，非 DCF 缺陷。
+  真实 8 站 E2E 仍以 BrowserClaw（用户登录态浏览器）为准。
+
 ### 2.1 8 站 G1 链真实浏览器复验
 
 - **状态**：pending —— 需 BrowserClaw（用户真实登录态浏览器）可用。
