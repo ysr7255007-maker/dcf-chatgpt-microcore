@@ -21,6 +21,17 @@
 - 结论：G1 原生 `background.js` 的 `dcf.observation` handler → OutboxCore → alarms flush → companion `/rpc/events/batch`
   全链路在 MV3 模拟环境中验证通过。
 
+### 1.2b bundle 注册表接线缺陷修复（真实浏览器相关，unit 直接 require 源文件漏检）
+
+- **缺陷**：`build-g1-adapter.js` 早期只把 `const __SITE_XXX = {...}` 拼进 bundle，未接线进
+  `__DCF_WEB_CAPTURE__['<key>']` 注册表；`index.js` 读 `REGISTRY[key]` 得 `undefined` → 全部隔离
+  → `loaded=0` → **真实浏览器零采集**。单测因直接 `require` 源文件（而非 bundle）漏检。
+- **修复**：`build-g1-adapter.js` 按 `filename→key` 生成 `__DCF_WEB_CAPTURE__[key]=__SITE_XXX` 接线；
+  build 自检改用真实 `ENGINE.adapterCount()`（旧自检数 const 声明且 `wc.loaded` 恒 undefined 误判通过）。
+- **证据**：`build:g1` VM 自检 —— 提供 document/MutationObserver stub，`www.doubao.com` 匹配 host 下
+  引擎注册 **10 个适配器**、`start()` 成功、`data-dcf-web-capture` beacon `started:true` 写入。
+  单测新增回归守卫「bundle 必须含注册表接线 + VM 注册全部适配器」（30/30）。
+
 ### 1.3 引擎发送 dcf.observation（消息类型统一）
 
 - **证据**：`tests/chrome-web-capture.unit.test.js`（30/30 通过），关键断言：
