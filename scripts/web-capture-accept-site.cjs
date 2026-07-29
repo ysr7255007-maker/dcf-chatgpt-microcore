@@ -1,13 +1,17 @@
 // 通用站点验收驱动：node web-capture-accept-site.cjs <site-key>
 // 流程：确认扩展启用 → 开新对话 → 发唯一标记消息 → 等回复 → 验证 companion raw_events
+// G1 归位后：采集经 seed/adapters/chrome（G1 Target Adapter），消息类型 dcf.observation。
+// EXT_ID 参数化：优先 env DCF_G1_EXT_ID（G1 扩展加载后的真实 ID），回退历史默认值。
 'use strict';
 const path = require('path');
 const fs = require('fs');
 const { McpClient, collectText, extractEvalValue } = require('./web-capture-mcp-client.cjs');
 const DCF_ULID = require(path.join(__dirname, '..', 'seed', 'adapters', 'chrome', 'ulid.js'));
 
-const EXT_ID = 'phpcioepnnpkdebnedkjpemndjghncob';
-const COMPANION = 'http://127.0.0.1:8472';
+// G1 Target Adapter 扩展 ID：从环境变量注入（加载 seed/adapters/chrome 解包扩展后的真实 ID）。
+// 未注入时回退历史默认（旧世界扩展 ID），仅用于兼容占位，真实 G1 验收须提供 DCF_G1_EXT_ID。
+const EXT_ID = process.env.DCF_G1_EXT_ID || 'phpcioepnnpkdebnedkjpemndjghncob';
+const COMPANION = process.env.DCF_COMPANION_URL || 'http://127.0.0.1:8472';
 const EVIDENCE_DIR = path.join(__dirname, '..', 'docs', 'acceptance', 'web-capture');
 
 const SITE_FLOWS = {
