@@ -1,0 +1,42 @@
+{
+  "site": "z-ai",
+  "at": "2026-07-29T18:39:04.956Z",
+  "convId": "c434f3f0-a22f-4a59-9091-2c0def764bbf",
+  "sourceId": "WYK3YDVJ7NG1C7RXNNB8PSPS9Y",
+  "marker": "DCF验收MS6FHEOU",
+  "pageUrl": "page-157",
+  "beacon": {
+    "started": true,
+    "host": "chat.z.ai",
+    "conv": "c434f3f0-a22f-4a59-9091-2c0def764bbf",
+    "at": 1785350336779,
+    "scan": "c434f3f0-a22f-4a59-9091-2c0def764bbf",
+    "elements": 2,
+    "baseline_done": true,
+    "emitted": 1,
+    "last_role": "user"
+  },
+  "checks": {
+    "user_event_present": true,
+    "user_text_matches_marker": true,
+    "assistant_event_present": true,
+    "assistant_text_nonempty": true,
+    "no_partial_stream_single_ai": true,
+    "source_id_matches_url": true
+  },
+  "events": [
+    {
+      "type": "conversation.message.sent",
+      "role": "user",
+      "text": "DCF验收MS6FHEOU：请用一句话介绍你自己。",
+      "ts": 1785350327942
+    },
+    {
+      "type": "conversation.message.received",
+      "role": "assistant",
+      "text": "我是由Z.ai训练的大型语言模型，致力于通过自然语言交互为您提供信息、解答问题与创作内容。",
+      "ts": 1785350342941
+    }
+  ],
+  "passed": true
+}

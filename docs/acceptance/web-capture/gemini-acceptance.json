@@ -1,0 +1,42 @@
+{
+  "site": "gemini",
+  "at": "2026-07-29T17:10:49.917Z",
+  "convId": "84bf9fc082b3acfe",
+  "sourceId": "EPBF4TQM6R83MT846PVJQE2QG0",
+  "marker": "DCF验收MS6CBP01",
+  "pageUrl": "page-101",
+  "beacon": {
+    "started": true,
+    "host": "gemini.google.com",
+    "conv": "84bf9fc082b3acfe",
+    "at": 1785345041765,
+    "scan": "84bf9fc082b3acfe",
+    "elements": 2,
+    "baseline_done": true,
+    "emitted": 2,
+    "last_role": "assistant"
+  },
+  "checks": {
+    "user_event_present": true,
+    "user_text_matches_marker": true,
+    "assistant_event_present": true,
+    "assistant_text_nonempty": true,
+    "no_partial_stream_single_ai": true,
+    "source_id_matches_url": true
+  },
+  "events": [
+    {
+      "type": "conversation.message.sent",
+      "role": "user",
+      "text": "你说 DCF验收MS6CBP01：请用一句话介绍你自己。",
+      "ts": 1785345030085
+    },
+    {
+      "type": "conversation.message.received",
+      "role": "assistant",
+      "text": "我是DCF系统的数字接口，也是能陪你把荒诞想法变成严密代码、并肩拆解难题的数字伙伴。",
+      "ts": 1785345037615
+    }
+  ],
+  "passed": true
+}

@@ -1,0 +1,48 @@
+{
+  "site": "deepseek",
+  "at": "2026-07-29T18:21:47.016Z",
+  "convId": "816fea68-23be-45a4-9de7-a313a885d695",
+  "sourceId": "BQR0J84MRZ4VMT8AZMPTBJD7CR",
+  "marker": "DCF验收MS6EV75J",
+  "pageUrl": "page-149",
+  "beacon": {
+    "started": true,
+    "host": "chat.deepseek.com",
+    "conv": "816fea68-23be-45a4-9de7-a313a885d695",
+    "at": 1785349298583,
+    "scan": "816fea68-23be-45a4-9de7-a313a885d695",
+    "elements": 2,
+    "baseline_done": true,
+    "emitted": 3,
+    "last_role": "assistant"
+  },
+  "checks": {
+    "user_event_present": true,
+    "user_text_matches_marker": true,
+    "assistant_event_present": true,
+    "assistant_text_nonempty": true,
+    "no_partial_stream_single_ai": true,
+    "source_id_matches_url": true
+  },
+  "events": [
+    {
+      "type": "conversation.message.sent",
+      "role": "user",
+      "text": "DCF验收MS6EV75J：请用一句话介绍你自己。",
+      "ts": 1785349290222
+    },
+    {
+      "type": "conversation.message.sent",
+      "role": "user",
+      "text": "DCF验收MS6EV75J：请用一句话介绍你自己。",
+      "ts": 1785349291014
+    },
+    {
+      "type": "conversation.message.received",
+      "role": "assistant",
+      "text": "我是DeepSeek，由深度求索公司打造的AI助手，乐于用热情、细腻的风格为你解答问题、提供帮助。😊（DCF验收编号MS6EV75J已记录，如需进一步协助，请随时告诉我~）",
+      "ts": 1785349292931
+    }
+  ],
+  "passed": true
+}

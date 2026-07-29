@@ -1,0 +1,114 @@
+{
+  "claude-ai": {
+    "pageId": 18,
+    "bodyTextLen": 111,
+    "bodyTextSample": "claude.ai\n正在进行安全验证\n\n本网站使用安全服务防护恶意自动程序。在验证您不是自动程序期间，将显示此页面。\n\nRay ID: a22d436a2dfeec09\n由 Cloudflare 提供的性能和安全服务\n隐私",
+    "composers": [],
+    "msgContainers": [],
+    "readyState": "complete",
+    "sendButtons": [],
+    "sidebarLinks": 0,
+    "stopButtons": [],
+    "title": "请稍候…",
+    "url": "https://claude.ai/new",
+    "screenshot": null
+  },
+  "gemini": {
+    "pageId": 20,
+    "bodyTextLen": 8,
+    "bodyTextSample": "plus\nmic",
+    "composers": [
+      {
+        "n": 1,
+        "s": "textarea"
+      }
+    ],
+    "msgContainers": [],
+    "readyState": "interactive",
+    "sendButtons": [],
+    "sidebarLinks": 0,
+    "stopButtons": [],
+    "title": "‎Google Gemini",
+    "url": "https://gemini.google.com/app",
+    "screenshot": null
+  },
+  "doubao": {
+    "pageId": 22,
+    "bodyTextLen": 266,
+    "bodyTextSample": "豆包\n新对话\n⇧ ⌘ K\n新办公任务\nAI 创作\n关于豆包\n新对话\nAI 生成可能有误 注意核实\n下载电脑版\n登录\n有什么我能帮你的吗？\n资讯：“红霞”残余致广东湖北等地未来有强降水\n如何使用实时翻译与外国朋友交流？\n空调开 8 小时大概多少电费？\n帮我策划一段搞笑的 AI 短视频\n一年有多少小时？\n推荐一下2,000元左右的手机\n现在回乡下发展有什么好的创业项目？\n资讯：马来西亚学者称沙巴与中国",
+    "composers": [
+      {
+        "n": 2,
+        "s": "textarea"
+      }
+    ],
+    "msgContainers": [],
+    "readyState": "complete",
+    "sendButtons": [],
+    "sidebarLinks": 2,
+    "stopButtons": [],
+    "title": "豆包 - 字节跳动旗下 AI 智能助手",
+    "url": "https://www.doubao.com/chat/",
+    "screenshot": null
+  },
+  "kimi": {
+    "pageId": 24,
+    "bodyTextLen": 278,
+    "bodyTextSample": "新建会话\n⌘\nK\n插件\n定时任务\n收起\nPPT\n集群\n深度研究\n文档\n网站\n表格\nKimi Work\nKimi Code\nKimi Claw\n对话\n登录以同步历史会话\n邀请有奖\n抢会员权益 - K3 可用\n获取应用程序\n关于我们\nLanguage\n帮助\n登录\n\n\n\n\n尽管问，或做个 Agent 任务...\n快速\n进阶\nPPT\n集群\n深度研究\n文档\n网站\n表格\n探索灵感\n滑动探索\n内容由AI生成，请",
+    "composers": [
+      {
+        "n": 1,
+        "s": "div[contenteditable=\"true\"]"
+      },
+      {
+        "n": 1,
+        "s": "[class*=\"editor\"][contenteditable]"
+      }
+    ],
+    "msgContainers": [],
+    "readyState": "complete",
+    "sendButtons": [],
+    "sidebarLinks": 2,
+    "stopButtons": [],
+    "title": "Kimi AI 官网 - K3 上线，专为智能体编程与知识工作打造",
+    "url": "https://www.kimi.com/",
+    "screenshot": null
+  },
+  "deepseek": {
+    "pageId": 26,
+    "bodyTextLen": 108,
+    "bodyTextSample": "+86\n发送验证码\n注册登录即代表已阅读并同意我们的 \n用户协议 与 \n隐私政策，未注册的手机号将自动注册\n登录\n密码登录\n使用 Apple 账号登录\n微信扫码登录\n浙ICP备2023025841号\n · \n联系我们",
+    "composers": [],
+    "msgContainers": [],
+    "readyState": "complete",
+    "sendButtons": [],
+    "sidebarLinks": 0,
+    "stopButtons": [],
+    "title": "DeepSeek - 探索未至之境",
+    "url": "https://chat.deepseek.com/sign_in",
+    "screenshot": null
+  },
+  "yuanbao": {
+    "pageId": 28,
+    "bodyTextLen": 159,
+    "bodyTextSample": "搜索\n\n元宝\n\n全部收藏\n\n前往下载中心\n\n未登录\n\nHi~ 我是元宝\n你身边的智能助手，可以为你答疑解惑、尽情创作，快来点击以下任一功能体验吧～\n你可以这样问\n\n\n\n\n登录\n安装电脑版\n内容由AI生成，仅供参考\n\n微信登录\n请使用微信扫描二维码登录\n扫码默认已阅读并同意 用户服务协议 和 隐私协议\n微信\n手机\nQQ",
+    "composers": [
+      {
+        "n": 1,
+        "s": "div[contenteditable=\"true\"]"
+      },
+      {
+        "n": 1,
+        "s": "[class*=\"editor\"][contenteditable]"
+      }
+    ],
+    "msgContainers": [],
+    "readyState": "complete",
+    "sendButtons": [],
+    "sidebarLinks": 0,
+    "stopButtons": [],
+    "title": "元宝-腾讯旗下全能AI助手",
+    "url": "https://yuanbao.tencent.com/chat/naQivTmsDa",
+    "screenshot": null
+  }
+}

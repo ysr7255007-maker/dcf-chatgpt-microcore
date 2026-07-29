@@ -1,0 +1,48 @@
+{
+  "site": "grok",
+  "at": "2026-07-29T18:32:01.124Z",
+  "convId": "0fe7980f-c2a7-4091-9db6-1d14f5e6b590",
+  "sourceId": "2X839HT0CD29FEVDSVSA5AQG9W",
+  "marker": "DCF验收MS6F89XE",
+  "pageUrl": "page-154",
+  "beacon": {
+    "started": true,
+    "host": "grok.com",
+    "conv": "0fe7980f-c2a7-4091-9db6-1d14f5e6b590",
+    "at": 1785349912931,
+    "scan": "0fe7980f-c2a7-4091-9db6-1d14f5e6b590",
+    "elements": 2,
+    "baseline_done": true,
+    "emitted": 3,
+    "last_role": "assistant"
+  },
+  "checks": {
+    "user_event_present": true,
+    "user_text_matches_marker": true,
+    "assistant_event_present": true,
+    "assistant_text_nonempty": true,
+    "no_partial_stream_single_ai": true,
+    "source_id_matches_url": true
+  },
+  "events": [
+    {
+      "type": "conversation.message.sent",
+      "role": "user",
+      "text": "DCF验收MS6F89XE：请用一句话介绍你自己。",
+      "ts": 1785349900938
+    },
+    {
+      "type": "conversation.message.sent",
+      "role": "user",
+      "text": "DCF验收MS6F89XE：请用一句话介绍你自己。",
+      "ts": 1785349902559
+    },
+    {
+      "type": "conversation.message.received",
+      "role": "assistant",
+      "text": "我是Grok，由xAI构建的AI助手，致力于以好奇心、求真精神和人类友好的方式帮助理解宇宙并回答各种问题。",
+      "ts": 1785349907933
+    }
+  ],
+  "passed": true
+}
