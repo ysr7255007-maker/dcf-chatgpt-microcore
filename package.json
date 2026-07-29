@@ -7,6 +7,7 @@
     "install:guard": "node scripts/install-push-guard.js",
     "build": "npm run build:chrome",
     "build:chrome": "node scripts/build-chrome-extension.js",
+    "build:g1": "node scripts/build-g1-adapter.js",
     "build:legacy": "node scripts/build-userscript.js",
     "test": "npm run test:chrome",
     "test:chrome": "node tests/chrome-host.unit.test.js && node tests/chrome-release-identity.test.js && node tests/chrome-build.integration.test.js && node tests/chrome-workspace-ui.test.js && node tests/chrome-local-agent-dialogue.test.js && node tests/chrome-dialogue-control-survival.test.js && node tests/chrome-local-agent-status.test.js && node tests/chrome-local-agent-diagnostics.test.js && node tests/chrome-lifecycle.integration.test.js && node tests/chrome-build-determinism.test.js && node tests/chrome-enable-bounded-transaction.test.js && node tests/chrome-outbox-bounded.test.js && node tests/chrome-alarms-flush.test.js && node tests/chrome-web-capture.unit.test.js",
