@@ -157,14 +157,16 @@
       .node-sidebar { transition: none; }
     }
   </style>
+  <link rel="stylesheet" href="../dark-shell.css">
 </head>
 <body>
-  <!-- Header -->
+  <!-- Header：标题 + 三视图标签页（全量可见 + 激活态）；收起按钮由 main.js 注入末尾 -->
   <header class="view-header">
     <h1 class="view-title">🔍 探索图谱</h1>
-    <nav class="view-nav">
-      <button class="view-toggle-btn" onclick="switchView('task')">📋 任务</button>
-      <button class="view-toggle-btn" onclick="switchView('reflection')">💭 反思</button>
+    <nav class="view-tabs" aria-label="视图切换">
+      <button class="tab" onclick="switchView('task')">📋 任务</button>
+      <button class="tab active" aria-current="page">🔍 图谱</button>
+      <button class="tab" onclick="switchView('reflection')">💭 回顾</button>
     </nav>
   </header>
 

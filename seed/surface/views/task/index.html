@@ -319,12 +319,17 @@
     
 
   </style>
+  <link rel="stylesheet" href="../dark-shell.css">
 </head>
 <body>
-  <!-- Header -->
+  <!-- Header：标题 + 三视图标签页（全量可见 + 激活态）；收起按钮由 main.js 注入末尾 -->
   <header class="view-header">
     <h1 class="view-title">📋 我的任务</h1>
-    <button class="view-toggle-btn" onclick="switchView('exploration')" aria-label="切换到探索图谱视图">🔍 探索图谱</button>
+    <nav class="view-tabs" aria-label="视图切换">
+      <button class="tab active" aria-current="page">📋 任务</button>
+      <button class="tab" onclick="switchView('exploration')">🔍 图谱</button>
+      <button class="tab" onclick="switchView('reflection')">💭 回顾</button>
+    </nav>
   </header>
   
   <!-- Bento Grid Main Container -->

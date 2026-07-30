@@ -10,7 +10,7 @@
  * Code style: CommonJS require + JSDoc, aligned with seed/companion/index.js.
  */
 
-const { app, BrowserWindow, ipcMain, screen } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, screen } = require('electron');
 const path = require('path');
 const { CompanionAdapterClient } = require('./companion-adapter-client');
 
@@ -111,22 +111,29 @@ function createSurfaceWindow(viewMode = 'task') {
   const viewPath = SURFACE_VIEWS[viewMode] || SURFACE_VIEWS.task;
   mainWindow.loadFile(viewPath);
 
-  // Inject collapse control + QQ-style auto-collapse for each view
+  // Inject collapse control into the fixed header for each view
   mainWindow.webContents.on('did-finish-load', () => {
     mainWindow.webContents.executeJavaScript(`(function () {
-      if (!document.getElementById('dcf-collapse-btn')) {
-        var btn = document.createElement('button');
-        btn.id = 'dcf-collapse-btn';
-        btn.textContent = '\u25CF';
-        btn.title = '\u6536\u8d77\u4e3a\u60ac\u6d6e\u7403';
+      if (document.getElementById('dcf-collapse-btn')) return;
+      var btn = document.createElement('button');
+      btn.id = 'dcf-collapse-btn';
+      btn.className = 'dcf-collapse-inline';
+      btn.textContent = '\u25CF';
+      btn.title = '\u6536\u8d77\u4e3a\u60ac\u6d6e\u7403';
+      btn.setAttribute('aria-label', '\u6536\u8d77\u4e3a\u60ac\u6d6e\u7403');
+      btn.addEventListener('click', function () {
+        if (window.dcfBridge && window.dcfBridge.collapsePanel) {
+          window.dcfBridge.collapsePanel();
+        }
+      });
+      // 插入固定 header 末尾：不随内容滚动，永远可点；无 header 时回退 fixed
+      var header = document.querySelector('.view-header');
+      if (header) {
+        header.appendChild(btn);
+      } else {
         btn.style.cssText = 'position:fixed;top:6px;right:6px;z-index:99999;' +
           'width:24px;height:24px;border-radius:50%;border:none;cursor:pointer;' +
-          'background:rgba(64,100,210,0.85);color:#fff;font-size:10px;line-height:1;';
-        btn.addEventListener('click', function () {
-          if (window.dcfBridge && window.dcfBridge.collapsePanel) {
-            window.dcfBridge.collapsePanel();
-          }
-        });
+          'background:rgba(88,166,255,0.3);color:#58a6ff;font-size:10px;line-height:1;';
         document.body.appendChild(btn);
       }
       // 自动展开/收起已移除（hover 展开导致球不可拖拽，光标轮询有性能损耗）。
@@ -168,6 +175,10 @@ function createBallWindow() {
   ballWindow.setFullScreenable(false);
 
   ballWindow.loadFile(path.join(__dirname, 'ball.html'));
+
+  // 默认停靠右边缘（用户拖拽后位置由 macOS 记忆，不再强制）
+  const { workArea } = screen.getPrimaryDisplay();
+  ballWindow.setPosition(workArea.x + workArea.width - BALL_SIZE - 6, workArea.y + 120);
 
   ballWindow.on('closed', () => {
     ballWindow = null;
@@ -321,11 +332,26 @@ ipcMain.on('dcf-switch-view', (_event, newViewMode) => {
 // ---------------------------------------------------------------------------
 
 app.whenReady().then(() => {
-  createSurfaceWindow('task');  // Default to Task View (Lens 1)
+  // 前台应用声明：全部窗口 skipTaskbar 时 Electron 会将 activation policy 降为
+  // accessory（UIElement，无 Dock 图标、无法切换关闭）。显式恢复 regular，
+  // 让 Dock 有占位图标、Cmd+Q / Dock 右键可退出。
+  if (process.platform === 'darwin') {
+    app.setActivationPolicy('regular');
+    app.dock.show();
+    Menu.setApplicationMenu(Menu.buildFromTemplate([
+      { role: 'appMenu' },
+      { role: 'editMenu' },
+      { role: 'windowMenu' }
+    ]));
+  }
+
+  // 启动默认悬浮球状态（面板等首次展开再创建，避免「闪一下」）
+  createBallWindow();
 
   app.on('activate', () => {
+    // Dock 图标点击：无窗口时恢复悬浮球（而不是空转）
     if (BrowserWindow.getAllWindows().length === 0) {
-      createSurfaceWindow(currentViewMode);
+      createBallWindow();
     }
   });
 });
