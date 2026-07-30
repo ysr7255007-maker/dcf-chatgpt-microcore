@@ -10,7 +10,7 @@
  * Code style: CommonJS require + JSDoc, aligned with seed/companion/index.js.
  */
 
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, screen } = require('electron');
 const path = require('path');
 const { CompanionAdapterClient } = require('./companion-adapter-client');
 
@@ -26,11 +26,19 @@ const COMPANION_BASE = process.env.DCF_COMPANION_URL || 'http://127.0.0.1:8472';
  */
 const adapterClient = new CompanionAdapterClient({ baseUrl: COMPANION_BASE });
 
-/** Panel geometry per task spec: 340 wide x 1200 tall. */
+/** Panel geometry per task spec: 340 wide; height follows screen workArea. */
 const PANEL_WIDTH = 340;
-const PANEL_HEIGHT = 1200;
-/** Collapsed floating-ball window size. */
-const BALL_SIZE = 72;
+/** Collapsed floating-ball window size: small unobtrusive translucent dot. */
+const BALL_SIZE = 44;
+
+/**
+ * 贴边几何：面板贴主屏右边缘、高度=工作区高度（不含菜单栏/Dock），
+ * 修复「1200px 超过屏幕长度」与「居中栏位」两个形态错误。
+ */
+function getPanelBounds() {
+  const { workArea } = screen.getPrimaryDisplay();
+  return { x: workArea.x + workArea.width - PANEL_WIDTH, y: workArea.y, width: PANEL_WIDTH, height: workArea.height };
+}
 
 /**
  * Path to DCF Surface views (Three Cognitive Lens Architecture)
@@ -69,11 +77,18 @@ let ballWindow = null;
  * @param {string} viewMode - 'task', 'exploration', or 'reflection'
  */
 function createSurfaceWindow(viewMode = 'task') {
+  const bounds = getPanelBounds();
   mainWindow = new BrowserWindow({
-    width: PANEL_WIDTH,
-    height: PANEL_HEIGHT,
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height,
     alwaysOnTop: true,
     transparent: true,
+    // macOS 真透明三件套（缺一则渲染白底圆角方块，像 APP 图标底板）：
+    // transparent + 显式全透背景色 + 禁用系统圆角
+    backgroundColor: '#00000000',
+    roundedCorners: false,
     frame: false,
     skipTaskbar: true,
     webPreferences: {
@@ -84,26 +99,38 @@ function createSurfaceWindow(viewMode = 'task') {
     }
   });
 
+  // macOS Space 修复（随时任意界面悬浮展开初衷）：
+  // 未设跨工作区可见时，在全屏 App 的 Space 中 show()/focus() 会被 macOS
+  // 强制切到窗口所属桌面。visibleOnFullScreen 让窗口可悬浮于全屏 Space 上方。
+  mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  // 提升置顶层级，确保盖在全屏应用上方（Spotlight/Raycast 同级）
+  mainWindow.setAlwaysOnTop(true, 'screen-saver');
+  // 悬浮面板自身不应进入全屏模式
+  mainWindow.setFullScreenable(false);
+
   const viewPath = SURFACE_VIEWS[viewMode] || SURFACE_VIEWS.task;
   mainWindow.loadFile(viewPath);
 
-  // Inject collapse control for each view
+  // Inject collapse control + QQ-style auto-collapse for each view
   mainWindow.webContents.on('did-finish-load', () => {
     mainWindow.webContents.executeJavaScript(`(function () {
-      if (document.getElementById('dcf-collapse-btn')) return;
-      var btn = document.createElement('button');
-      btn.id = 'dcf-collapse-btn';
-      btn.textContent = '\u25CF';
-      btn.title = '\u6536\u8d77\u4e3a\u60ac\u6d6e\u7403';
-      btn.style.cssText = 'position:fixed;top:6px;right:6px;z-index:99999;' +
-        'width:24px;height:24px;border-radius:50%;border:none;cursor:pointer;' +
-        'background:rgba(64,100,210,0.85);color:#fff;font-size:10px;line-height:1;';
-      btn.addEventListener('click', function () {
-        if (window.dcfBridge && window.dcfBridge.collapsePanel) {
-          window.dcfBridge.collapsePanel();
-        }
-      });
-      document.body.appendChild(btn);
+      if (!document.getElementById('dcf-collapse-btn')) {
+        var btn = document.createElement('button');
+        btn.id = 'dcf-collapse-btn';
+        btn.textContent = '\u25CF';
+        btn.title = '\u6536\u8d77\u4e3a\u60ac\u6d6e\u7403';
+        btn.style.cssText = 'position:fixed;top:6px;right:6px;z-index:99999;' +
+          'width:24px;height:24px;border-radius:50%;border:none;cursor:pointer;' +
+          'background:rgba(64,100,210,0.85);color:#fff;font-size:10px;line-height:1;';
+        btn.addEventListener('click', function () {
+          if (window.dcfBridge && window.dcfBridge.collapsePanel) {
+            window.dcfBridge.collapsePanel();
+          }
+        });
+        document.body.appendChild(btn);
+      }
+      // 自动展开/收起已移除（hover 展开导致球不可拖拽，光标轮询有性能损耗）。
+      // 保留简单交互：点击球展开，点击面板按钮收起。
     })();`).catch(() => { /* injection is cosmetic; never fatal */ });
   });
 
@@ -121,6 +148,8 @@ function createBallWindow() {
     height: BALL_SIZE,
     alwaysOnTop: true,
     transparent: true,
+    backgroundColor: '#00000000',
+    roundedCorners: false,
     frame: false,
     skipTaskbar: true,
     resizable: false,
@@ -133,6 +162,11 @@ function createBallWindow() {
     }
   });
 
+  // 悬浮球同样跨工作区可见：任何桌面/全屏 App 中都应可点击展开
+  ballWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  ballWindow.setAlwaysOnTop(true, 'screen-saver');
+  ballWindow.setFullScreenable(false);
+
   ballWindow.loadFile(path.join(__dirname, 'ball.html'));
 
   ballWindow.on('closed', () => {
@@ -141,31 +175,31 @@ function createBallWindow() {
 }
 
 /**
- * Collapse: hide the 340x1200 panel and show the floating ball near the
- * panel's previous top-right corner.
+ * Collapse: hide the panel and show the floating ball docked to the right
+ * screen edge (resident trigger).
  */
 function collapseToBall() {
   if (!ballWindow) {
     createBallWindow();
   }
   if (mainWindow) {
-    const [x, y] = mainWindow.getPosition();
-    ballWindow.setPosition(x + PANEL_WIDTH - BALL_SIZE, y);
+    const { workArea } = screen.getPrimaryDisplay();
+    ballWindow.setPosition(workArea.x + workArea.width - BALL_SIZE - 6, workArea.y + 120);
     mainWindow.hide();
   }
   ballWindow.show();
 }
 
 /**
- * Expand: hide the ball and restore the panel at the ball's location.
+ * Expand: hide the ball and restore the panel docked to the right edge,
+ * full workArea height.
  */
 function expandToPanel() {
   if (!mainWindow) {
     createSurfaceWindow(currentViewMode);
   }
+  mainWindow.setBounds(getPanelBounds());
   if (ballWindow) {
-    const [x, y] = ballWindow.getPosition();
-    mainWindow.setPosition(Math.max(0, x - PANEL_WIDTH + BALL_SIZE), y);
     ballWindow.hide();
   }
   mainWindow.show();

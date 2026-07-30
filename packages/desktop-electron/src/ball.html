@@ -22,31 +22,31 @@
   }
   .ball {
     position: absolute;
-    inset: 4px;
+    inset: 2px;
     border-radius: 50%;
     background: radial-gradient(circle at 32% 28%,
-      rgba(140, 180, 255, 0.92),
-      rgba(64, 100, 210, 0.78) 55%,
-      rgba(30, 48, 120, 0.72));
-    box-shadow: 0 4px 14px rgba(20, 30, 80, 0.45),
-                inset 0 2px 6px rgba(255, 255, 255, 0.35);
+      rgba(140, 180, 255, 0.62),
+      rgba(64, 100, 210, 0.48) 55%,
+      rgba(30, 48, 120, 0.42));
+    box-shadow: 0 2px 8px rgba(20, 30, 80, 0.28),
+                inset 0 1px 3px rgba(255, 255, 255, 0.28);
     -webkit-app-region: drag; /* whole ball is movable */
     display: flex;
     align-items: center;
     justify-content: center;
     animation: breathe 3s ease-in-out infinite;
   }
-  /* Breathing-light idle effect (plan 1.4) */
+  /* Breathing-light idle effect (plan 1.4) — 半透明基底，呼吸提亮 */
   @keyframes breathe {
-    0%, 100% { transform: scale(1); opacity: 0.85; }
-    50% { transform: scale(1.05); opacity: 1; }
+    0%, 100% { transform: scale(1); opacity: 0.62; }
+    50% { transform: scale(1.06); opacity: 0.8; }
   }
   /* Pulse when a new recommendation arrives */
   @keyframes pulse-new-recommendation {
-    0%, 100% { box-shadow: 0 4px 14px rgba(64, 100, 210, 0.45),
-                           inset 0 2px 6px rgba(255, 255, 255, 0.35); }
-    50% { box-shadow: 0 4px 28px rgba(139, 92, 246, 0.85),
-                      inset 0 2px 6px rgba(255, 255, 255, 0.35); }
+    0%, 100% { box-shadow: 0 2px 8px rgba(64, 100, 210, 0.32),
+                           inset 0 1px 3px rgba(255, 255, 255, 0.28); }
+    50% { box-shadow: 0 2px 18px rgba(139, 92, 246, 0.7),
+                      inset 0 1px 3px rgba(255, 255, 255, 0.28); }
   }
   .ball.has-new {
     animation: breathe 3s ease-in-out infinite,
@@ -57,25 +57,25 @@
     .ball, .ball.has-new { animation: none; }
   }
   .core {
-    width: 46%;
-    height: 46%;
+    width: 38%;
+    height: 38%;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.28);
+    background: rgba(255, 255, 255, 0.3);
     border: none;
-    color: #fff;
-    font: 700 11px/1 -apple-system, sans-serif;
-    letter-spacing: 0.5px;
+    padding: 0;
     cursor: pointer;
     -webkit-app-region: no-drag; /* clickable expand target */
   }
-  .core:hover { background: rgba(255, 255, 255, 0.45); }
+  .core:hover { background: rgba(255, 255, 255, 0.5); }
+  .ball:hover { opacity: 0.95; }
 </style>
 </head>
 <body>
   <div class="ball" id="ball-indicator" role="button" tabindex="0" aria-label="DCF 悬浮球：点击展开面板">
-    <button class="core" id="expand" title="展开 DCF 面板">DCF</button>
+    <button class="core" id="expand" title="展开 DCF 面板" aria-label="展开 DCF 面板"></button>
   </div>
   <script>
+    // 仅点击展开；hover 自动展开已移除（导致球无法拖拽移动）
     document.getElementById('expand').addEventListener('click', () => {
       if (window.dcfBridge && window.dcfBridge.expandPanel) {
         window.dcfBridge.expandPanel();
