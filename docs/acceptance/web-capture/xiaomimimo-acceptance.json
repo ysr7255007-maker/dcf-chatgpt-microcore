@@ -1,16 +1,16 @@
 {
   "site": "xiaomimimo",
-  "at": "2026-07-29T19:11:30.359Z",
-  "convId": "957943e69161854490547ddaebb4f43a",
-  "sourceId": "123FSX1YGMHKVKCN5WYEN1BYFT",
-  "marker": "DCF验收MS6GN3S0",
-  "pageUrl": "page-172",
+  "at": "2026-07-29T23:56:00.649Z",
+  "convId": "dde1d528f0acd183647a2f7419c60b34",
+  "sourceId": "GVZPKA94EQEBAKNVC5NDJVTVF3",
+  "marker": "DCF验收MS6QSYOU",
+  "pageUrl": "page-197",
   "beacon": {
     "started": true,
     "host": "aistudio.xiaomimimo.com",
-    "conv": "957943e69161854490547ddaebb4f43a",
-    "at": 1785352282197,
-    "scan": "957943e69161854490547ddaebb4f43a",
+    "conv": "dde1d528f0acd183647a2f7419c60b34",
+    "at": 1785369352350,
+    "scan": "dde1d528f0acd183647a2f7419c60b34",
     "elements": 2,
     "baseline_done": true,
     "emitted": 2,
@@ -28,14 +28,14 @@
     {
       "type": "conversation.message.sent",
       "role": "user",
-      "text": "DCF验收MS6GN3S0：请用一句话介绍你自己。",
-      "ts": 1785352273788
+      "text": "DCF验收MS6QSYOU：请用一句话介绍你自己。",
+      "ts": 1785369342977
     },
     {
       "type": "conversation.message.received",
       "role": "assistant",
-      "text": "我是MiMo，由小米大模型Core团队开发的大语言模型，很高兴为你提供帮助。",
-      "ts": 1785352277938
+      "text": "我是MiMo，由小米大模型Core团队开发的大语言模型，很高兴认识你！",
+      "ts": 1785369346972
     }
   ],
   "passed": true

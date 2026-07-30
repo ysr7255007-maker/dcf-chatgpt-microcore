@@ -1,20 +1,20 @@
 {
   "site": "doubao",
-  "at": "2026-07-29T19:19:32.486Z",
-  "convId": "38436187501726210",
-  "sourceId": "2YZTKEN9H6GCZT36AJDRQEN2CM",
-  "marker": "DCF验收MS6GX9UO",
-  "pageUrl": "page-176",
+  "at": "2026-07-30T08:01:06.605Z",
+  "convId": "38436278341915394",
+  "sourceId": "Q525G0Z3KRPF26G98KQDP04KX0",
+  "marker": "DCF验收MS784WAZ",
+  "pageUrl": "page-12",
   "beacon": {
     "started": true,
     "host": "doubao.com",
-    "conv": "38436187501726210",
-    "at": 1785352764336,
-    "scan": "38436187501726210",
+    "conv": "38436278341915394",
+    "at": 1785398458594,
+    "scan": "38436278341915394",
     "elements": 6,
     "baseline_done": true,
-    "emitted": 3,
-    "last_role": "assistant"
+    "emitted": 2,
+    "last_role": "user"
   },
   "checks": {
     "user_event_present": true,
@@ -28,14 +28,14 @@
     {
       "type": "conversation.message.sent",
       "role": "user",
-      "text": "DCF 验收 MS6GX9UO：请用一句话介绍你自己。",
-      "ts": 1785352748931
+      "text": "DCF 验收 MS784WAZ：请用一句话介绍你自己。",
+      "ts": 1785398448001
     },
     {
       "type": "conversation.message.received",
       "role": "assistant",
-      "text": "我是字节跳动独立研发的豆包，具备多领域知识储备与信息处理能力，可为用户提供专业准确的问答、内容创作等多元信息服务。",
-      "ts": 1785352757938
+      "text": "我是字节跳动独立研发的豆包人工智能模型，能够为你提供知识解答、内容创作、问题梳理等多方面的智能支持。",
+      "ts": 1785398461011
     }
   ],
   "passed": true

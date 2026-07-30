@@ -1,16 +1,16 @@
 {
   "site": "kimi",
-  "at": "2026-07-29T18:17:13.817Z",
-  "convId": "19faf17e-6242-8a5a-8000-0928b04dce6f",
-  "sourceId": "GG086481NDHKT877GH1RS9MBAS",
-  "marker": "DCF验收MS6EP4MW",
-  "pageUrl": "page-147",
+  "at": "2026-07-29T23:43:39.045Z",
+  "convId": "19fb042d-6b72-84c7-8000-0928ff12c5bd",
+  "sourceId": "NK0Z8WXYDPYR3P3TY78RMN38N5",
+  "marker": "DCF验收MS6QD1QV",
+  "pageUrl": "page-187",
   "beacon": {
     "started": true,
     "host": "kimi.com",
-    "conv": "19faf17e-6242-8a5a-8000-0928b04dce6f",
-    "at": 1785349025686,
-    "scan": "19faf17e-6242-8a5a-8000-0928b04dce6f",
+    "conv": "19fb042d-6b72-84c7-8000-0928ff12c5bd",
+    "at": 1785368610885,
+    "scan": "19fb042d-6b72-84c7-8000-0928ff12c5bd",
     "elements": 2,
     "baseline_done": true,
     "emitted": 2,
@@ -28,14 +28,14 @@
     {
       "type": "conversation.message.sent",
       "role": "user",
-      "text": "DCF验收MS6EP4MW：请用一句话介绍你自己。",
-      "ts": 1785349009078
+      "text": "DCF验收MS6QD1QV：请用一句话介绍你自己。",
+      "ts": 1785368599995
     },
     {
       "type": "conversation.message.received",
       "role": "assistant",
-      "text": "DCF验收MS6EP4MW：我是 Kimi，由月之暗面（Moonshot AI）开发的人工智能助手，擅长长文本处理、多语言对话和复杂任务推理。 高峰时段算力不足，已切换至 K2.6 快速，升级会员畅用思考模型",
-      "ts": 1785349022912
+      "text": "我是 Kimi，由月之暗面（Moonshot AI）开发的人工智能助手，擅长长文本处理、联网搜索、代码编写和数据分析。 高峰时段算力不足，已切换至 K2.6 快速，升级会员畅用思考模型",
+      "ts": 1785368606730
     }
   ],
   "passed": true
