@@ -1,0 +1,19 @@
+{
+  "machine_id": "replace-with-stable-local-name",
+  "os": "macOS 15.x or Windows/WSL2 Ubuntu 24.04",
+  "kernel": "record exact value",
+  "cpu": "record exact model",
+  "physical_cores": 0,
+  "logical_cores": 0,
+  "memory_bytes": 0,
+  "storage_model": "record exact model",
+  "filesystem": "APFS, ext4, etc.",
+  "rustc": "record rustc -Vv",
+  "cargo": "record cargo -V",
+  "cpp_compiler": "record clang++/g++ version",
+  "sdsl_commit": "record exact commit or package version",
+  "power_mode": "record plugged/battery and performance mode",
+  "notes": [
+    "Do not call a run storage-cold unless the local wrapper actually controlled the OS page cache."
+  ]
+}
