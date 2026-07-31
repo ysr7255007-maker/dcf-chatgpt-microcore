@@ -1,0 +1,48 @@
+{
+  "commit_sha": "62908b7d5909a6fdaf8ea0a08b28cd8844179cef",
+  "branch": "experiment/storage-kernel-local",
+  "machine_id": "darwin-arm64-looy",
+  "os": {
+    "name": "Darwin",
+    "version": "25.5.0",
+    "kernel": "Darwin Kernel Version 25.5.0: Tue Jun  9 22:18:58 PDT 2026; root:xnu-12377.121.10~1/RELEASE_ARM64_T6000",
+    "architecture": "arm64"
+  },
+  "cpu": {
+    "core_count": 14,
+    "model": "Apple M3 Max (T6000)"
+  },
+  "memory": {
+    "ram_bytes": 68719476736,
+    "ram_gb": 64
+  },
+  "storage_type": "NVMe SSD",
+  "power_mode": "unknown",
+  "wsl_or_docker": false,
+  "rust_toolchain": {
+    "rustup_home": "/Users/looy/.rustup",
+    "default_host": "aarch64-apple-darwin",
+    "active_toolchain": "stable-aarch64-apple-darwin",
+    "rustc_version": "1.96.0 (ac68faa20 2026-05-25)",
+    "cargo_version": "1.96.0 (30a34c682 2026-05-25)",
+    "llvm_version": "22.1.2"
+  },
+  "cmake_version": "4.3.3",
+  "c_compiler": {
+    "name": "Apple clang",
+    "version": "15.0.0",
+    "target": "arm64-apple-darwin25.5.0"
+  },
+  "dependencies": {
+    "zstd": "1.5.7",
+    "sdsl_lite": "not_yet_included"
+  },
+  "compilation_status": {
+    "cargo_check_before": "success_with_warning",
+    "cargo_check_after": "success",
+    "cargo_test_no_run": "success",
+    "warning_fixed": true,
+    "warning_description": "unused import: EngineError in crates/dcf-lab-core/src/lib.rs"
+  },
+  "timestamp": "2026-07-31T00:00:00Z"
+}

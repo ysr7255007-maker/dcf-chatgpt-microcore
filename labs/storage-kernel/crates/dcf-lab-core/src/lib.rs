@@ -5,7 +5,7 @@ use dcf_contract::{
     WindowBenchmark, CONTRACT_VERSION,
 };
 use dcf_corpus::{sha256_hex, PreparedDataset};
-use dcf_engine_api::{total_storage_bytes, Engine, EngineError, EngineResult, TruthScanner};
+use dcf_engine_api::{total_storage_bytes, Engine, EngineResult, TruthScanner};
 use dcf_engine_external::{build_external, ExternalEngine, ExternalEngineConfig};
 use dcf_text_zstd::{ZstdBlockStore, ZstdBlockStoreBuilder};
 use serde::{Deserialize, Serialize};

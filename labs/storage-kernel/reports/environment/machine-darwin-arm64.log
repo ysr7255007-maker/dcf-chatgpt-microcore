@@ -1,0 +1,48 @@
+=== DCF Storage Kernel Lab - Environment Baseline ===
+Machine: looydeMacBook-Pro.local (darwin-arm64)
+Date: 2026-07-31
+Branch: experiment/storage-kernel-local
+Commit: 62908b7d5909a6fdaf8ea0a08b28cd8844179cef
+
+--- System Information ---
+OS: Darwin 25.5.0 (ARM64)
+Kernel: Darwin Kernel Version 25.5.0: Tue Jun  9 22:18:58 PDT 2026
+CPU: Apple M3 Max (T6000), 14 cores
+RAM: 64 GB (68719476736 bytes)
+Storage: NVMe SSD
+Environment: Native macOS (not WSL/Docker)
+
+--- Toolchain Versions ---
+Rustup Home: /Users/looy/.rustup
+Default Host: aarch64-apple-darwin
+Active Toolchain: stable-aarch64-apple-darwin (1.96.0)
+rustc: 1.96.0 (ac68faa20 2026-05-25)
+LLVM: 22.1.2
+cargo: 1.96.0 (30a34c682 2026-05-25)
+CMake: 4.3.3
+C Compiler: Apple clang version 21.0.0 (clang-2100.1.1.101)
+
+--- Dependencies ---
+zstd: 1.5.7
+SDSL: Not yet included in workspace
+
+--- Compilation Results ---
+cargo check --workspace: SUCCESS (after fixing unused import warning)
+cargo test --workspace --no-run: SUCCESS
+Previous Warning: unused import `EngineError` in crates/dcf-lab-core/src/lib.rs:8:51
+Fix Applied: Removed unused import, minimal change, no contract modification
+
+--- Verification Commands Executed ---
+cd labs/storage-kernel
+rustup show
+rustc -Vv
+cargo -V
+cmake --version
+c++ --version
+uname -a
+sysctl hw.memsize
+
+--- Notes ---
+- All compilation passes succeed with minimal warning fix
+- No platform-specific barriers detected
+- Ready for Phase 2: Rebuild Fact Import Layer
