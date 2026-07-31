@@ -1,0 +1,15 @@
+[package]
+name = "dcf-db-baseline"
+version = "0.1.0"
+edition.workspace = true
+description = "Conventional baseline: SQLite facts + FTS5 trigram + zstd 256KiB blocks + span mapping"
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true }
+hex = { workspace = true }
+rusqlite = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+zstd = { workspace = true }

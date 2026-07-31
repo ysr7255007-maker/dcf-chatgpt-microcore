@@ -244,6 +244,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "dcf-db-baseline"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "hex",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "zstd",
+]
+
+[[package]]
 name = "dcf-engine-api"
 version = "0.1.0"
 dependencies = [
