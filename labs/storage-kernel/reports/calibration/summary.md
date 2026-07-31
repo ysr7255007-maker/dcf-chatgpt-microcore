@@ -20,8 +20,7 @@ Cache state: application-hot
 ## 状态
 
 search_matrix_status: complete
-full_recovery_status: pending
-- 未完成: legacy_message_text|utf8-a1-sdsl|recover|rep0, legacy_message_text|zstd-full-scan|recover|rep0, full_trace|utf8-a1-sdsl|recover|rep0, full_trace|zstd-full-scan|recover|rep0
+full_recovery_status: complete
 
 ## 表 1 - 搜索操作延迟 (P50/P95, us)
 
@@ -90,10 +89,10 @@ full_recovery_status: pending
 
 | Dataset | Engine | Extract128B P50/P95 (us) | Extract1KiB P50/P95 (us) | Extract8KiB P50/P95 (us) | RecoverAll 总耗时 (s) | SHA-256 |
 |---------|--------|--------------------------:|-------------------------:|-------------------------:|----------------------:|---------|
-| full_trace | utf8-a1-sdsl | 122.4/351.1 | 1082.1/1416.7 | 9056.7/12116.4 | pending | n/a |
-| full_trace | zstd-full-scan | 0.0/0.0 | 0.0/0.0 | 0.0/0.0 | pending | n/a |
-| legacy_message_text | utf8-a1-sdsl | 140.8/209.9 | 1088.3/1660.0 | 9865.8/12565.5 | pending | n/a |
-| legacy_message_text | zstd-full-scan | 0.0/0.0 | 0.0/0.0 | 0.0/0.0 | pending | n/a |
+| full_trace | utf8-a1-sdsl | 122.4/351.1 | 1082.1/1416.7 | 9056.7/12116.4 | 923.6 | match |
+| full_trace | zstd-full-scan | 0.0/0.0 | 0.0/0.0 | 0.0/0.0 | 0.1 | match |
+| legacy_message_text | utf8-a1-sdsl | 140.8/209.9 | 1088.3/1660.0 | 9865.8/12565.5 | 426.7 | match |
+| legacy_message_text | zstd-full-scan | 0.0/0.0 | 0.0/0.0 | 0.0/0.0 | 0.0 | match |
 
 ## 表 3 - 存储 / 构建 / 打开
 
@@ -113,5 +112,9 @@ full_recovery_status: pending
 - full_trace / utf8-a1-sdsl: 70/70 correct
 - full_trace / zstd-full-scan: 70/70 correct
 
+- recover_all legacy_message_text / zstd-full-scan: success, 0.0 s, sha256 match, peak_rss 129007616 bytes
+- recover_all legacy_message_text / utf8-a1-sdsl: success, 426.7 s, sha256 match, peak_rss 127762432 bytes
+- recover_all full_trace / utf8-a1-sdsl: success, 923.6 s, sha256 match, peak_rss 323731456 bytes
+- recover_all full_trace / zstd-full-scan: success, 0.1 s, sha256 match, peak_rss 323731456 bytes
 
 注：SDSL recover_all 原始字节数比语料多 1 字节（CSA 哨兵字符，逐字节 extract 的既有行为）；SHA-256 校验在丢弃尾部哨兵后比对。
