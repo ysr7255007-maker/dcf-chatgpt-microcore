@@ -1,0 +1,6 @@
+{"case_id": "and-tool-marker", "op": "intersect", "left": "tool-use-marker", "right": "tool-name", "note": "exact-position intersection; [tool_use: positions are a subset of tool_use positions"}
+{"case_id": "or-zh-visible", "op": "union", "left": "zh-medium", "right": "zh-greeting", "note": "union of two visible-text occurrence sets"}
+{"case_id": "without-tool-result", "op": "difference_type", "base": "zh-medium", "excluded_type": "tool_result", "note": "positions whose content_type is not tool_result"}
+{"case_id": "visible-only", "op": "filter_type", "base": "zh-medium", "content_type": "text", "note": "positions restricted to text content blocks"}
+{"case_id": "conversation-limited", "op": "filter_conversation", "base": "zh-medium", "conversation_uuid": "a37eb507-2e64-41e4-a000-2465b2f8a616", "note": "positions restricted to one conversation"}
+{"case_id": "near-same-message", "op": "near_same_message", "left": "thinking-content", "right": "tool-name", "max_bytes": 4096, "note": "left and right positions within the same message and byte distance <= 4096"}

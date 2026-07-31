@@ -1,0 +1,13 @@
+{"query_id": "absent-sentinel", "query": "DCF_ABSENT_SENTINEL_X9Z_7Q", "class": "absent", "source": "second-matrix truth set"}
+{"query_id": "zh-high-freq-1", "query": "需要", "class": "visible_text", "source": "second-matrix truth set"}
+{"query_id": "zh-medium", "query": "实际上", "class": "visible_text", "source": "second-matrix truth set"}
+{"query_id": "zh-greeting", "query": "你好", "class": "visible_text", "source": "corpus probe"}
+{"query_id": "thinking-content", "query": "我觉得", "class": "thinking", "source": "second-matrix truth set"}
+{"query_id": "en-reasoning", "query": "The key constraint", "class": "thinking", "source": "second-matrix truth set"}
+{"query_id": "tool-name", "query": "tool_use", "class": "tool", "source": "second-matrix truth set"}
+{"query_id": "code-path", "query": "/Users/", "class": "path", "source": "second-matrix truth set"}
+{"query_id": "json-input-key", "query": "\"input\"", "class": "json", "source": "corpus probe"}
+{"query_id": "json-id-field", "query": "tool_use_id", "class": "json", "source": "corpus probe"}
+{"query_id": "tool-result-marker", "query": "[tool_result]", "class": "tool", "source": "second-matrix truth set"}
+{"query_id": "tool-use-marker", "query": "[tool_use:", "class": "tool", "source": "second-matrix truth set"}
+{"query_id": "short-zh-2scalar", "query": "架构", "class": "short_query_edge", "source": "corpus probe"}

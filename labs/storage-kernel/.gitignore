@@ -11,3 +11,9 @@ reports/calibration/run.log
 experiment/*.local.toml
 experiment/*.local.json
 experiment/*.local.jsonl
+!reports/leverage-v1/
+reports/leverage-v1/corpus/
+reports/leverage-v1/artifacts/
+reports/leverage-v1/shared/projection.bin
+reports/leverage-v1/shared/query-truth.jsonl
+reports/leverage-v1/*.log
