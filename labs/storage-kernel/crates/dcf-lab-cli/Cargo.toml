@@ -1,0 +1,15 @@
+[package]
+name = "dcf-storage-lab"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+dcf-contract = { path = "../dcf-contract" }
+dcf-corpus = { path = "../dcf-corpus" }
+dcf-engine-api = { path = "../dcf-engine-api" }
+dcf-lab-core = { path = "../dcf-lab-core" }
+serde_json.workspace = true
