@@ -1,62 +1,6 @@
-   Compiling memchr v2.8.3
-   Compiling itoa v1.0.18
-   Compiling serde_core v1.0.229
-   Compiling zmij v1.0.23
-   Compiling typenum v1.20.1
-   Compiling thiserror v1.0.69
-   Compiling hex v0.4.3
-   Compiling cfg-if v1.0.4
-   Compiling libc v0.2.189
-   Compiling hashbrown v0.17.1
-   Compiling equivalent v1.0.2
-   Compiling zstd-sys v2.0.16+zstd.1.5.7
-   Compiling winnow v0.7.15
-   Compiling toml_write v0.1.2
-   Compiling zstd-safe v7.2.4
-   Compiling anyhow v1.0.104
-   Compiling utf8parse v0.2.2
-   Compiling anstyle-parse v1.0.0
-   Compiling zstd v0.13.3
-   Compiling anstyle v1.0.14
-   Compiling colorchoice v1.0.5
-   Compiling anstyle-query v1.1.5
-   Compiling cpufeatures v0.2.17
-   Compiling indexmap v2.14.0
-   Compiling is_terminal_polyfill v1.70.2
-   Compiling strsim v0.11.1
-   Compiling clap_lex v1.1.0
-   Compiling anstream v1.0.0
-   Compiling generic-array v0.14.7
-   Compiling clap_builder v4.6.2
-   Compiling block-buffer v0.10.4
-   Compiling crypto-common v0.1.7
-   Compiling digest v0.10.7
-   Compiling sha2 v0.10.9
-   Compiling serde v1.0.229
-   Compiling serde_json v1.0.151
-   Compiling serde_spanned v0.6.9
-   Compiling toml_datetime v0.6.11
-   Compiling toml_edit v0.22.27
-   Compiling clap v4.6.4
-   Compiling dcf-contract v0.1.0 (/Users/looy/Documents/dcf/labs/storage-kernel/crates/dcf-contract)
-   Compiling dcf-engine-api v0.1.0 (/Users/looy/Documents/dcf/labs/storage-kernel/crates/dcf-engine-api)
-   Compiling dcf-text-zstd v0.1.0 (/Users/looy/Documents/dcf/labs/storage-kernel/crates/dcf-text-zstd)
-   Compiling dcf-engine-external v0.1.0 (/Users/looy/Documents/dcf/labs/storage-kernel/crates/dcf-engine-external)
-   Compiling toml v0.8.23
-   Compiling dcf-corpus v0.1.0 (/Users/looy/Documents/dcf/labs/storage-kernel/crates/dcf-corpus)
    Compiling dcf-lab-core v0.1.0 (/Users/looy/Documents/dcf/labs/storage-kernel/crates/dcf-lab-core)
-warning: unused import: `EngineError`
- --> crates/dcf-lab-core/src/lib.rs:8:51
-  |
-8 | use dcf_engine_api::{total_storage_bytes, Engine, EngineError, EngineResu...
-  |                                                   ^^^^^^^^^^^
-  |
-  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
-
-warning: `dcf-lab-core` (lib) generated 1 warning (run `cargo fix --lib -p dcf-lab-core` to apply 1 suggestion)
    Compiling dcf-storage-lab v0.1.0 (/Users/looy/Documents/dcf/labs/storage-kernel/crates/dcf-lab-cli)
-warning: `dcf-lab-core` (lib test) generated 1 warning (1 duplicate)
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.86s
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.31s
   Executable unittests src/lib.rs (target/debug/deps/dcf_contract-57deedbab5cca50f)
   Executable unittests src/lib.rs (target/debug/deps/dcf_corpus-dc878fa67cd10ed7)
   Executable unittests src/lib.rs (target/debug/deps/dcf_engine_api-597d8bd27594a97f)

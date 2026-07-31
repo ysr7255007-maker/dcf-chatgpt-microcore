@@ -7,9 +7,9 @@ members = [
   "crates/dcf-text-zstd",
   "crates/dcf-lab-core",
   "crates/dcf-lab-cli",
-  "crates/dcf-artifact-store",  # Task 2.1
-  "crates/dcf-importer",        # Task 2.2
-  "crates/engine-adapters",     # Task 5.2
+  "crates/dcf-artifact-store",
+  "crates/dcf-importer",
+  "crates/engine-adapters",
 ]
 resolver = "2"
 
