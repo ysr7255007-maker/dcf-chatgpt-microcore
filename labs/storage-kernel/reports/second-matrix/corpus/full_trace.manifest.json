@@ -1,0 +1,30 @@
+{
+  "block_counts": {
+    "text": 14601,
+    "thinking": 5619,
+    "tool_result": 2915,
+    "tool_use": 2941,
+    "total": 26173,
+    "unknown": 97
+  },
+  "block_types_included": [
+    "text",
+    "thinking",
+    "reasoning",
+    "tool_use",
+    "tool_result",
+    "token_budget",
+    "flag"
+  ],
+  "dataset_id": "full_trace",
+  "dataset_sha256": "b4fd2d8fa97444c40d49a36f9da6542124d119755b1724db61efefb411bdd225",
+  "description": "Full trace: text + thinking + tool_use + tool_result in original order",
+  "generated_at": "2026-07-31T16:58:32.248335+00:00",
+  "input_bytes": 50542796,
+  "message_count": 13153,
+  "separator": "NUL (0x00) between messages, newline between blocks",
+  "source": "reports/import/conversations.db content_blocks",
+  "thinking_handling": "full_content_not_placeholder",
+  "tool_handling": "complete_serialized_input_and_result",
+  "unknown_handling": "included_with_type_marker"
+}
