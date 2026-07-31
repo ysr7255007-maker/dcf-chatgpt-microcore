@@ -44,7 +44,7 @@ Not tested in this environment:
 Chrome extension installation
 Chrome native-host registration
 macOS System Events permission and real polling
-macOS final-text and Accessibility click recorder
+macOS native compilation and runtime of the included final-text/Accessibility-click recorder
 existing DCF Companion/Surface integration
 root repository npm run verify
 ```

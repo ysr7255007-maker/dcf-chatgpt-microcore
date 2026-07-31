@@ -198,7 +198,7 @@ Not verified here:
 
 - Chrome extension installation and real native-host connection;
 - macOS frontmost-window polling permissions;
-- a real Accessibility-based final-text/click recorder;
+- native compilation and real permission behavior of the included Accessibility-based final-text/click recorder;
 - integration with the existing Companion Core or DCF Surface;
 - full repository `npm run verify`, because the execution sandbox cannot clone GitHub.
 

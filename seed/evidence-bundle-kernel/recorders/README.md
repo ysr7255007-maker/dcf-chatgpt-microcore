@@ -34,13 +34,13 @@ The extension records visible-page state and explicit text selections. Full visi
 
 Framework only; macOS Accessibility/System Events execution is not verified in this Linux environment. It polls the frontmost application and window title and writes only state changes. It deliberately does not infer user intent.
 
-## Required future behavior recorder
+## `behavior-macos/`
 
-The evidence kernel treats these two fact kinds as the narrative backbone:
+Framework only; native macOS compilation and runtime permission behavior are not verified in this Linux environment. The Swift reference recorder emits the two narrative-backbone facts:
 
 ```text
 user.text.output
 user.control.click
 ```
 
-A real macOS recorder should obtain final committed text from Accessibility/input-method-visible state, exclude secure text fields, and resolve click coordinates to Accessibility controls. It must write files through the same thin envelope and must not call DCF.
+It reads final visible text only at Return, Tab, or click boundaries, excludes secure fields, resolves clicked Accessibility controls, and writes through the same thin envelope without calling DCF. See its README for build commands and known semantic limits.
