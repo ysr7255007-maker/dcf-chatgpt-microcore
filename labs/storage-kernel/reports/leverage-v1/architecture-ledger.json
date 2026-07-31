@@ -1,0 +1,234 @@
+{
+  "black_hole": {
+    "architecture_id": "black_hole",
+    "physical_representative": "utf8-a1-sdsl (csa_wt<wt_hutu<rrr_vector<63>>, 64, 64>)",
+    "persistent_structures": [
+      {
+        "name": "CSA self-index (.csa)",
+        "role": "text + exact-substring index + positions + recovery in one structure",
+        "classification": "authoritative_fact",
+        "required": true
+      },
+      {
+        "name": "segment manifest (manifest.json)",
+        "role": "segment identity / projection hash / engine identity",
+        "classification": "rebuildable_projection",
+        "required": true
+      }
+    ],
+    "shared_contract_structures": [
+      {
+        "name": "projection-boundaries.jsonl (shared)",
+        "role": "span -> conversation/message/ordinal/type upper contract",
+        "classification": "authoritative_fact (shared, not architecture-owned)",
+        "required": true
+      }
+    ],
+    "synchronization_edges": [
+      {
+        "from": "CSA self-index",
+        "to": "segment manifest",
+        "authority": "canonical projection",
+        "detection": "manifest projection_sha256 vs frozen corpus sha + parity test",
+        "recovery": "rebuild CSA from canonical projection",
+        "blast_radius": "single segment"
+      }
+    ],
+    "capability_sources": {
+      "count_exact": "native",
+      "locate_first_n": "native",
+      "extract_span": "native",
+      "recover_all": "native",
+      "hit_provenance_trace": "small_adapter",
+      "filter_content_type": "small_adapter",
+      "filter_conversation": "small_adapter",
+      "positionset_intersect": "small_adapter",
+      "positionset_union": "small_adapter",
+      "positionset_difference": "small_adapter",
+      "near_same_message": "small_adapter",
+      "top10_with_context": "native"
+    },
+    "recovery_paths": [
+      {
+        "path": "recover_from_self_index",
+        "structures_read": [
+          "CSA self-index"
+        ],
+        "steps": 1,
+        "semantics": "canonical_byte_equivalent (NUL->0x01, trailing sentinel documented)"
+      }
+    ],
+    "independent_build_paths": 1,
+    "independent_recovery_paths": 1,
+    "persistent_file_types": [
+      "CSA binary",
+      "JSON manifest",
+      "shared JSONL contract"
+    ],
+    "custom_source_files": [
+      "reports/leverage-v1/build-shared.py",
+      "reports/leverage-v1/build-recovery-micro.py",
+      "reports/leverage-v1/verify-capabilities.py",
+      "reports/leverage-v1/run-leverage.py",
+      "reports/leverage-v1/run-lifecycle.py",
+      "reports/leverage-v1/build-architecture-ledger.py",
+      "reports/leverage-v1/verify-leverage.py"
+    ],
+    "external_dependencies": [
+      "sdsl-lite (C++ header-only)"
+    ],
+    "logical_loc": 1670
+  },
+  "conventional_db": {
+    "architecture_id": "conventional_db",
+    "implementation": "dcf-db-baseline crate",
+    "persistent_structures": [
+      {
+        "name": "dataset_manifest (sqlite)",
+        "role": "dataset identity + projection hash",
+        "classification": "authoritative_fact",
+        "required": true
+      },
+      {
+        "name": "records (sqlite)",
+        "role": "structured facts: conversation/message/ordinal/type/canonical span",
+        "classification": "authoritative_fact",
+        "required": true
+      },
+      {
+        "name": "records_search_content (sqlite)",
+        "role": "searchable text mirror for FTS5 external content",
+        "classification": "rebuildable_projection",
+        "required": true
+      },
+      {
+        "name": "records_fts (sqlite FTS5 trigram)",
+        "role": "candidate record index",
+        "classification": "rebuildable_projection",
+        "required": true
+      },
+      {
+        "name": "text_blocks (sqlite)",
+        "role": "block directory: canonical range -> frame offset/len/hash",
+        "classification": "rebuildable_projection",
+        "required": true
+      },
+      {
+        "name": "text.zstpack",
+        "role": "independent compressed text body (zstd level 19, 256 KiB blocks)",
+        "classification": "authoritative_fact",
+        "required": true
+      },
+      {
+        "name": "manifest.json",
+        "role": "build identity",
+        "classification": "display_only",
+        "required": true
+      }
+    ],
+    "synchronization_edges": [
+      {
+        "from": "text_blocks directory",
+        "to": "text.zstpack frames",
+        "authority": "canonical projection",
+        "detection": "block sha256 recompute vs directory",
+        "recovery": "rebuild blocks from projection",
+        "blast_radius": "affected dataset"
+      },
+      {
+        "from": "records spans",
+        "to": "text_blocks / text.zstpack",
+        "authority": "canonical projection + boundary contract",
+        "detection": "verify mode: records vs boundaries + extract",
+        "recovery": "re-import records from boundary contract",
+        "blast_radius": "affected dataset"
+      },
+      {
+        "from": "records_search_content",
+        "to": "records_fts",
+        "authority": "records_search_content",
+        "detection": "FTS row count vs content row count",
+        "recovery": "rebuild-fts (drop + recreate + rebuild)",
+        "blast_radius": "search recall on affected dataset"
+      },
+      {
+        "from": "dataset_manifest",
+        "to": "all tables + pack",
+        "authority": "canonical projection sha",
+        "detection": "recover sha256 vs manifest",
+        "recovery": "full rebuild",
+        "blast_radius": "affected dataset"
+      }
+    ],
+    "capability_sources": {
+      "count_exact": "cross_system_orchestration",
+      "locate_first_n": "cross_system_orchestration",
+      "extract_span": "secondary_structure",
+      "recover_all": "secondary_structure",
+      "hit_provenance_trace": "native",
+      "filter_content_type": "native",
+      "filter_conversation": "native",
+      "positionset_intersect": "small_adapter",
+      "positionset_union": "small_adapter",
+      "positionset_difference": "small_adapter",
+      "near_same_message": "small_adapter",
+      "top10_with_context": "cross_system_orchestration"
+    },
+    "recovery_paths": [
+      {
+        "path": "recover_text_from_zstpack",
+        "structures_read": [
+          "text_blocks",
+          "text.zstpack"
+        ],
+        "steps": 2,
+        "semantics": "byte_exact"
+      },
+      {
+        "path": "rebuild_fts_index",
+        "structures_read": [
+          "records_search_content"
+        ],
+        "steps": 2,
+        "semantics": "candidate recall restored"
+      }
+    ],
+    "independent_build_paths": 2,
+    "independent_recovery_paths": 2,
+    "persistent_file_types": [
+      "SQLite DB",
+      "zstd pack",
+      "JSON manifest"
+    ],
+    "custom_source_files": [
+      "crates/dcf-db-baseline/tests/baseline_contract.rs",
+      "crates/dcf-db-baseline/src/protocol.rs",
+      "crates/dcf-db-baseline/src/lib.rs",
+      "crates/dcf-db-baseline/src/store.rs",
+      "crates/dcf-db-baseline/src/schema.rs",
+      "crates/dcf-db-baseline/src/search.rs",
+      "crates/dcf-db-baseline/src/bin/dcf-db-baseline.rs"
+    ],
+    "external_dependencies": [
+      "rusqlite bundled SQLite/FTS5",
+      "zstd 0.13",
+      "serde/serde_json",
+      "sha2",
+      "clap"
+    ],
+    "logical_loc": 1360
+  },
+  "_engineering_surface": {
+    "python_harness_files": 6,
+    "rust_crate_files": 7,
+    "logical_loc_python_harness_and_shared": 1670,
+    "logical_loc_rust_crate": 1360,
+    "total_logical_loc": 3030,
+    "note": "LOC is weak evidence; recorded for completeness only"
+  },
+  "_validations": {
+    "storage_bom_linkage": "ok",
+    "capability_linkage": "ok",
+    "parity_gate": "passed"
+  }
+}
