@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use dcf_contract::{ExperimentReport, QueryCase};
+use dcf_contract::ExperimentReport;
 use dcf_corpus::{
     load_experiment_spec, prepare_all, profile_file, read_prepared_dataset, PreparedDataset,
 };
@@ -91,13 +91,15 @@ fn main() -> Result<()> {
 
 fn profile_command(spec_path: &Path) -> Result<()> {
     let loaded = load_experiment_spec(spec_path)?;
+    let source_set_id = loaded.spec.source_set_id.clone();
     let mut rows = Vec::new();
     for input in loaded.resolved_variants() {
+        let profile = profile_file(&input.path)?;
         rows.push(json!({
-            "source_set_id": loaded.spec.source_set_id,
+            "source_set_id": source_set_id,
             "variant": input.variant,
             "path": input.path,
-            "profile": profile_file(&input.path)?,
+            "profile": profile,
         }));
     }
     println!("{}", serde_json::to_string_pretty(&rows)?);
@@ -126,11 +128,12 @@ fn truth_command(dataset_root: &Path, query_path: &Path) -> Result<()> {
     let queries = load_queries(query_path)?;
     let mut results = Vec::new();
     for query in queries {
-        let bytes = query.query.as_bytes();
+        let count = scanner.count(query.query.as_bytes())?;
+        let spans = scanner.locate(query.query.as_bytes(), query.locate_limit)?;
         results.push(json!({
             "query": query,
-            "count": scanner.count(bytes)?,
-            "spans": scanner.locate(bytes, query.locate_limit)?,
+            "count": count,
+            "spans": spans,
         }));
     }
     println!("{}", serde_json::to_string_pretty(&results)?);
@@ -244,6 +247,3 @@ fn run_id(prefix: &str) -> String {
         .unwrap_or(0);
     format!("{prefix}-{nanos}")
 }
-
-#[allow(dead_code)]
-fn _queries_are_language_neutral(_queries: &[QueryCase]) {}
