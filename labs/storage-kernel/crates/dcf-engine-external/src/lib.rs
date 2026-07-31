@@ -275,7 +275,7 @@ pub fn build_external(
         json!({
             "canonical_path": canonical_path,
             "segment_dir": segment_dir,
-            "engine_config": config.engine_config,
+            "engine_config": config.engine_config.clone(),
         }),
     )?;
     serde_json::from_value(result)
@@ -305,7 +305,7 @@ impl ExternalEngine {
             Some(binding.clone()),
             json!({
                 "segment_dir": segment_dir,
-                "engine_config": config.engine_config,
+                "engine_config": config.engine_config.clone(),
             }),
         )?;
         let capabilities: EngineCapabilities = result
