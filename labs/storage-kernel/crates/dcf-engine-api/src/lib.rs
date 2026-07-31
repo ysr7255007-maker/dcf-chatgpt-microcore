@@ -35,6 +35,10 @@ pub trait Engine: Send + Sync {
     fn recover_all(&self) -> EngineResult<Vec<u8>>;
     fn storage_components(&self) -> EngineResult<Vec<StorageComponent>>;
 
+    fn clear_application_cache(&self) -> EngineResult<()> {
+        Ok(())
+    }
+
     fn verify_binding(&self, text_id: &TextId, canonical_len: u64, sha256: &str) -> EngineResult<()> {
         if self.text_id() != text_id {
             return Err(EngineError::BindingMismatch(format!(
