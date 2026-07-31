@@ -1,0 +1,22 @@
+source_set_id = "claude-export-same-conversations-v1"
+
+# All three files must represent the same source conversations.
+# raw_json is naturally much larger because it keeps reasoning, tool calls,
+# tool results, metadata and the untouched JSON envelope.
+
+[[variants]]
+variant = "zh_clean"
+path = "../local-data/zh-clean.txt"
+record_map = "../local-data/zh-clean.records.json"
+provenance_map = "../local-data/zh-clean-to-raw.provenance.json"
+
+[[variants]]
+variant = "hybrid_clean"
+path = "../local-data/hybrid-clean.txt"
+record_map = "../local-data/hybrid-clean.records.json"
+provenance_map = "../local-data/hybrid-clean-to-raw.provenance.json"
+
+[[variants]]
+variant = "raw_json"
+path = "../local-data/original-export.json"
+record_map = "../local-data/raw-json.records.json"
