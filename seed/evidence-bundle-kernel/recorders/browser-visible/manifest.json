@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "DCF Independent Browser Evidence Recorder",
+  "version": "0.1.0",
+  "description": "Writes timestamped browser-visible facts through an independent native messaging host. It does not connect to DCF.",
+  "permissions": ["nativeMessaging", "storage", "tabs"],
+  "host_permissions": ["<all_urls>"],
+  "background": {"service_worker": "service-worker.js"},
+  "content_scripts": [{
+    "matches": ["<all_urls>"],
+    "js": ["content-script.js"],
+    "run_at": "document_idle",
+    "all_frames": false
+  }]
+}

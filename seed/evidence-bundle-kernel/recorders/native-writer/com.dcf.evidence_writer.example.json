@@ -1,0 +1,7 @@
+{
+  "name": "com.dcf.evidence_writer",
+  "description": "Independent timestamped evidence JSONL writer",
+  "path": "/ABSOLUTE/PATH/TO/native-writer-host.mjs",
+  "type": "stdio",
+  "allowed_origins": ["chrome-extension://REPLACE_WITH_EXTENSION_ID/"]
+}

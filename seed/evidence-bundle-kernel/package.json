@@ -1,0 +1,16 @@
+{
+  "name": "@dcf/evidence-bundle-kernel",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "test": "node --no-warnings --test",
+    "verify": "npm test && node --check src/cli.js"
+  },
+  "bin": {
+    "dcf-evidence": "src/cli.js"
+  }
+}
