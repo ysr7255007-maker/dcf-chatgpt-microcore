@@ -12,8 +12,8 @@
   "zstd_config": "level 19, 256 KiB blocks",
   "engine_binaries": {
     "utf8-a1-sdsl": {
-      "path": "./reports/first-matrix/bin/utf8-a1-engine-v2",
-      "sha256": "868ed87f6b6ee714cacfd9cb72494a45bbc47d50c5eaa2888d6f93d784a22eaa"
+      "path": "./reports/first-matrix/bin/utf8-a1-engine",
+      "sha256": "3fba8098a32845d19934ec7acc180942aff21197fddfc803cddcd2350fc5fc08"
     },
     "zstd-full-scan": {
       "path": "./target/release/zstd-locate-engine",
@@ -22,8 +22,7 @@
   },
   "calibration": {
     "repetitions": 30,
-    "open_repetitions": 10,
-    "recover_repetitions_per_engine": 1,
+    "recover_repetitions": 3,
     "cache_state": "application-hot",
     "operations": [
       "count_only",
@@ -34,9 +33,6 @@
       "extract_128b",
       "extract_1k",
       "extract_8k",
-      "storage",
-      "build",
-      "open",
       "recover_all"
     ]
   },
