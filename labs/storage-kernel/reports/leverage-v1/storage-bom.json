@@ -1,0 +1,79 @@
+{
+  "dataset_id": "full_trace",
+  "shared_source_bytes": 56800628,
+  "black_hole": {
+    "architecture_runtime_bytes": 21633369,
+    "total_with_shared_source_bytes": 78433997,
+    "bytes_per_projection_byte": 0.428,
+    "components": [
+      {
+        "path": "artifacts/black-hole/full_trace/full_trace.bin.csa",
+        "role": "self_index",
+        "bytes": 21632965,
+        "required": true
+      },
+      {
+        "path": "artifacts/black-hole/full_trace/manifest.json",
+        "role": "manifest",
+        "bytes": 404,
+        "required": true
+      }
+    ]
+  },
+  "conventional_db": {
+    "architecture_runtime_bytes": 189727824,
+    "total_with_shared_source_bytes": 246528452,
+    "bytes_per_projection_byte": 3.7538,
+    "components": [
+      {
+        "path": "artifacts/conventional/full_trace/baseline.db",
+        "role": "sqlite_facts_fts_mapping",
+        "bytes": 175132672,
+        "required": true
+      },
+      {
+        "path": "artifacts/conventional/full_trace/text.zstpack",
+        "role": "zstd_text_blocks",
+        "bytes": 14594832,
+        "required": true
+      },
+      {
+        "path": "artifacts/conventional/full_trace/manifest.json",
+        "role": "manifest",
+        "bytes": 320,
+        "required": true
+      }
+    ]
+  },
+  "shared_source": {
+    "bytes": 56800628,
+    "components": [
+      {
+        "path": "shared/projection.bin",
+        "role": "canonical_projection_shared",
+        "bytes": 50542796,
+        "required": true
+      },
+      {
+        "path": "shared/projection-boundaries.jsonl",
+        "role": "span_boundary_contract_shared",
+        "bytes": 6255357,
+        "required": true
+      },
+      {
+        "path": "query-cases.jsonl",
+        "role": "query_set_shared",
+        "bytes": 1403,
+        "required": true
+      },
+      {
+        "path": "composition-cases.jsonl",
+        "role": "composition_set_shared",
+        "bytes": 1072,
+        "required": true
+      }
+    ]
+  },
+  "projection_bytes": 50542796,
+  "generated_at": "2026-08-01T05:34:53+0800"
+}

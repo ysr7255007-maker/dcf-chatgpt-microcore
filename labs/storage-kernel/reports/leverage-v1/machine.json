@@ -1,0 +1,35 @@
+{
+  "machine_id": "looydeMacBook-Pro.local",
+  "platform": "macOS-26.5.2-arm64-arm-64bit",
+  "arch": "arm64",
+  "cpu": "Apple M3 Max",
+  "python": "3.12.13",
+  "compilers": {
+    "rustc": "rustc 1.96.0 (ac68faa20 2026-05-25)",
+    "cargo": "cargo 1.96.0 (30a34c682 2026-05-25)",
+    "clang": "Homebrew clang version 22.1.6"
+  },
+  "engine_binaries": {
+    "utf8-a1-sdsl": {
+      "path": "./reports/first-matrix/bin/utf8-a1-engine",
+      "sha256": "3fba8098a32845d19934ec7acc180942aff21197fddfc803cddcd2350fc5fc08",
+      "config": "csa_wt<wt_hutu<rrr_vector<63>>, 64, 64> construct_im NUL->0x01"
+    },
+    "dcf-db-baseline": {
+      "path": "./target/release/dcf-db-baseline",
+      "sha256": "4d41bb7515bde993dce852662edb3cdf9a50a6ebc3b9f488a102a85660b546ac",
+      "config": "rusqlite bundled SQLite/FTS5 trigram; zstd level 19; 256 KiB blocks"
+    }
+  },
+  "corpus": {
+    "path": "reports/second-matrix/corpus/full_trace.bin",
+    "bytes": 50542796,
+    "sha256": "b4fd2d8fa97444c40d49a36f9da6542124d119755b1724db61efefb411bdd225"
+  },
+  "time_discipline": {
+    "default_timeout_seconds": 300,
+    "adaptive_repetitions": true,
+    "max_unapproved_minutes": 10
+  },
+  "generated_at": "2026-08-01T05:34:53+0800"
+}
