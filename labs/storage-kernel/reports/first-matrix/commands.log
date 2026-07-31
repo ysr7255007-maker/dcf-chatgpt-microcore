@@ -1,0 +1,27 @@
+# First Performance Matrix - Commands Log
+# Date: 2026-08-01
+
+# Step 1: SDSL installation (source build)
+git clone --depth 1 https://github.com/simongog/sdsl-lite.git /tmp/sdsl-lite
+cd /tmp/sdsl-lite && mkdir build && cd build
+cmake .. -DCMAKE_INSTALL_PREFIX=/tmp/sdsl-install -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+# Patched Windows headers for macOS compatibility
+# Compiled 27/28 lib objects (louds_tree excluded)
+
+# Step 2: Export legacy corpus
+cargo run --release --bin export-legacy-corpus
+
+# Step 3: Generate truth sets
+cargo run --release --bin generate-truth-brute
+
+# Step 4: Compile SDSL engine
+g++ -O3 -std=c++17 -I/tmp/sdsl-lite/include -I/tmp/sdsl-lite/build/external/libdivsufsort/include sdsl_engine.cpp /tmp/sdsl-lite/*.o -L/tmp/sdsl-lite/build/external/libdivsufsort/lib -ldivsufsort -ldivsufsort64 -o utf8-a1-engine
+
+# Step 5: Build SDSL index
+./reports/first-matrix/bin/utf8-a1-engine reports/first-matrix/corpus/legacy_message_text.bin build
+
+# Step 6: Build zstd store
+cargo run --release --bin zstd-locate-engine -- reports/first-matrix/corpus/legacy_message_text.bin build
+
+# Step 7: Run first matrix (30 repetitions)
+cargo run --release --bin run-first-matrix

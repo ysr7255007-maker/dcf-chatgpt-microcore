@@ -1,0 +1,13 @@
+{
+  "body_selection_rule": "m['text'] when present and non-empty; else deterministic reconstruct from content[]",
+  "dataset_id": "legacy_message_text",
+  "dataset_sha256": "5ebe162480ce8619b9017818ded576687e5a3ffa4d056f33e5c97fdfa806249b",
+  "description": "Platform message.text projection (old sandbox body selection logic)",
+  "generated_at": "2026-07-31T15:34:07.311151+00:00",
+  "input_bytes": 22629311,
+  "message_count": 13287,
+  "nul_handling": "NUL in body replaced with U+FFFD (EF BF BD)",
+  "separator": "NUL (0x00)",
+  "source": "reports/import/conversations.db messages.raw_payload",
+  "text_count": 12987
+}

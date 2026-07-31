@@ -1,0 +1,14 @@
+{
+  "machine_id": "looydeMacBook-Pro",
+  "platform": "macOS 26.5.2 (Darwin 25.5.0)",
+  "arch": "arm64 (Apple Silicon T6000)",
+  "cpu": "Apple M3 Max",
+  "compilers": {
+    "clang": "Apple clang 21.0.0 (clang-2100.1.1.101)",
+    "rustc": "1.96.0 (ac68faa20 2026-05-25)",
+    "cargo": "1.96.0 (30a34c682 2026-05-25)"
+  },
+  "sdsl_config": "csa_wt<wt_hutu<rrr_vector<63>>, 64, 64>",
+  "zstd_config": "level 19, 256 KiB blocks",
+  "generated_at": "2026-08-01"
+}

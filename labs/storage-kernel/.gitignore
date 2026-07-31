@@ -4,6 +4,9 @@ local-bin/
 artifacts/
 runs/
 reports/
+!reports/first-matrix/
+reports/first-matrix/corpus/
+reports/first-matrix/bin/
 experiment/*.local.toml
 experiment/*.local.json
 experiment/*.local.jsonl
