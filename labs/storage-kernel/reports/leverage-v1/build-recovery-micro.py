@@ -36,6 +36,7 @@ BLOCK_TYPES = ["text", "thinking", "tool_use", "tool_result"]
 TOTAL_LIMIT = 4 * 1024 * 1024 + 256 * 1024
 
 FROZEN_SHA256 = "b4fd2d8fa97444c40d49a36f9da6542124d119755b1724db61efefb411bdd225"
+FROZEN_BYTES = 50542796
 
 
 def to_json_str(v):

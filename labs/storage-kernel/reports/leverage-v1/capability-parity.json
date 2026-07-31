@@ -1,0 +1,549 @@
+{
+  "status": "passed",
+  "composition_basis": "harness-layer sorted-span algebra; both engines' primitive PositionSets verified identical to the independent brute-force truth",
+  "dataset_sha256": "b4fd2d8fa97444c40d49a36f9da6542124d119755b1724db61efefb411bdd225",
+  "engines": {
+    "black_hole": {
+      "passed": true
+    },
+    "conventional_db": {
+      "passed": true
+    }
+  },
+  "query_cases": [
+    {
+      "query_id": "absent-sentinel",
+      "class": "absent",
+      "truth_count": 0,
+      "black_hole": {
+        "count": 0,
+        "locate1_ok": true,
+        "ok": true
+      },
+      "conventional_db": {
+        "count": 0,
+        "locate1_ok": true,
+        "operation_path": "fts_trigram_verify",
+        "ok": true
+      }
+    },
+    {
+      "query_id": "zh-high-freq-1",
+      "class": "visible_text",
+      "truth_count": 17545,
+      "black_hole": {
+        "count": 17545,
+        "locate1_ok": true,
+        "ok": true
+      },
+      "conventional_db": {
+        "count": 17545,
+        "locate1_ok": true,
+        "operation_path": "short_query_full_record_scan",
+        "ok": true
+      }
+    },
+    {
+      "query_id": "zh-medium",
+      "class": "visible_text",
+      "truth_count": 889,
+      "black_hole": {
+        "count": 889,
+        "locate1_ok": true,
+        "ok": true
+      },
+      "conventional_db": {
+        "count": 889,
+        "locate1_ok": true,
+        "operation_path": "fts_trigram_verify",
+        "ok": true
+      }
+    },
+    {
+      "query_id": "zh-greeting",
+      "class": "visible_text",
+      "truth_count": 246,
+      "black_hole": {
+        "count": 246,
+        "locate1_ok": true,
+        "ok": true
+      },
+      "conventional_db": {
+        "count": 246,
+        "locate1_ok": true,
+        "operation_path": "short_query_full_record_scan",
+        "ok": true
+      }
+    },
+    {
+      "query_id": "thinking-content",
+      "class": "thinking",
+      "truth_count": 716,
+      "black_hole": {
+        "count": 716,
+        "locate1_ok": true,
+        "ok": true
+      },
+      "conventional_db": {
+        "count": 716,
+        "locate1_ok": true,
+        "operation_path": "fts_trigram_verify",
+        "ok": true
+      }
+    },
+    {
+      "query_id": "en-reasoning",
+      "class": "thinking",
+      "truth_count": 2,
+      "black_hole": {
+        "count": 2,
+        "locate1_ok": true,
+        "ok": true
+      },
+      "conventional_db": {
+        "count": 2,
+        "locate1_ok": true,
+        "operation_path": "fts_trigram_verify",
+        "ok": true
+      }
+    },
+    {
+      "query_id": "tool-name",
+      "class": "tool",
+      "truth_count": 3085,
+      "black_hole": {
+        "count": 3085,
+        "locate1_ok": true,
+        "ok": true
+      },
+      "conventional_db": {
+        "count": 3085,
+        "locate1_ok": true,
+        "operation_path": "fts_trigram_verify",
+        "ok": true
+      }
+    },
+    {
+      "query_id": "code-path",
+      "class": "path",
+      "truth_count": 227,
+      "black_hole": {
+        "count": 227,
+        "locate1_ok": true,
+        "ok": true
+      },
+      "conventional_db": {
+        "count": 227,
+        "locate1_ok": true,
+        "operation_path": "fts_trigram_verify",
+        "ok": true
+      }
+    },
+    {
+      "query_id": "json-input-key",
+      "class": "json",
+      "truth_count": 26,
+      "black_hole": {
+        "count": 26,
+        "locate1_ok": true,
+        "ok": true
+      },
+      "conventional_db": {
+        "count": 26,
+        "locate1_ok": true,
+        "operation_path": "fts_trigram_verify",
+        "ok": true
+      }
+    },
+    {
+      "query_id": "json-id-field",
+      "class": "json",
+      "truth_count": 75,
+      "black_hole": {
+        "count": 75,
+        "locate1_ok": true,
+        "ok": true
+      },
+      "conventional_db": {
+        "count": 75,
+        "locate1_ok": true,
+        "operation_path": "fts_trigram_verify",
+        "ok": true
+      }
+    },
+    {
+      "query_id": "tool-result-marker",
+      "class": "tool",
+      "truth_count": 2915,
+      "black_hole": {
+        "count": 2915,
+        "locate1_ok": true,
+        "ok": true
+      },
+      "conventional_db": {
+        "count": 2915,
+        "locate1_ok": true,
+        "operation_path": "fts_trigram_verify",
+        "ok": true
+      }
+    },
+    {
+      "query_id": "tool-use-marker",
+      "class": "tool",
+      "truth_count": 2942,
+      "black_hole": {
+        "count": 2942,
+        "locate1_ok": true,
+        "ok": true
+      },
+      "conventional_db": {
+        "count": 2942,
+        "locate1_ok": true,
+        "operation_path": "fts_trigram_verify",
+        "ok": true
+      }
+    },
+    {
+      "query_id": "short-zh-2scalar",
+      "class": "short_query_edge",
+      "truth_count": 5610,
+      "black_hole": {
+        "count": 5610,
+        "locate1_ok": true,
+        "ok": true
+      },
+      "conventional_db": {
+        "count": 5610,
+        "locate1_ok": true,
+        "operation_path": "short_query_full_record_scan",
+        "ok": true
+      }
+    }
+  ],
+  "composition_cases": [
+    {
+      "case_id": "and-tool-marker",
+      "op": "intersect",
+      "count": 0,
+      "first10": []
+    },
+    {
+      "case_id": "or-zh-visible",
+      "op": "union",
+      "count": 1135,
+      "first10": [
+        {
+          "start": 41270,
+          "end": 41276
+        },
+        {
+          "start": 83599,
+          "end": 83608
+        },
+        {
+          "start": 115578,
+          "end": 115587
+        },
+        {
+          "start": 116585,
+          "end": 116591
+        },
+        {
+          "start": 194384,
+          "end": 194393
+        },
+        {
+          "start": 201381,
+          "end": 201387
+        },
+        {
+          "start": 210671,
+          "end": 210680
+        },
+        {
+          "start": 214512,
+          "end": 214521
+        },
+        {
+          "start": 222112,
+          "end": 222121
+        },
+        {
+          "start": 240581,
+          "end": 240590
+        }
+      ]
+    },
+    {
+      "case_id": "without-tool-result",
+      "op": "difference_type",
+      "count": 720,
+      "first10": [
+        {
+          "start": 83599,
+          "end": 83608
+        },
+        {
+          "start": 115578,
+          "end": 115587
+        },
+        {
+          "start": 194384,
+          "end": 194393
+        },
+        {
+          "start": 210671,
+          "end": 210680
+        },
+        {
+          "start": 214512,
+          "end": 214521
+        },
+        {
+          "start": 222112,
+          "end": 222121
+        },
+        {
+          "start": 240581,
+          "end": 240590
+        },
+        {
+          "start": 240677,
+          "end": 240686
+        },
+        {
+          "start": 268456,
+          "end": 268465
+        },
+        {
+          "start": 289760,
+          "end": 289769
+        }
+      ]
+    },
+    {
+      "case_id": "visible-only",
+      "op": "filter_type",
+      "count": 409,
+      "first10": [
+        {
+          "start": 83599,
+          "end": 83608
+        },
+        {
+          "start": 115578,
+          "end": 115587
+        },
+        {
+          "start": 194384,
+          "end": 194393
+        },
+        {
+          "start": 210671,
+          "end": 210680
+        },
+        {
+          "start": 214512,
+          "end": 214521
+        },
+        {
+          "start": 222112,
+          "end": 222121
+        },
+        {
+          "start": 240581,
+          "end": 240590
+        },
+        {
+          "start": 240677,
+          "end": 240686
+        },
+        {
+          "start": 268456,
+          "end": 268465
+        },
+        {
+          "start": 289760,
+          "end": 289769
+        }
+      ]
+    },
+    {
+      "case_id": "conversation-limited",
+      "op": "filter_conversation",
+      "count": 29,
+      "first10": [
+        {
+          "start": 41325471,
+          "end": 41325480
+        },
+        {
+          "start": 41349721,
+          "end": 41349730
+        },
+        {
+          "start": 41455792,
+          "end": 41455801
+        },
+        {
+          "start": 41575286,
+          "end": 41575295
+        },
+        {
+          "start": 41583733,
+          "end": 41583742
+        },
+        {
+          "start": 41583988,
+          "end": 41583997
+        },
+        {
+          "start": 41593859,
+          "end": 41593868
+        },
+        {
+          "start": 41614967,
+          "end": 41614976
+        },
+        {
+          "start": 41710058,
+          "end": 41710067
+        },
+        {
+          "start": 41753714,
+          "end": 41753723
+        }
+      ]
+    },
+    {
+      "case_id": "near-same-message",
+      "op": "near_same_message",
+      "count": 41,
+      "first10": [
+        {
+          "start": 4319722,
+          "end": 4319731
+        },
+        {
+          "start": 4319854,
+          "end": 4319863
+        },
+        {
+          "start": 7803493,
+          "end": 7803502
+        },
+        {
+          "start": 11769549,
+          "end": 11769558
+        },
+        {
+          "start": 12485397,
+          "end": 12485406
+        },
+        {
+          "start": 13479950,
+          "end": 13479959
+        },
+        {
+          "start": 15002041,
+          "end": 15002050
+        },
+        {
+          "start": 15329975,
+          "end": 15329984
+        },
+        {
+          "start": 16685667,
+          "end": 16685676
+        },
+        {
+          "start": 16798720,
+          "end": 16798729
+        }
+      ]
+    }
+  ],
+  "extract_cases": [
+    {
+      "span_id": "extract-zh-medium-128",
+      "start": 83599,
+      "end": 83727,
+      "expected_bytes": 128,
+      "black_hole": {
+        "bytes": 128,
+        "byte_count_ok": true,
+        "byte_exact_verified_by": "recovery-micro (canonical_byte_equivalent)"
+      },
+      "conventional_db": {
+        "bytes": 128,
+        "sha256_ok": true,
+        "ok": true
+      }
+    },
+    {
+      "span_id": "extract-zh-medium-1k",
+      "start": 115578,
+      "end": 116602,
+      "expected_bytes": 1024,
+      "black_hole": {
+        "bytes": 1024,
+        "byte_count_ok": true,
+        "byte_exact_verified_by": "recovery-micro (canonical_byte_equivalent)"
+      },
+      "conventional_db": {
+        "bytes": 1024,
+        "sha256_ok": true,
+        "ok": true
+      }
+    },
+    {
+      "span_id": "extract-code-path-8k",
+      "start": 5697290,
+      "end": 5705482,
+      "expected_bytes": 8192,
+      "black_hole": {
+        "bytes": 8192,
+        "byte_count_ok": true,
+        "byte_exact_verified_by": "recovery-micro (canonical_byte_equivalent)"
+      },
+      "conventional_db": {
+        "bytes": 8192,
+        "sha256_ok": true,
+        "ok": true
+      }
+    },
+    {
+      "span_id": "extract-multibyte-edge",
+      "start": 240677,
+      "end": 240685,
+      "expected_bytes": 8,
+      "black_hole": {
+        "bytes": 8,
+        "byte_count_ok": true,
+        "byte_exact_verified_by": "recovery-micro (canonical_byte_equivalent)"
+      },
+      "conventional_db": {
+        "bytes": 8,
+        "sha256_ok": true,
+        "ok": true
+      }
+    },
+    {
+      "span_id": "extract-tail-window",
+      "start": 50542000,
+      "end": 50542796,
+      "expected_bytes": 796,
+      "black_hole": {
+        "bytes": 796,
+        "byte_count_ok": true,
+        "byte_exact_verified_by": "recovery-micro (canonical_byte_equivalent)"
+      },
+      "conventional_db": {
+        "bytes": 796,
+        "sha256_ok": true,
+        "ok": true
+      }
+    }
+  ],
+  "problems": []
+}
