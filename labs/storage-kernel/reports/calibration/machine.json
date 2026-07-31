@@ -1,0 +1,44 @@
+{
+  "machine_id": "looydeMacBook-Pro",
+  "platform": "macOS 26.5.2 (Darwin 25.5.0)",
+  "arch": "arm64 (Apple Silicon T6000)",
+  "cpu": "Apple M3 Max",
+  "compilers": {
+    "clang": "Apple clang 21.0.0 (clang-2100.1.1.101)",
+    "rustc": "1.96.0 (ac68faa20 2026-05-25)",
+    "cargo": "1.96.0 (30a34c682 2026-05-25)"
+  },
+  "sdsl_config": "csa_wt<wt_hutu<rrr_vector<63>>, 64, 64>",
+  "zstd_config": "level 19, 256 KiB blocks",
+  "engine_binaries": {
+    "utf8-a1-sdsl": {
+      "path": "./reports/first-matrix/bin/utf8-a1-engine",
+      "sha256": "551d2b8705e84545aeca73a16f8aea7cd986a4c23fae1ee71243336df1b97085"
+    },
+    "zstd-full-scan": {
+      "path": "./target/release/zstd-locate-engine",
+      "sha256": "34380d0da0c4f6c5320bbeb436b5dec8c63e50867e705425aa8ef7546e77c907"
+    }
+  },
+  "calibration": {
+    "repetitions": 30,
+    "open_repetitions": 10,
+    "recover_repetitions_per_engine": 1,
+    "cache_state": "application-hot",
+    "operations": [
+      "count_only",
+      "locate_first_1",
+      "locate_first_10",
+      "locate_first_100",
+      "locate_all",
+      "extract_128b",
+      "extract_1k",
+      "extract_8k",
+      "storage",
+      "build",
+      "open",
+      "recover_all"
+    ]
+  },
+  "generated_at": "2026-08-01"
+}

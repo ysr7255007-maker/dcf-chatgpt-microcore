@@ -12,7 +12,7 @@ Cache state: application-hot
 | Dataset | Engine | Input | Total storage | Build | bytes/input | Correct |
 |---------|--------|------:|--------------:|------:|------------:|---------|
 | full_trace | utf8-a1-sdsl | 50.5 MB | 21.6 MB | 8,446 ms | 0.428 | 14/14 |
-| full_trace | utf8-locate-zstd | 50.5 MB | 14.6 MB | 9,929 ms | 0.289 | 14/14 |
+| full_trace | zstd-full-scan | 50.5 MB | 14.6 MB | 9,929 ms | 0.289 | 14/14 |
 
 ---
 

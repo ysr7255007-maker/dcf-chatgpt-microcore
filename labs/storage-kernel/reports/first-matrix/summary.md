@@ -11,8 +11,8 @@ Cache state: application-hot
 
 | Dataset | Engine | Input | Total storage | Build | Count P50/P95 | Locate10 P50/P95 | Correct |
 |---------|--------|------:|--------------:|------:|--------------:|-----------------:|---------|
-| legacy_message_text | utf8-a1-sdsl | 22.6 MB | 9.98 MB (0.44x) | 3,477 ms | see below | see below | 14/15 |
-| legacy_message_text | utf8-locate-zstd | 22.6 MB | 7.49 MB (0.33x) | 4,498 ms | see below | see below | 15/15 |
+| legacy_message_text | utf8-a1-sdsl | 22.6 MB | 9.98 MB (0.44x) | 3,477 ms | see below | see below | 15/15 |
+| legacy_message_text | zstd-full-scan | 22.6 MB | 7.49 MB (0.33x) | 4,498 ms | see below | see below | 15/15 |
 
 ---
 
@@ -28,7 +28,7 @@ Cache state: application-hot
 | code-path (/Users/) | 23 | 3,302 | 4,669 | 58,040 | 63,541 | PASS | PASS |
 | tool-name (tool_use) | 21 | 2,092 | 2,585 | 50,231 | 55,812 | PASS | PASS |
 | en-reasoning | 2 | 191 | 239 | 36,726 | 37,616 | PASS | PASS |
-| json-field ("role") | 12 | 0 | 0 | 58,092 | 61,037 | FAIL | PASS |
+| json-field ("role") | 12 | 1,000 | 1,208 | 59,488 | 97,259 | PASS | PASS |
 | absent-sentinel | 0 | 7 | 9 | 36,590 | 37,098 | PASS | PASS |
 | zh-low-freq-long | 0 | 31 | 46 | 37,250 | 38,596 | PASS | PASS |
 
@@ -36,7 +36,7 @@ Cache state: application-hot
 
 ## Key Findings
 
-1. **Correctness**: SDSL 14/15 PASS (json-field FAIL due to quote escaping in stdin protocol); zstd 15/15 PASS.
+1. **Correctness**: SDSL 15/15 PASS; zstd 15/15 PASS. json-field (`"role"`) fixed by escaping quotes in the query-mode output protocol (response stays valid JSON).
 
 2. **High-frequency queries (>1000 results)**: zstd brute-force scan is 10-18x FASTER than SDSL locate.
    - SDSL locate is O(occ * LF_steps), expensive for many occurrences.
@@ -59,7 +59,7 @@ Cache state: application-hot
 | Engine | Index bytes | Text store | Total | bytes/input |
 |--------|------------:|----------:|------:|------------:|
 | utf8-a1-sdsl | 9,978,037 | 0 (self-index) | 9,978,037 | 0.441 |
-| utf8-locate-zstd | 7,491,202 | 0 (compressed IS the store) | 7,491,202 | 0.331 |
+| zstd-full-scan | 7,491,202 | 0 (compressed IS the store) | 7,491,202 | 0.331 |
 
 Note: SDSL is a self-index (can recover text without separate store).
 zstd store IS the compressed text (recover = decompress all blocks).
@@ -75,8 +75,11 @@ zstd store IS the compressed text (recover = decompress all blocks).
 
 ---
 
-## Correctness Failure Analysis
+## Correctness Fix Note
 
-SDSL json-field query (`"role"`) returned 0 instead of 12.
-Root cause: the double-quote character in the query string is not properly escaped through the stdin pipe protocol. The query arrives truncated or empty.
-This is a protocol bug, not an index correctness issue.
+SDSL json-field query (`"role"`) previously reported FAIL (14/15).
+Root cause: query-mode responses echoed the raw pattern into a JSON string without escaping, so `{"query":""role"",...}` was unparseable and the runner counted 0.
+Fixed: query-mode responses now escape quotes/backslashes, and the calibrate stdin parser accepts standard JSON whitespace. Re-run: 15/15 PASS.
+
+Note: the "10-18x faster" high-frequency findings in this matrix measure enumerate-all locate.
+See reports/calibration/summary.md for the separated-operation calibration and the retraction statement.

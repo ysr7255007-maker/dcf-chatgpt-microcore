@@ -36,7 +36,7 @@ fn main() -> Result<()> {
     // Engine configs
     let engines = vec![
         ("utf8-a1-sdsl", "./reports/first-matrix/bin/utf8-a1-engine"),
-        ("utf8-locate-zstd", "target/release/zstd-locate-engine"),
+        ("zstd-full-scan", "target/release/zstd-locate-engine"),
     ];
 
     let mut results_file = fs::File::create(format!("{}/results.jsonl", out_dir))?;

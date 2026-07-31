@@ -27,7 +27,7 @@ sa_sample_density = 64
 isa_sample_density = 64
 
 [[engines]]
-id = "utf8-locate-zstd"
+id = "zstd-full-scan"
 kind = "utf8_locate_zstd"
 executable = "../local-bin/dcf-sdsl-engine"
 args = []
