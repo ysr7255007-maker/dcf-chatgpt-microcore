@@ -30,6 +30,7 @@ DB_PATH = os.path.join(REPORT_ROOT, "reports", "import", "conversations.db")
 OUT_DIR = os.path.join(BASE, "corpus")
 OUT_BIN = os.path.join(OUT_DIR, "full_trace_recovery_micro.bin")
 OUT_MANIFEST = os.path.join(OUT_DIR, "full_trace_recovery_micro.manifest.json")
+OUT_BOUNDARIES = os.path.join(OUT_DIR, "full_trace_recovery_micro.boundaries.jsonl")
 
 TARGET_PER_TYPE = 1 * 1024 * 1024
 BLOCK_TYPES = ["text", "thinking", "tool_use", "tool_result"]
@@ -200,6 +201,34 @@ def main():
     os.makedirs(OUT_DIR, exist_ok=True)
     with open(OUT_BIN, "wb") as f:
         f.write(out_bytes)
+
+    # boundaries: provenance + canonical spans within the micro projection
+    boundary_lines = []
+    cursor = 0
+    prev_msg = None
+    for b in sel_blocks:
+        msg = b["message_uuid"]
+        if prev_msg is not None and msg != prev_msg:
+            cursor += 1
+        prev_msg = msg
+        start = cursor
+        cursor += len(b["content"])
+        end = cursor
+        cursor += 1
+        boundary_lines.append({
+            "text_id": "%s/%d" % (msg, b["ordinal"]),
+            "conversation_uuid": b["conversation_uuid"],
+            "message_uuid": msg,
+            "ordinal": b["ordinal"],
+            "type": b["type"],
+            "start": start,
+            "end": end,
+        })
+    cursor += 1  # trailing NUL
+    assert cursor == len(out_bytes), "boundary walk must end at micro corpus length"
+    with open(OUT_BOUNDARIES, "w") as f:
+        for rec in boundary_lines:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
     manifest = {
         "dataset_id": "full_trace_recovery_micro",

@@ -1,0 +1,52 @@
+{
+  "dataset_id": "full_trace_recovery_micro",
+  "input_bytes": 4253959,
+  "input_sha256": "bfdb0bd14cc2d6f333ace64fb0f4d72aa8046c206f073be30010995ad42bbaea",
+  "recoveries": [
+    {
+      "dataset_id": "full_trace_recovery_micro",
+      "architecture_id": "black_hole",
+      "input_bytes": 4253959,
+      "elapsed_ms": 80942.0,
+      "recovered_bytes": 4253960,
+      "recovered_sha256": "28abf424875f8c979068303fb9c2da7672a075e04241d9c08682183cb5dc322b",
+      "expected_sha256": "28abf424875f8c979068303fb9c2da7672a075e04241d9c08682183cb5dc322b",
+      "sha256_match": true,
+      "size_contract_ok": true,
+      "recovery_semantics": "canonical_byte_equivalent",
+      "structures_read": [
+        "CSA self-index"
+      ],
+      "steps": [
+        "load CSA",
+        "extract every byte via CSA extract",
+        "trim documented sentinel",
+        "sha256 compare"
+      ],
+      "engine_reported_match": true
+    },
+    {
+      "dataset_id": "full_trace_recovery_micro",
+      "architecture_id": "conventional_db",
+      "input_bytes": 4253959,
+      "elapsed_ms": 6.106333,
+      "recovered_bytes": 4253959,
+      "recovered_sha256": "bfdb0bd14cc2d6f333ace64fb0f4d72aa8046c206f073be30010995ad42bbaea",
+      "expected_sha256": "bfdb0bd14cc2d6f333ace64fb0f4d72aa8046c206f073be30010995ad42bbaea",
+      "sha256_match": true,
+      "size_contract_ok": true,
+      "recovery_semantics": "byte_exact",
+      "structures_read": [
+        "text_blocks directory",
+        "text.zstpack"
+      ],
+      "steps": [
+        "load block directory",
+        "decompress frames in order",
+        "concatenate",
+        "sha256 compare"
+      ]
+    }
+  ],
+  "generated_at": "2026-08-01T05:40:39+0800"
+}
