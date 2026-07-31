@@ -54,6 +54,13 @@ fn open_conn(out: &Path) -> Result<Connection> {
 
 fn build_impl(corpus_path: &Path, boundaries_path: &Path, out: &Path) -> Result<()> {
     fs::create_dir_all(out)?;
+    // fresh build: remove any previous artifacts so the measurement is clean
+    for stale in ["baseline.db", "baseline.db-wal", "baseline.db-shm", "text.zstpack", "manifest.json"] {
+        let p = out.join(stale);
+        if p.exists() {
+            fs::remove_file(&p).with_context(|| format!("remove stale {}", p.display()))?;
+        }
+    }
     let t0 = Instant::now();
     let corpus = fs::read(corpus_path).with_context(|| format!("read {}", corpus_path.display()))?;
     let boundaries = load_boundaries(boundaries_path)?;

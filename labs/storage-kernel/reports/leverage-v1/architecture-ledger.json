@@ -18,6 +18,12 @@
     ],
     "shared_contract_structures": [
       {
+        "name": "projection.bin (shared)",
+        "role": "canonical projection bytes + SHA-256",
+        "classification": "authoritative_fact (shared, not architecture-owned)",
+        "required": true
+      },
+      {
         "name": "projection-boundaries.jsonl (shared)",
         "role": "span -> conversation/message/ordinal/type upper contract",
         "classification": "authoritative_fact (shared, not architecture-owned)",
@@ -77,7 +83,7 @@
     "external_dependencies": [
       "sdsl-lite (C++ header-only)"
     ],
-    "logical_loc": 1670
+    "logical_loc": 2062
   },
   "conventional_db": {
     "architecture_id": "conventional_db",
@@ -219,11 +225,11 @@
     "logical_loc": 1360
   },
   "_engineering_surface": {
-    "python_harness_files": 6,
+    "python_harness_files": 8,
     "rust_crate_files": 7,
-    "logical_loc_python_harness_and_shared": 1670,
+    "logical_loc_python_harness_and_shared": 2062,
     "logical_loc_rust_crate": 1360,
-    "total_logical_loc": 3030,
+    "total_logical_loc": 3422,
     "note": "LOC is weak evidence; recorded for completeness only"
   },
   "_validations": {

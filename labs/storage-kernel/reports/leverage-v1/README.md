@@ -47,7 +47,12 @@ Branch: `experiment/storage-kernel-local`
 
 results.jsonl, capability-parity.json, architecture-ledger.json, storage-bom.json,
 lifecycle-results.jsonl, recovery-micro.json, machine.json, commands.log, summary.md,
-verify-leverage.py (+ harness scripts).
+verify-leverage.py.
+
+Harness scripts: build-shared.py, build-recovery-micro.py, verify-capabilities.py,
+run-leverage.py, run-lifecycle.py, run-recovery-micro.py, build-architecture-ledger.py.
+Shared regenerable inputs (not committed): shared/projection.bin,
+shared/query-truth.jsonl, artifacts/* (rebuild with the scripts above + the import DB).
 
 ## Time Discipline
 

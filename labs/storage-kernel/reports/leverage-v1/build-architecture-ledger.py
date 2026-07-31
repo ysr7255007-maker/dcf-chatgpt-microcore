@@ -99,6 +99,12 @@ def main():
             ],
             "shared_contract_structures": [
                 {
+                    "name": "projection.bin (shared)",
+                    "role": "canonical projection bytes + SHA-256",
+                    "classification": "authoritative_fact (shared, not architecture-owned)",
+                    "required": True,
+                },
+                {
                     "name": "projection-boundaries.jsonl (shared)",
                     "role": "span -> conversation/message/ordinal/type upper contract",
                     "classification": "authoritative_fact (shared, not architecture-owned)",

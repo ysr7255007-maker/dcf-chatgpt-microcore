@@ -47,6 +47,31 @@ BH_BIN = "./reports/first-matrix/bin/utf8-a1-engine"
 TIMEOUT = 300
 APPEND_TARGET = 505 * 1024  # ~1% of 50.5 MiB
 
+COMMANDS_LOG = os.path.join(BASE, "commands.log")
+
+
+def log_command(argv, rc, elapsed_s):
+    with open(COMMANDS_LOG, "a") as f:
+        f.write(
+            "%s\t%s\trc=%s\t%.3fs\n" % (
+                time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+                json.dumps(argv, ensure_ascii=False), rc, elapsed_s,
+            )
+        )
+
+
+def run(argv, stdin="", timeout=TIMEOUT):
+    t0 = time.monotonic()
+    try:
+        proc = subprocess.run(argv, input=stdin.encode(), capture_output=True, timeout=timeout)
+        rc, out, err = proc.returncode, proc.stdout.decode("utf-8", "replace"), proc.stderr.decode("utf-8", "replace")
+        deferred = False
+    except subprocess.TimeoutExpired:
+        rc, out, err, deferred = "TIMEOUT", "", "", True
+    elapsed = time.monotonic() - t0
+    log_command(argv, rc, elapsed)
+    return rc, out, err, deferred, elapsed
+
 
 def sha256_file(path):
     h = hashlib.sha256()
@@ -54,16 +79,6 @@ def sha256_file(path):
         for chunk in iter(lambda: f.read(1 << 20), b""):
             h.update(chunk)
     return h.hexdigest()
-
-
-def run(argv, stdin="", timeout=TIMEOUT):
-    t0 = time.monotonic()
-    try:
-        proc = subprocess.run(argv, input=stdin.encode(), capture_output=True, timeout=timeout)
-        return proc.returncode, proc.stdout.decode("utf-8", "replace"), \
-            proc.stderr.decode("utf-8", "replace"), False, time.monotonic() - t0
-    except subprocess.TimeoutExpired:
-        return "TIMEOUT", "", "", True, time.monotonic() - t0
 
 
 def append_rows(rows):
