@@ -6,7 +6,6 @@ runs/
 reports/
 !reports/first-matrix/
 reports/first-matrix/corpus/
-reports/first-matrix/bin/utf8-a1-engine
 !reports/calibration/
 reports/calibration/run.log
 experiment/*.local.toml

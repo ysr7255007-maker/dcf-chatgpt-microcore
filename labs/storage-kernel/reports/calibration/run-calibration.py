@@ -34,7 +34,7 @@ DATASETS = [
 ]
 
 ENGINES = [
-    ("utf8-a1-sdsl", "./reports/first-matrix/bin/utf8-a1-engine"),
+    ("utf8-a1-sdsl", "./reports/first-matrix/bin/utf8-a1-engine-v2"),
     ("zstd-full-scan", "./target/release/zstd-locate-engine"),
 ]
 
@@ -497,7 +497,8 @@ def write_summary(all_results, raw_times, completed, datasets, engines):
                         r.get("peak_rss_bytes", 0)))
     lines.append("")
     lines.append("注：SDSL recover_all 原始字节数比语料多 1 字节（CSA 哨兵字符，逐字节 extract 的既有行为）；"
-                 "SHA-256 校验在丢弃尾部哨兵后比对。")
+                 "构建时 NUL 字节规范化为 0x01（sdsl 字节字母表哨兵限制），"
+                 "SHA-256 校验在丢弃尾部哨兵后、按规范化字节比对。")
     lines.append("")
     with open("reports/calibration/summary.md", "w") as f:
         f.write("\n".join(lines))
@@ -526,8 +527,8 @@ def write_machine():
         "zstd_config": base.get("zstd_config", ""),
         "engine_binaries": {
             "utf8-a1-sdsl": {
-                "path": "./reports/first-matrix/bin/utf8-a1-engine",
-                "sha256": sha256("reports/first-matrix/bin/utf8-a1-engine"),
+                "path": "./reports/first-matrix/bin/utf8-a1-engine-v2",
+                "sha256": sha256("reports/first-matrix/bin/utf8-a1-engine-v2"),
             },
             "zstd-full-scan": {
                 "path": "./target/release/zstd-locate-engine",

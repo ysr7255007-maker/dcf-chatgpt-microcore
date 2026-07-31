@@ -291,10 +291,13 @@ int main(int argc, char* argv[]) {
                 double us = chrono::duration<double, micro>(t1 - t0).count();
 
                 // SHA-256 verification against the source corpus.
-                // CSA includes one sentinel byte, so drop the trailing byte when
-                // recovered is exactly corpus_size + 1.
+                // Build canonicalizes NUL bytes to 0x01 (sdsl byte-CSA sentinel),
+                // so apply the same transform before comparing.
+                // The CSA includes one sentinel byte, so drop the trailing byte
+                // when recovered is exactly corpus_size + 1.
                 ifstream cfs(corpus_path, ios::binary);
                 string corpus((istreambuf_iterator<char>(cfs)), istreambuf_iterator<char>());
+                for (auto& c : corpus) { if (c == '\0') c = '\x01'; }
                 string expected = sha256_hex(corpus);
                 string check = recovered;
                 bool match = false;

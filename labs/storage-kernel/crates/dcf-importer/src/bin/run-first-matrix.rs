@@ -35,7 +35,7 @@ fn main() -> Result<()> {
 
     // Engine configs
     let engines = vec![
-        ("utf8-a1-sdsl", "./reports/first-matrix/bin/utf8-a1-engine"),
+        ("utf8-a1-sdsl", "./reports/first-matrix/bin/utf8-a1-engine-v2"),
         ("zstd-full-scan", "target/release/zstd-locate-engine"),
     ];
 
