@@ -1,0 +1,10 @@
+target/
+Cargo.lock
+local-data/
+local-bin/
+artifacts/
+runs/
+reports/
+experiment/*.local.toml
+experiment/*.local.json
+experiment/*.local.jsonl
