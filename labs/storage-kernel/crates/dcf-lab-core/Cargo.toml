@@ -1,0 +1,19 @@
+[package]
+name = "dcf-lab-core"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+dcf-contract = { path = "../dcf-contract" }
+dcf-corpus = { path = "../dcf-corpus" }
+dcf-engine-api = { path = "../dcf-engine-api" }
+dcf-engine-external = { path = "../dcf-engine-external" }
+dcf-text-zstd = { path = "../dcf-text-zstd" }
+hex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+toml.workspace = true
