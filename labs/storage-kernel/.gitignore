@@ -1,5 +1,4 @@
 target/
-Cargo.lock
 local-data/
 local-bin/
 artifacts/
