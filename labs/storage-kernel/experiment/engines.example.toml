@@ -1,0 +1,55 @@
+warmups = 3
+repetitions = 20
+window_bytes = [128, 1024, 8192]
+
+[[engines]]
+id = "utf8-a1"
+kind = "utf8_self_index"
+executable = "../local-bin/dcf-sdsl-engine"
+args = []
+timeout_ms = 120000
+
+[engines.engine_config]
+mode = "utf8_a1"
+sa_sample_density = 64
+isa_sample_density = 64
+
+[[engines]]
+id = "unicode-byte-aware"
+kind = "unicode_byte_aware_self_index"
+executable = "../local-bin/dcf-sdsl-engine"
+args = []
+timeout_ms = 120000
+
+[engines.engine_config]
+mode = "unicode_dense_byte_aware"
+sa_sample_density = 64
+isa_sample_density = 64
+
+[[engines]]
+id = "utf8-locate-zstd"
+kind = "utf8_locate_zstd"
+executable = "../local-bin/dcf-sdsl-engine"
+args = []
+timeout_ms = 120000
+zstd_block_size = 262144
+zstd_level = 19
+
+[engines.engine_config]
+mode = "utf8_locate_only"
+sa_sample_density = 64
+isa_sample_density = 1048576
+
+[[engines]]
+id = "unicode-locate-zstd"
+kind = "unicode_locate_zstd"
+executable = "../local-bin/dcf-sdsl-engine"
+args = []
+timeout_ms = 120000
+zstd_block_size = 262144
+zstd_level = 19
+
+[engines.engine_config]
+mode = "unicode_dense_locate_only_byte_aware"
+sa_sample_density = 64
+isa_sample_density = 1048576
