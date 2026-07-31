@@ -1,0 +1,8 @@
+{"id":"zh-architecture","query":"架构","locate_limit":10,"tags":["visible_text","zh"]}
+{"id":"zh-complexity","query":"复杂度","locate_limit":10,"tags":["visible_text","zh"]}
+{"id":"en-reasoning","query":"The key constraint","locate_limit":10,"tags":["reasoning","en"]}
+{"id":"tool-name","query":"read_file","locate_limit":10,"tags":["tool_call","ascii"]}
+{"id":"tool-path","query":"/Users/","locate_limit":10,"tags":["tool_call","path"]}
+{"id":"json-role","query":"\"role\"","locate_limit":10,"tags":["raw_json","structure"]}
+{"id":"json-tool-use","query":"tool_use","locate_limit":10,"tags":["raw_json","tool_call"]}
+{"id":"absent-sentinel","query":"DCF_QUERY_SHOULD_NOT_EXIST_9F8A2C","locate_limit":10,"tags":["negative"]}
