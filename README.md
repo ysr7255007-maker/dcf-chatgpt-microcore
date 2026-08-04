@@ -1,79 +1,103 @@
 # dcf-chatgpt-microcore
 
-DCF 是用户与 AI 共同维护的个人认知基础设施。它的产品目标是减少用户的认知与操作负担；内部插件、证据、恢复和发布复杂度不能转嫁给用户。
+DCF 是用户与 AI 共同维护的长期个人认知基础设施。
 
-## 当前仓库边界
+它的核心不是永久保存一份“绝对正确的过去”，而是让现实持续留下足以唤醒回忆的记录，让 AI 形成当前理解，让用户在复盘中补充和纠正，并把这些认知变化按时间追加保存。
 
-`main` 同时保存两条明确分离的事实：
+> **记录负责唤醒，AI 负责起草，用户负责校准，时间负责纠错。**
 
-- 旧世界可运行基线：DCF Chrome `1.0.0-rc.3` 与 legacy `0.18.2`；
-- 新生长路线：`docs/vision/2026-07-26-dcf-from-zero-vision-adr.md` 与 `docs/adr/2026-07-26-dcf-minimal-live-loop-growth-blueprint.md`。
+## 当前权威入口
 
-旧目录保留为可构建、可验证、可回退的历史实现，不再被渐进改造成新系统。新实现只在顶层 `seed/` 生长，第一个目标是让一段真实 ChatGPT 对话完成“授权—收回—保存—回看”。
+当前仓库请按以下顺序理解：
 
-`stable` 在新系统获得真实行为证据前保持旧可信指针。仓库归一的实际 SHA、测试结果和仍不可取得的本地工件记录在 `seed/docs/p0-unification-evidence.md`。
+1. `docs/spec/2026-08-04-DCF-当前实施规范.md`  
+   当前 DCF 架构与需求的实现权威，回答“现在什么才算 DCF”。
+2. `docs/spec/2026-08-05-DCF-macOS-AI实验宿主规范.md`  
+   macOS 专用实验宿主的当前专项规范，回答“机器能力已经开放到哪里、正式 DCF 应如何借用系统能力”。
+3. `docs/current-state.md`  
+   当前阶段、证据状态、正在进行的研究和旧实现边界。
+4. `docs/adr/`  
+   保存为什么这样走、曾经怎样理解、哪些路线后来被修正；ADR 不覆盖历史，只追加新的裁决。
 
-## 保留的旧世界候选
+旧愿景、旧 G1～G7 生长路线、Chrome `1.0.0-rc.3` 与 legacy `0.18.2` 继续保留为历史实现、证据和回退材料，但不再拥有当前 DCF 概念与实施权威。
 
-DCF Chrome `1.0.0-rc.3` 仍是旧世界最后完整候选。用户只安装一个 Chrome 扩展；扩展本体是最小生存底座，旧统一侧栏、语言弹药、长对话减负、问答性能归因、外观、本机 Agent、对话闭环、备份、功能管理和诊断仍是独立第一方插件。
+## 当前阶段
 
-## 控制平面
+2026-08-05，macOS 专用 AI 宿主的 1TR / Boot 级能力开放已经通过真实重启后的独立复核，状态为 `behavior_passed`。
 
-`rc.3` 将插件激活从依赖历史步骤完整成功的 candidate 流程，改为：
+当前阶段已经从“继续打开权限”切换为：
+
+> **macOS 原生公共能力黑洞勘探。**
+
+目标不是寻找最深的系统入口，而是寻找：
+
+> macOS 已经替所有应用长期维护了哪些事实、索引、生命周期、动作与资源边界，可以让 DCF 少造一整层 watcher、connector、index、daemon 和状态机。
+
+任务书：
+
+- `docs/tasks/2026-08-05-macOS原生公共能力黑洞勘探任务书.md`
+- `docs/tasks/2026-08-05-macOS原生公共能力黑洞勘探执行计划.md`
+
+阶段 ADR：
+
+- `docs/adr/2026-08-05-macos-native-public-capability-blackhole-exploration.md`
+
+## 当前架构方向
+
+基础 DCF 保护的是认知谱系：
 
 ```text
-Desired
-→ Observed
-→ Committed
-→ Reconcile
+现实交互
+→ 回忆锚点
+→ 当前理解
+→ 用户复盘
+→ 新现实
+→ 新理解
+→ 只追加，不覆盖
 ```
 
-- **Desired**：宿主持久保存明确目标 Snapshot；
-- **Observed**：注册、Canary 和页面运行事实，只作为证据；
-- **Committed**：宿主满足不变量后原子提交的 Current / LKG / Stable；
-- **Reconcile**：根据差异执行最小、幂等、可重复的动作。
+在 macOS 上进一步坚持：
 
-CodeUnit 的真实身份是 `unit_id + SHA-256`。语义版本只用于阅读和兼容声明；构建器会拒绝已发布语义版本对应不同内容。历史上已经发生的同版本多 hash 不再互相覆盖，而是作为不同内容寻址工件保留。
+> **系统尽量拥有现实，DCF 自己拥有认知。**
 
-## 激活与页面迁移
+因此优先研究系统已经维护好的公共能力面，例如：
+
+- `FSEvents + Spotlight`：文件变化与当前索引；
+- `NSWorkspace + CoreDuet/KnowledgeC` 候选：活动时间骨架；
+- `InputMethodKit + Unified Logging` 候选：用户最终文字提交；
+- `Endpoint Security / eslogger` 候选：真实机器动作与 Effect 收据；
+- `launchd + XPC`：进程生命周期与 IPC；
+- `App Intents / Shortcuts / Apple Events`：跨 App 高语义动作；
+- Accessibility / ScreenCaptureKit：只作为结构化能力不足时的退化层。
+
+这些都只是候选或既定方向，不因为 API 存在、一次 demo 成功或权限已经开放就自动成为正式底座。
+
+## 旧实现
+
+仓库仍保存 Chrome `1.0.0-rc.3`、legacy `0.18.2`、`seed/` 以及此前控制平面、Surface、Companion 等实现和证据。
+
+它们继续用于：
+
+- 历史追溯；
+- 运行证据；
+- 可构建旧基线；
+- 架构经验复用；
+- 必要时回退。
+
+但当前新设计不得从旧实现当前目录结构、插件边界或 G1～G7 阶段名反推 DCF 的新事实所有权。
+
+## 验证纪律
+
+始终区分：
 
 ```text
-下载并校验内容寻址工件
-→ 声明 DesiredSnapshot
-→ 在宿主创建的 Canary ChatGPT 页面加载变更工件
-→ 观察最低 loaded 证明
-→ 原子提交 Current 与 LKG
-→ 调和持久注册
-→ 独立迁移现有页面
+observed
+hypothesized
+implemented_unverified
+runtime_verified
+behavior_passed
+failed
+not_tested
 ```
 
-现有页面热迁移失败只会被记录为 `stale / reload_required / migration_failed`，不会回滚已经由 Canary 证明的 Current。Stable 只通过明确的验收提升，不会因代码存在、CI 通过或 Canary loaded 自动推进。
-
-## 用户侧结果
-
-- 内部独立插件，外部仍是一个完整 DCF；
-- 首次启用后自动取得默认完整组合；
-- 普通插件可独立更新、停用和恢复；
-- 失败保留 Current/LKG 与结构化证据；
-- 页面刷新、Worker 重启或消息迟到后，Reconciler 从持久事实继续；
-- 静态恢复页始终独立于 Shell 和其他动态插件。
-
-## 构建与验证
-
-```bash
-npm run verify
-```
-
-该命令同时验证保留的 Chrome 与 legacy 旧世界。`seed` 的测试入口将在 G1 第一个真实行为测试落地时加入，不预铺空框架。
-
-构建生成：
-
-- `dist/dcf-chrome-extension/`
-- `dist/dcf-chrome-extension-1.0.0-rc.3.zip`
-- `dist/verification-summary.json`
-- `dist/release-manifest.json`
-- `releases/chrome/official-index.json`
-- `releases/chrome/build-manifest.json`
-- `releases/chrome/code-unit-version-ledger.json`
-
-自动测试证明实现与状态转换；Chrome、ChatGPT、Canary 页面和外部服务相关结论仍必须由真实浏览器证据确认。
+源码存在、测试通过、候选生成和现实行为通过不是同一层证据。
