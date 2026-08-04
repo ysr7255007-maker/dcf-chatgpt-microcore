@@ -1,0 +1,29 @@
+{
+  "run_id": "electron-e2e-1785109659662",
+  "scenario": "electron-command-queue-e2e (phase 3)",
+  "started_at": "2026-07-26T23:47:39.661Z",
+  "finished_at": "2026-07-26T23:48:15.952Z",
+  "nonce": "DCF-NONCE-MS2G7DAT-AFB39C8A8FC1",
+  "conversation_url_before": "https://chatgpt.com/",
+  "read_command": {
+    "ok": false,
+    "status": "expired",
+    "error": "command expired before the adapter completed it",
+    "command_id": "01KYGD7NVXVJHX67WG6WJ13AX0"
+  },
+  "send_command": {
+    "ok": false,
+    "status": "expired",
+    "error": "command expired before the adapter completed it",
+    "command_id": "01KYGD84M5QBMY1SMFVDYA5KRT"
+  },
+  "selectors_contract": "[data-message-author-role]",
+  "failures": [
+    "dcf-request-read 失败: command expired before the adapter completed it",
+    "dcf-send-card 失败: command expired before the adapter completed it",
+    "链路异常: Cannot read properties of undefined (reading 'slice')"
+  ],
+  "verdict": "fail",
+  "generated_at": "2026-07-26T23:48:15.953Z",
+  "note": "判定只依赖机器可验证信号（nonce/计数增量/companion 回查）；screenshots 仅作附件。"
+}

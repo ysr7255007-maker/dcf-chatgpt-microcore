@@ -1,0 +1,19 @@
+{
+    "description": "DCF AI Digest Configuration — 定义 AI 归纳能力的 API/本地兜底策略",
+    "api_endpoint": "https://ark.cn-beijing.volces.com/api/v3",
+    "api_key": "YOUR_API_KEY_HERE",
+    "model": "dn-bot-x1-lite",
+    "local_fallback": {
+        "enabled": false,
+        "ollama_url": "http://localhost:11434",
+        "model": "llama3.2"
+    },
+    "opencode_fallback": true,
+    "_note": [
+        "1. api_endpoint/api_key/model 三字段缺一不可；留空或不存在即判定为'未配置'",
+        "2. local_fallback.enabled=false 时不启用 Ollama 兜底；设为 true 且提供 ollama_url+model 则降级使用",
+        "3. opencode_fallback=true 时在 API 失败时可派发 OpenCode Deep Link 任务（阶段 5 通道）",
+        "4. 配置后 Surface UI 会显示🟢 'API 可用'/🔵 '本地可用'/⚪ '未配置'",
+        "5. 真实运行前务必替换 YOUR_API_KEY_HERE 为有效凭证；切勿提交到版本控制"
+    ]
+}

@@ -29,6 +29,9 @@ const { GitHubSync, checkGhAuth, sha256 } = require('./github-sync');
 const { MaterialProcessor } = require('./materials');
 const { exportMaterials } = require('./export');
 const { generateULID, isValidULID } = require('./ulid');
+const { AdapterWakeChannel } = require('./ws-wake');
+const { AIDigestEngine } = require('./ai-digest');
+const { getStatus: getAiStatus, readConfigFile } = require('./ai-config');
 
 // Configuration
 const DEFAULT_PORT = 8472;
@@ -40,7 +43,70 @@ let BASE_DIR = process.argv.find(arg => arg.startsWith('--dcf-dir='))?.split('='
 let companionDB = null;
 let eventProcessor = null;
 let materialProcessor = null;
+let aiDigestEngine = null;
 let server = null;
+let wakeChannel = null;
+let openCodeBridge = null;
+
+// ---------------------------------------------------------------------------
+// OpenCode Bridge — lazy-loaded ESM module (Phase 5)
+// ---------------------------------------------------------------------------
+
+let _OpenCodeBridgeClass = null;
+
+/**
+ * Lazy-load the OpenCodeBridge ESM module.
+ * @returns {Promise<Class|null>}
+ */
+async function loadOpenCodeBridgeClass() {
+    if (_OpenCodeBridgeClass) return _OpenCodeBridgeClass;
+    try {
+        const mod = await import('../adapters/opencode/bridge.mjs');
+        _OpenCodeBridgeClass = mod.OpenCodeBridge;
+    } catch (e) {
+        console.error('Failed to load OpenCode bridge module:', e.message);
+    }
+    return _OpenCodeBridgeClass;
+}
+
+/**
+ * Read OpenCode server config from env vars or ai-config.json.
+ * @returns {{baseURL: string, username: string, password: string|null}}
+ */
+function getOpenCodeBridgeConfig() {
+    const envUrl = process.env.OPENCODE_SERVER_URL;
+    if (envUrl) {
+        return {
+            baseURL: envUrl,
+            username: process.env.OPENCODE_SERVER_USERNAME || 'opencode',
+            password: process.env.OPENCODE_SERVER_PASSWORD || null
+        };
+    }
+    try {
+        const raw = readConfigFile();
+        if (raw && raw.opencode_server) {
+            return {
+                baseURL: raw.opencode_server.base_url || 'http://127.0.0.1:4096',
+                username: raw.opencode_server.username || 'opencode',
+                password: raw.opencode_server.password || null
+            };
+        }
+    } catch (_) { /* config not available */ }
+    return { baseURL: 'http://127.0.0.1:4096', username: 'opencode', password: null };
+}
+
+/**
+ * Ensure the OpenCode bridge is instantiated (idempotent).
+ * @returns {Promise<Object|null>} bridge instance or null if module unavailable
+ */
+async function ensureOpenCodeBridge() {
+    if (openCodeBridge) return openCodeBridge;
+    const Bridge = await loadOpenCodeBridgeClass();
+    if (!Bridge) return null;
+    const config = getOpenCodeBridgeConfig();
+    openCodeBridge = new Bridge(config);
+    return openCodeBridge;
+}
 
 /**
  * Parse command line arguments
@@ -107,8 +173,20 @@ Endpoints:
   POST /rpc/recommendation/accept Accept recommendation
   POST /rpc/recommendation/dismiss Dismiss recommendation
   
+  # Lens Projections (Three Cognitive Lens Architecture)
+  GET  /rpc/projection/tasks     Get task recommendations for Task View (Lens 1)
+  GET  /rpc/projection/graph    Get knowledge graph for Exploration View (Lens 2)
+  GET  /rpc/projection/weekly-digest  Get weekly reflection digest for Reflection View (Lens 3)
+  
   # G4: Adapter sessions (for conversation context)
   GET  /rpc/adapter/sessions      List active adapter sessions
+
+  # G3 phase 3: Surface -> Adapter persistent command queue (ruling C3)
+  POST /rpc/adapter/command        Enqueue command {kind, payload, timeout_ms?}
+  GET  /rpc/adapter/command/poll   Take queued commands (marks delivered; idempotent)
+  POST /rpc/adapter/command/result Report result {command_id, ok, result?|error?}
+  GET  /rpc/adapter/command/:id    Query single command status
+  WS   /ws/adapter-wake            Wake-only channel ({"type":"command_available"})
 `);
 }
 
@@ -376,6 +454,136 @@ function handleAdapterSessions(req, res) {
         }, null));
     } catch (error) {
         console.error('Adapter sessions error:', error);
+        return sendJSONResponse(res, 500, rpcError(-32603, 'Internal error: ' + error.message));
+    }
+}
+
+/**
+ * Handler: POST /rpc/adapter/command
+ * Enqueue a Surface -> Adapter command (persistent queue, ruling C3).
+ * Body: { kind: 'read-conversation'|'send-card'|'list-conversations'|'read-by-id', payload: {...}, timeout_ms? }
+ * The WS wake channel only signals "command available"; the queue row in
+ * SQLite is the single durable source of truth.
+ */
+function handleAdapterCommandEnqueue(req, res, requestBody) {
+    try {
+        const kind = requestBody.kind;
+        // Allowed adapter command kinds. list-conversations / read-by-id
+        // (task #12) reuse the same enqueue -> poll -> result pipeline; the
+        // adapter reads synchronously and reports the result into result_json,
+        // so no status extension is required here.
+        const ALLOWED_KINDS = ['read-conversation', 'send-card', 'list-conversations', 'read-by-id'];
+        if (!ALLOWED_KINDS.includes(kind)) {
+            return sendJSONResponse(res, 400, rpcError(-32602,
+                "Invalid kind: must be one of " + ALLOWED_KINDS.join(', ')));
+        }
+        const timeoutMs = requestBody.timeout_ms;
+        if (timeoutMs !== undefined && (!Number.isInteger(timeoutMs) || timeoutMs <= 0)) {
+            return sendJSONResponse(res, 400, rpcError(-32602, 'timeout_ms must be a positive integer'));
+        }
+
+        const commandId = generateULID();
+        const inserted = companionDB.insertAdapterCommand({
+            command_id: commandId,
+            kind,
+            payload: requestBody.payload || {},
+            timeout_ms: timeoutMs || null
+        });
+        if (!inserted.success) {
+            return sendJSONResponse(res, 500, rpcError(-32000, inserted.error));
+        }
+
+        // Narrow wake: notify connected adapters that a command is available.
+        // No business data crosses the WS; adapters must poll to receive it.
+        const notified = wakeChannel ? wakeChannel.broadcastCommandAvailable() : 0;
+
+        return sendJSONResponse(res, 200, rpcResult({
+            command_id: commandId,
+            status: 'queued',
+            wake_notified: notified
+        }, requestBody.id || null));
+    } catch (error) {
+        console.error('Adapter command enqueue error:', error);
+        return sendJSONResponse(res, 500, rpcError(-32603, 'Internal error: ' + error.message));
+    }
+}
+
+/**
+ * Handler: GET /rpc/adapter/command/poll
+ * Take all queued commands, atomically marking them delivered. Idempotent:
+ * polling again without new enqueues returns an empty list.
+ */
+function handleAdapterCommandPoll(req, res) {
+    try {
+        const commands = companionDB.pollAdapterCommands().map(row => ({
+            command_id: row.command_id,
+            kind: row.kind,
+            payload: row.payload_json ? JSON.parse(row.payload_json) : {},
+            timeout_ms: row.timeout_ms || null,
+            created_at: row.created_at
+        }));
+        return sendJSONResponse(res, 200, rpcResult({ commands, count: commands.length }, null));
+    } catch (error) {
+        console.error('Adapter command poll error:', error);
+        return sendJSONResponse(res, 500, rpcError(-32603, 'Internal error: ' + error.message));
+    }
+}
+
+/**
+ * Handler: POST /rpc/adapter/command/result
+ * Adapter reports the command outcome: { command_id, ok, result?|error? }.
+ * done/failed is terminal; expired commands honestly refuse late results.
+ */
+function handleAdapterCommandResult(req, res, requestBody) {
+    try {
+        const commandId = requestBody.command_id;
+        if (!commandId || typeof commandId !== 'string') {
+            return sendJSONResponse(res, 400, rpcError(-32602, 'Missing required parameter: command_id'));
+        }
+        if (typeof requestBody.ok !== 'boolean') {
+            return sendJSONResponse(res, 400, rpcError(-32602, 'Missing required parameter: ok (boolean)'));
+        }
+
+        const outcome = companionDB.completeAdapterCommand(
+            commandId,
+            requestBody.ok,
+            requestBody.ok ? (requestBody.result ?? null) : { error: requestBody.error ?? 'unknown error' }
+        );
+        if (!outcome.success) {
+            const notFound = outcome.error === 'command not found';
+            return sendJSONResponse(res, notFound ? 404 : 409, rpcError(-32000, outcome.error));
+        }
+        return sendJSONResponse(res, 200, rpcResult({
+            command_id: commandId,
+            status: outcome.status
+        }, requestBody.id || null));
+    } catch (error) {
+        console.error('Adapter command result error:', error);
+        return sendJSONResponse(res, 500, rpcError(-32603, 'Internal error: ' + error.message));
+    }
+}
+
+/**
+ * Handler: GET /rpc/adapter/command/:id
+ * Single-command status query (Electron waits on this while a command is
+ * in flight; no polling happens when the queue is idle).
+ */
+function handleAdapterCommandGet(req, res, commandId) {
+    try {
+        const row = companionDB.getAdapterCommand(commandId);
+        if (!row) {
+            return sendJSONResponse(res, 404, rpcError(-32000, 'command not found: ' + commandId));
+        }
+        return sendJSONResponse(res, 200, rpcResult({
+            command_id: row.command_id,
+            kind: row.kind,
+            status: row.status,
+            result: row.result_json ? JSON.parse(row.result_json) : null,
+            created_at: row.created_at,
+            updated_at: row.updated_at
+        }, null));
+    } catch (error) {
+        console.error('Adapter command get error:', error);
         return sendJSONResponse(res, 500, rpcError(-32603, 'Internal error: ' + error.message));
     }
 }
@@ -1883,6 +2091,262 @@ async function handlePatchSupersede(req, res, requestBody) {
 }
 
 /**
+ * Handler: GET /rpc/ai/status
+ * Returns AI capability configuration status.
+ */
+function handleAiStatus(req, res) {
+    try {
+        const status = aiDigestEngine ? aiDigestEngine.getStatus() : getAiStatus();
+        return sendJSONResponse(res, 200, rpcResult(status, null));
+    } catch (error) {
+        return sendJSONResponse(res, 500, rpcError(-32603, 'Internal error: ' + error.message));
+    }
+}
+
+/**
+ * Handler: POST /rpc/ai/digest/trigger
+ * Manually trigger a digest job for a conversation.
+ * Body: { conversation_id: string, event_ids?: string[] }
+ * If AI is not configured, auto-generates a repair task.
+ */
+async function handleAiDigestTrigger(req, res, requestBody) {
+    try {
+        const conversationId = requestBody.conversation_id;
+        if (!conversationId || typeof conversationId !== 'string') {
+            return sendJSONResponse(res, 400, rpcError(-32602, 'Missing required parameter: conversation_id'));
+        }
+
+        const status = aiDigestEngine.getStatus();
+
+        // If AI not configured, auto-generate repair task
+        if (status.level === 'unconfigured') {
+            const repairTask = aiDigestEngine.generateRepairTask(conversationId);
+            return sendJSONResponse(res, 200, rpcResult({
+                success: false,
+                configured: false,
+                repair_task_id: repairTask.task_id,
+                message: 'AI归纳能力未配置，已自动生成修复任务'
+            }, requestBody.id || null));
+        }
+
+        // Enqueue digest job
+        const eventIds = Array.isArray(requestBody.event_ids) ? requestBody.event_ids : null;
+        const enqueueResult = aiDigestEngine.enqueueDigest(conversationId, eventIds);
+
+        // If duplicated (already queued/done), return honestly
+        if (enqueueResult.duplicated) {
+            return sendJSONResponse(res, 200, rpcResult({
+                success: true,
+                job_id: enqueueResult.job_id,
+                status: enqueueResult.status,
+                duplicated: true,
+                message: `Digest job already ${enqueueResult.status}`
+            }, requestBody.id || null));
+        }
+
+        // Run the digest job
+        const job = {
+            job_id: enqueueResult.job_id,
+            conversation_id: conversationId,
+            event_ids: eventIds || []
+        };
+        const result = await aiDigestEngine.runDigest(job, requestBody.material_text || null);
+
+        return sendJSONResponse(res, 200, rpcResult({
+            success: result.success,
+            job_id: enqueueResult.job_id,
+            source_level: result.source_level,
+            products: result.products.map(p => ({
+                type: p.type,
+                id: p._id,
+                title: p.title || p.task
+            })),
+            error: result.error || null
+        }, requestBody.id || null));
+    } catch (error) {
+        console.error('AI digest trigger error:', error);
+        return sendJSONResponse(res, 500, rpcError(-32603, 'Internal error: ' + error.message));
+    }
+}
+
+/**
+ * Handler: GET /rpc/cards
+ * Query AI-produced cards with optional filters.
+ */
+function handleAiCardsQuery(req, res, urlObj) {
+    try {
+        const conversationId = urlObj.query.conversation_id;
+        let cards;
+        if (conversationId) {
+            cards = companionDB.getAiCardsByConversation(conversationId);
+        } else {
+            cards = companionDB.getAllAiCards();
+        }
+
+        // Parse JSON fields for response
+        const formatted = cards.map(c => ({
+            ...c,
+            evidence: c.evidence_json ? JSON.parse(c.evidence_json) : [],
+            source_event_ids: c.source_event_ids ? JSON.parse(c.source_event_ids) : [],
+            evidence_json: undefined
+        }));
+
+        return sendJSONResponse(res, 200, rpcResult({
+            cards: formatted,
+            count: formatted.length
+        }, null));
+    } catch (error) {
+        return sendJSONResponse(res, 500, rpcError(-32603, 'Internal error: ' + error.message));
+    }
+}
+
+/**
+ * Handler: GET /rpc/maintenance-tasks
+ * Query AI-produced maintenance tasks with optional filters.
+ */
+function handleAiMaintenanceTasksQuery(req, res, urlObj) {
+    try {
+        const conversationId = urlObj.query.conversation_id;
+        let tasks;
+        if (conversationId) {
+            tasks = companionDB.getAiMaintenanceTasksByConversation(conversationId);
+        } else {
+            tasks = companionDB.getAllAiMaintenanceTasks();
+        }
+
+        // Parse JSON fields for response
+        const formatted = tasks.map(t => ({
+            ...t,
+            criteria: t.criteria_json ? JSON.parse(t.criteria_json) : [],
+            source_event_ids: t.source_event_ids ? JSON.parse(t.source_event_ids) : [],
+            criteria_json: undefined
+        }));
+
+        return sendJSONResponse(res, 200, rpcResult({
+            tasks: formatted,
+            count: formatted.length
+        }, null));
+    } catch (error) {
+        return sendJSONResponse(res, 500, rpcError(-32603, 'Internal error: ' + error.message));
+    }
+}
+
+/**
+ * Handler: POST /rpc/opencode/dispatch
+ * Dispatch a task to OpenCode via the bridge.
+ * Body: { prompt, conversation_url?, entity_id?, title?, agent?, model?, timeout_ms? }
+ */
+async function handleOpencodeDispatch(req, res, requestBody) {
+    try {
+        const prompt = requestBody.prompt;
+        if (!prompt || typeof prompt !== 'string') {
+            return sendJSONResponse(res, 400, rpcError(-32602, 'Missing required parameter: prompt'));
+        }
+
+        const bridge = await ensureOpenCodeBridge();
+        if (!bridge) {
+            return sendJSONResponse(res, 503, rpcError(-32000, 'OpenCode bridge module unavailable'));
+        }
+
+        const taskId = `dcf-oc-${generateULID()}`;
+        const nonce = require('crypto').randomBytes(16).toString('hex');
+        const os = require('os');
+        const outputPath = require('path').join(os.tmpdir(), `dcf-opencode-${taskId}.json`);
+
+        const dispatchResult = await bridge.dispatchTask({
+            task_id: taskId,
+            prompt,
+            output_path: outputPath,
+            nonce,
+            conversation_url: requestBody.conversation_url || null,
+            entity_id: requestBody.entity_id || null,
+            title: requestBody.title || null,
+            agent: requestBody.agent || null,
+            model: requestBody.model || null
+        });
+
+        // If dispatch succeeded, start a background watcher
+        if (dispatchResult.status !== 'failed') {
+            const timeoutMs = requestBody.timeout_ms || 10 * 60 * 1000;
+            bridge.watchResult(outputPath, { timeoutMs, nonce, task_id: taskId })
+                .then(result => {
+                    if (result.ok) {
+                        bridge.updateTaskStatus(taskId, 'completed', result.data);
+                    } else if (result.rejected) {
+                        bridge.updateTaskStatus(taskId, 'failed', null, `Result rejected: ${result.reason}`);
+                    } else if (result.timeout) {
+                        bridge.updateTaskStatus(taskId, 'failed', null, 'timeout');
+                    }
+                })
+                .catch(err => {
+                    bridge.updateTaskStatus(taskId, 'failed', null, err.message);
+                });
+        }
+
+        return sendJSONResponse(res, 200, rpcResult({
+            task_id: taskId,
+            status: dispatchResult.status,
+            session_id: dispatchResult.session_id || null,
+            deep_link: dispatchResult.deep_link || null,
+            deep_link_result: dispatchResult.deep_link_result || null,
+            output_path: outputPath,
+            nonce,
+            error: dispatchResult.error || null
+        }, requestBody.id || null));
+    } catch (error) {
+        console.error('OpenCode dispatch error:', error);
+        return sendJSONResponse(res, 500, rpcError(-32603, 'Internal error: ' + error.message));
+    }
+}
+
+/**
+ * Handler: GET /rpc/opencode/status/:task_id
+ * Query the status of a dispatched OpenCode task.
+ */
+async function handleOpencodeStatus(req, res, taskId) {
+    try {
+        if (!taskId) {
+            return sendJSONResponse(res, 400, rpcError(-32602, 'Missing task_id in path'));
+        }
+
+        const bridge = await ensureOpenCodeBridge();
+        if (!bridge) {
+            return sendJSONResponse(res, 503, rpcError(-32000, 'OpenCode bridge module unavailable'));
+        }
+
+        const status = await bridge.getStatus(taskId);
+        return sendJSONResponse(res, 200, rpcResult(status, null));
+    } catch (error) {
+        console.error('OpenCode status error:', error);
+        return sendJSONResponse(res, 500, rpcError(-32603, 'Internal error: ' + error.message));
+    }
+}
+
+/**
+ * Handler: POST /rpc/opencode/abort/:task_id
+ * Abort a running OpenCode task.
+ */
+async function handleOpencodeAbort(req, res, taskId) {
+    try {
+        if (!taskId) {
+            return sendJSONResponse(res, 400, rpcError(-32602, 'Missing task_id in path'));
+        }
+
+        const bridge = await ensureOpenCodeBridge();
+        if (!bridge) {
+            return sendJSONResponse(res, 503, rpcError(-32000, 'OpenCode bridge module unavailable'));
+        }
+
+        const result = await bridge.abortTask(taskId);
+        const statusCode = result.status === 'unknown' ? 404 : 200;
+        return sendJSONResponse(res, statusCode, rpcResult(result, null));
+    } catch (error) {
+        console.error('OpenCode abort error:', error);
+        return sendJSONResponse(res, 500, rpcError(-32603, 'Internal error: ' + error.message));
+    }
+}
+
+/**
  * Main request handler
  */
 async function handleRequest(req, res) {
@@ -1920,14 +2384,54 @@ async function handleRequest(req, res) {
             return handleAdapterSessions(req, res);
         }
         
+        // G3 phase 3: adapter command queue (GET routes)
+        if (pathname === '/rpc/adapter/command/poll' && req.method === 'GET') {
+            return handleAdapterCommandPoll(req, res);
+        }
+        if (pathname.startsWith('/rpc/adapter/command/') && req.method === 'GET') {
+            const commandId = pathname.slice('/rpc/adapter/command/'.length);
+            return handleAdapterCommandGet(req, res, commandId);
+        }
+        
+        if (pathname === '/rpc/ai/status' && req.method === 'GET') {
+            return handleAiStatus(req, res);
+        }
+
+        if (pathname === '/rpc/cards' && req.method === 'GET') {
+            return handleAiCardsQuery(req, res, urlObj);
+        }
+
+        if (pathname === '/rpc/maintenance-tasks' && req.method === 'GET') {
+            return handleAiMaintenanceTasksQuery(req, res, urlObj);
+        }
+
         // G4: Task query (GET)
         if (pathname === '/rpc/task/query' && req.method === 'GET') {
             return handleTaskQueryGet(req, res);
         }
         
+        // Lens Projections (Three Cognitive Lens Architecture) - GET endpoints
+        if (pathname === '/rpc/projection/tasks' && req.method === 'GET') {
+            return handleProjectionTasksGet(req, res, urlObj.query);
+        }
+        
+        if (pathname === '/rpc/projection/graph' && req.method === 'GET') {
+            return handleProjectionGraphGet(req, res, urlObj.query);
+        }
+        
+        if (pathname === '/rpc/projection/weekly-digest' && req.method === 'GET') {
+            return handleProjectionWeeklyDigestGet(req, res, urlObj.query);
+        }
+        
         // G6: Patch query (GET)
         if (pathname === '/rpc/patch/query' && req.method === 'GET') {
             return handlePatchQuery(req, res);
+        }
+        
+        // Phase 5: OpenCode status (GET)
+        if (pathname.startsWith('/rpc/opencode/status/') && req.method === 'GET') {
+            const taskId = decodeURIComponent(pathname.slice('/rpc/opencode/status/'.length));
+            return handleOpencodeStatus(req, res, taskId);
         }
         
         // For POST endpoints, need to read body
@@ -1944,6 +2448,14 @@ async function handleRequest(req, res) {
             
             if (pathname === '/rpc/boundary/update') {
                 return handleBoundaryUpdate(req, res, requestBody);
+            }
+            
+            // G3 phase 3: adapter command queue (POST routes)
+            if (pathname === '/rpc/adapter/command') {
+                return handleAdapterCommandEnqueue(req, res, requestBody);
+            }
+            if (pathname === '/rpc/adapter/command/result') {
+                return handleAdapterCommandResult(req, res, requestBody);
             }
             
             if (pathname === '/rpc/material/revision') {
@@ -2009,6 +2521,11 @@ async function handleRequest(req, res) {
                 return handlePatchSupersede(req, res, requestBody);
             }
             
+            // G4 (phase 4): AI digest trigger
+            if (pathname === '/rpc/ai/digest/trigger') {
+                return handleAiDigestTrigger(req, res, requestBody);
+            }
+
             // G4: Recommendation accept
             if (pathname === '/rpc/recommendation/accept') {
                 return handleRecommendationAccept(req, res, requestBody);
@@ -2017,6 +2534,16 @@ async function handleRequest(req, res) {
             // G4: Recommendation dismiss
             if (pathname === '/rpc/recommendation/dismiss') {
                 return handleRecommendationDismiss(req, res, requestBody);
+            }
+            
+            // Phase 5: OpenCode dispatch (POST)
+            if (pathname === '/rpc/opencode/dispatch') {
+                return handleOpencodeDispatch(req, res, requestBody);
+            }
+            // Phase 5: OpenCode abort (POST)
+            if (pathname.startsWith('/rpc/opencode/abort/') && req.method === 'POST') {
+                const taskId = decodeURIComponent(pathname.slice('/rpc/opencode/abort/'.length));
+                return handleOpencodeAbort(req, res, taskId);
             }
             
             // Default to /rpc/events/ingest if not matched
@@ -2050,8 +2577,28 @@ async function initializeServer() {
         // Initialize material processor (G3)
         materialProcessor = new MaterialProcessor({ db: companionDB, eventProcessor });
         
+        // Initialize AI digest engine (phase 4 + phase 5 OpenCode bridge)
+        const Bridge = await loadOpenCodeBridgeClass();
+        if (Bridge) {
+            const config = getOpenCodeBridgeConfig();
+            openCodeBridge = new Bridge(config);
+        }
+        aiDigestEngine = new AIDigestEngine({ db: companionDB, eventProcessor, opencodeBridge: openCodeBridge });
+        
         // Create HTTP server
         server = http.createServer(handleRequest);
+        
+        // Attach the narrow WS wake channel (/ws/adapter-wake) to the same
+        // HTTP server (ruling C3: wake-only, no business data).
+        wakeChannel = new AdapterWakeChannel({ log: console.log.bind(console) });
+        wakeChannel.attach(server);
+        
+        // Periodic honest-timeout sweep for queued/delivered commands.
+        // unref() so the sweep never keeps the process alive on its own.
+        const expirySweep = setInterval(() => {
+            try { companionDB.expireAdapterCommands(); } catch (_) { /* next sweep */ }
+        }, 5000);
+        if (expirySweep.unref) expirySweep.unref();
         
         // Start listening
         await new Promise((resolve, reject) => {
@@ -2086,6 +2633,10 @@ async function initializeServer() {
  */
 function gracefulShutdown() {
     console.log('\nShutting down gracefully...');
+    
+    if (wakeChannel) {
+        wakeChannel.closeAll();
+    }
     
     if (server) {
         server.close(() => {
@@ -2158,7 +2709,16 @@ async function startTestServer({ port = 0, dbPath = ':memory:' } = {}) {
     await companionDB.initialize();
     eventProcessor = new EventProcessor(companionDB);
     materialProcessor = new MaterialProcessor({ db: companionDB, eventProcessor });
+    // Phase 5: load OpenCode bridge (best-effort, may be null)
+    const Bridge = await loadOpenCodeBridgeClass();
+    if (Bridge) {
+        const config = getOpenCodeBridgeConfig();
+        openCodeBridge = new Bridge(config);
+    }
+    aiDigestEngine = new AIDigestEngine({ db: companionDB, eventProcessor, opencodeBridge: openCodeBridge });
     server = http.createServer(handleRequest);
+    wakeChannel = new AdapterWakeChannel();
+    wakeChannel.attach(server);
     
     await new Promise((resolve, reject) => {
         server.listen(port, '127.0.0.1', resolve);
@@ -2169,7 +2729,8 @@ async function startTestServer({ port = 0, dbPath = ':memory:' } = {}) {
         server,
         port: server.address().port,
         db: companionDB,
-        eventProcessor
+        eventProcessor,
+        wakeChannel
     };
 }
 
@@ -2177,6 +2738,10 @@ async function startTestServer({ port = 0, dbPath = ':memory:' } = {}) {
  * Stop the in-process test server and release globals.
  */
 async function stopTestServer() {
+    if (wakeChannel) {
+        wakeChannel.closeAll();
+        wakeChannel = null;
+    }
     if (server) {
         await new Promise(resolve => server.close(resolve));
         server = null;
@@ -2187,6 +2752,8 @@ async function stopTestServer() {
     }
     eventProcessor = null;
     materialProcessor = null;
+    aiDigestEngine = null;
+    openCodeBridge = null;
 }
 
 module.exports = {
@@ -2204,6 +2771,11 @@ module.exports = {
     handleRecommendationAccept,
     handleRecommendationDismiss,
     handleAdapterSessions,
+    // G3 phase 3 adapter command queue handlers for testing
+    handleAdapterCommandEnqueue,
+    handleAdapterCommandPoll,
+    handleAdapterCommandResult,
+    handleAdapterCommandGet,
     // G6 patch handlers for testing
     handlePatchQuery,
     handlePatchPropose,
@@ -2213,6 +2785,15 @@ module.exports = {
     handlePatchRevert,
     handlePatchRevalidate,
     handlePatchSupersede,
+    // G4 phase 4 AI digest handlers for testing
+    handleAiStatus,
+    handleAiDigestTrigger,
+    handleAiCardsQuery,
+    handleAiMaintenanceTasksQuery,
+    // Phase 5 OpenCode bridge handlers for testing
+    handleOpencodeDispatch,
+    handleOpencodeStatus,
+    handleOpencodeAbort,
     // G4 in-process test harness
     startTestServer,
     stopTestServer
@@ -2225,3 +2806,293 @@ if (require.main === module) {
         process.exit(1);
     });
 }
+
+
+/**
+ * Lens Projection: Get Task Recommendations (Lens 1 - Task View)
+ * 
+ * Provides a Kanban-ready list of recommendations and accepted tasks,
+ * sorted by priority score using the formula:
+ *   priority_score = maturityScore * 0.6 + time_sensitivity * 0.4
+ */
+async function handleProjectionTasksGet(req, res, query) {
+    try {
+        const { status = 'recommended,accepted', limit = 50, offset = 0 } = query;
+        const statusArray = status.split(',').map(s => s.trim());
+        // The plan's public statuses map onto recommendations_projection rows:
+        // 'recommended' -> 'pending' (awaiting user decision).
+        const dbStatuses = statusArray.map(s => s === 'recommended' ? 'pending' : s);
+        
+        let rows;
+        if (companionDB.db.isMock) {
+            rows = (companionDB.db.data.recommendations_projection || [])
+                .filter(r => dbStatuses.includes(r.status));
+        } else {
+            const placeholders = dbStatuses.map(() => '?').join(',');
+            rows = companionDB.db.prepare(
+                `SELECT * FROM recommendations_projection WHERE status IN (${placeholders})`
+            ).all(...dbStatuses);
+        }
+        
+        const now = Date.now();
+        const projections = rows.map(r => {
+            const maturityScore = Math.round((r.materiality_score != null ? r.materiality_score : 0.5) * 100);
+            // time_sensitivity: 100 for activity within the last hour,
+            // decaying linearly to 0 over 7 days.
+            const lastTs = Date.parse(r.updated_at || r.created_at || '') || now;
+            const ageMs = Math.max(0, now - lastTs);
+            const timeSensitivity = Math.max(0, 100 - (ageMs / (7 * 86400000)) * 100);
+            const priorityLevel = r.priority_level || 5;
+            return {
+                id: r.recommendation_id,
+                title: r.recommendation_text,
+                summary: r.suggested_action || '',
+                status: r.status === 'pending' ? 'recommended' : r.status,
+                priority: priorityLevel <= 3 ? 'high' : (priorityLevel <= 6 ? 'medium' : 'low'),
+                maturityScore,
+                lastActivityTs: lastTs,
+                sourceEvents: r.source_entity_id ? [r.source_entity_id] : [],
+                tags: safeParseJSONArray(r.target_material_ids),
+                priorityScore: maturityScore * 0.6 + timeSensitivity * 0.4
+            };
+        });
+        
+        projections.sort((a, b) => b.priorityScore - a.priorityScore);
+        const paginated = projections.slice(parseInt(offset), parseInt(offset) + parseInt(limit));
+        
+        return sendJSONResponse(res, 200, {
+            ok: true,
+            data: paginated
+        });
+    } catch (error) {
+        console.error('Projection tasks error:', error);
+        return sendJSONResponse(res, 500, {
+            ok: false,
+            error: error.message
+        });
+    }
+}
+
+/** Parse a JSON array column defensively; non-arrays become []. */
+function safeParseJSONArray(text) {
+    if (!text) return [];
+    try {
+        const parsed = typeof text === 'string' ? JSON.parse(text) : text;
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (_) {
+        return [];
+    }
+}
+
+/** Extract human text from a raw event payload for projection reducers. */
+function extractEventText(payloadJson) {
+    let payload = payloadJson;
+    if (typeof payload === 'string') {
+        try { payload = JSON.parse(payload); } catch (_) { return payload; }
+    }
+    if (!payload || typeof payload !== 'object') return '';
+    if (typeof payload.text === 'string') return payload.text;
+    if (typeof payload.content === 'string') return payload.content;
+    if (typeof payload.body === 'string') return payload.body;
+    if (typeof payload.summary === 'string') return payload.summary;
+    if (typeof payload.title === 'string') return payload.title;
+    if (Array.isArray(payload.messages)) {
+        return payload.messages
+            .map(m => (m && typeof m === 'object') ? (m.text || m.content || '') : String(m || ''))
+            .filter(Boolean)
+            .join('\n');
+    }
+    return '';
+}
+
+/** Load conversation events as {id, ts, text, sourceId} rows for reducers. */
+function loadConversationEvents() {
+    const rawEvents = companionDB.getAllRawEventsOfType('conversation.') || [];
+    return rawEvents
+        .map(e => ({
+            id: e.event_id,
+            sourceId: e.source_id,
+            ts: Date.parse(e.created_at || '') || Date.now(),
+            text: extractEventText(e.payload_json)
+        }))
+        .filter(e => e.text);
+}
+
+/**
+ * Lens Projection: Get Knowledge Graph (Lens 2 - Exploration View)
+ * 
+ * Builds a graph of topics, events, and relationships for visualization
+ * in Obsidian-style force-directed graph. Topics are keyword clusters
+ * extracted from the raw event log (single source of truth); edges carry
+ * co-occurrence weights.
+ */
+async function handleProjectionGraphGet(req, res, query) {
+    try {
+        const { depth = 2, filterByTag } = query;
+        const events = loadConversationEvents();
+        
+        const digestReducer = require('./reducers/weekly-digest.ts');
+        const maxTopics = Math.max(3, Math.min(30, parseInt(depth) * 10 || 20));
+        const topics = digestReducer.extractTopics(events, maxTopics)
+            .filter(t => !filterByTag || t.name.includes(filterByTag));
+        
+        // Conversation nodes: one per distinct source (most recent 20).
+        const bySource = new Map();
+        for (const ev of events) {
+            const existing = bySource.get(ev.sourceId);
+            if (!existing || ev.ts > existing.ts) bySource.set(ev.sourceId, ev);
+        }
+        const conversationNodes = [...bySource.values()]
+            .sort((a, b) => b.ts - a.ts)
+            .slice(0, 20);
+        
+        const nodes = [];
+        const edges = [];
+        const maxPct = topics.length ? topics[0].percentage : 1;
+        
+        for (const topic of topics) {
+            nodes.push({
+                id: 'topic:' + topic.name,
+                label: topic.name,
+                type: 'topic',
+                ts: Date.now(),
+                importance: topic.percentage / (maxPct || 1)
+            });
+        }
+        
+        for (const conv of conversationNodes) {
+            nodes.push({
+                id: 'event:' + conv.sourceId,
+                label: conv.text.slice(0, 24) || conv.sourceId.slice(0, 8),
+                type: 'event',
+                ts: conv.ts,
+                importance: 0.4
+            });
+            
+            // mentioned_in edges: topic keyword appears in this conversation's texts.
+            const sourceText = events
+                .filter(e => e.sourceId === conv.sourceId)
+                .map(e => e.text.toLowerCase())
+                .join('\n');
+            for (const topic of topics) {
+                const hits = sourceText.split(topic.name.toLowerCase()).length - 1;
+                if (hits > 0) {
+                    edges.push({
+                        source: 'topic:' + topic.name,
+                        target: 'event:' + conv.sourceId,
+                        relation: 'mentioned_in',
+                        weight: Math.min(5, hits)
+                    });
+                }
+            }
+        }
+        
+        // related_to edges between topics sharing at least one conversation.
+        const topicSources = new Map();
+        for (const edge of edges) {
+            const t = edge.source;
+            if (!topicSources.has(t)) topicSources.set(t, new Set());
+            topicSources.get(t).add(edge.target);
+        }
+        const topicIds = [...topicSources.keys()];
+        for (let i = 0; i < topicIds.length; i++) {
+            for (let j = i + 1; j < topicIds.length; j++) {
+                const shared = [...topicSources.get(topicIds[i])]
+                    .filter(s => topicSources.get(topicIds[j]).has(s)).length;
+                if (shared > 0) {
+                    edges.push({
+                        source: topicIds[i],
+                        target: topicIds[j],
+                        relation: 'related_to',
+                        weight: shared
+                    });
+                }
+            }
+        }
+        
+        // Clusters: each conversation with its mentioned topics forms a theme.
+        const clusters = conversationNodes
+            .map(conv => {
+                const clusterNodes = ['event:' + conv.sourceId].concat(
+                    edges
+                        .filter(e => e.relation === 'mentioned_in' && e.target === 'event:' + conv.sourceId)
+                        .map(e => e.source)
+                );
+                return {
+                    id: 'cluster:' + conv.sourceId,
+                    nodes: clusterNodes,
+                    theme: conv.text.slice(0, 16) || conv.sourceId.slice(0, 8)
+                };
+            })
+            .filter(c => c.nodes.length > 1)
+            .slice(0, 8);
+        
+        return sendJSONResponse(res, 200, {
+            ok: true,
+            data: { nodes, edges, clusters }
+        });
+    } catch (error) {
+        console.error('Projection graph error:', error);
+        return sendJSONResponse(res, 500, {
+            ok: false,
+            error: error.message
+        });
+    }
+}
+
+/**
+ * Lens Projection: Weekly Reflection Digest (Lens 3 - Reflection View)
+ * 
+ * Recomputes the WeeklyDigest projection from the raw event log via the
+ * weekly-digest reducer (projections stay a pure function of the log).
+ * A native scheduler pre-warms the cache every Sunday at 03:00 local.
+ */
+const weeklyDigestCache = new Map();
+
+async function handleProjectionWeeklyDigestGet(req, res, query) {
+    try {
+        const digestReducer = require('./reducers/weekly-digest.ts');
+        const week = query.week || digestReducer.getISOWeek(new Date());
+        
+        if (!weeklyDigestCache.has(week)) {
+            const range = digestReducer.getWeekRange(week);
+            if (!range) {
+                return sendJSONResponse(res, 400, {
+                    ok: false,
+                    error: `Invalid week format: ${week} (expected e.g. "2024-W30")`
+                });
+            }
+            const events = loadConversationEvents()
+                .filter(e => e.ts >= range.startTs && e.ts < range.endTs);
+            weeklyDigestCache.set(week, digestReducer.generateWeeklyDigest(week, events));
+            // Past weeks are immutable; only the current week needs refresh.
+            if (week === digestReducer.getISOWeek(new Date())) {
+                setTimeout(() => weeklyDigestCache.delete(week), 5 * 60 * 1000).unref?.();
+            }
+        }
+        
+        return sendJSONResponse(res, 200, {
+            ok: true,
+            data: weeklyDigestCache.get(week)
+        });
+    } catch (error) {
+        console.error('Weekly digest error:', error);
+        return sendJSONResponse(res, 500, {
+            ok: false,
+            error: error.message
+        });
+    }
+}
+
+/**
+ * Helper: Get current ISO week number
+ */
+function getCurrentWeek() {
+    return require('./reducers/weekly-digest.ts').getISOWeek(new Date());
+}
+
+// Export new handlers for testing
+module.exports.handleProjectionTasksGet = handleProjectionTasksGet;
+module.exports.handleProjectionGraphGet = handleProjectionGraphGet;
+module.exports.handleProjectionWeeklyDigestGet = handleProjectionWeeklyDigestGet;
+module.exports.getCurrentWeek = getCurrentWeek;

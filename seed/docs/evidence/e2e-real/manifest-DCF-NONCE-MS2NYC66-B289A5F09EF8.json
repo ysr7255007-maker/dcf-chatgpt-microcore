@@ -1,0 +1,49 @@
+{
+  "run_id": "DCF-NONCE-MS2NYC66-B289A5F09EF8",
+  "started_at": "2026-07-27T03:24:34.923Z",
+  "finished_at": "2026-07-27T03:24:53.635Z",
+  "nonce": "DCF-NONCE-MS2NYC66-B289A5F09EF8",
+  "conversation_url_before": "https://chatgpt.com/",
+  "conversation_url_after": "https://chatgpt.com/c/6a66cf7a-4578-83ee-9fc5-0667ebb707ea",
+  "message_count_before": 0,
+  "message_count_after": 2,
+  "assistant_reply": {
+    "message_id": "446f5a77-e35d-4291-b27d-0d5a647b0551",
+    "text": "DCF-NONCE-MS2NYC66-B289A5F09EF8"
+  },
+  "dom_user_message_id": "ddc46e53-b085-40c2-b73d-9a586d444aaf",
+  "dom_assistant_message_id": "446f5a77-e35d-4291-b27d-0d5a647b0551",
+  "companion_event_ids": [
+    "0MYJZTRJEDJECNKNB042TMJGCT"
+  ],
+  "screenshots": [
+    {
+      "path": "/Users/looy/Documents/dcf/seed/docs/evidence/e2e-real/DCF-NONCE-MS2NYC66-B289A5F09EF8-final.jpg",
+      "label": "after-assistant-reply",
+      "sha256": "10d2523492e4c95eb5942ed17d3654527bed68a1ac340be968e96df813086082"
+    }
+  ],
+  "checks": [
+    {
+      "name": "消息计数增量 ≥ 2",
+      "ok": true
+    },
+    {
+      "name": "nonce 出现在 baseline 之后新增的 user 消息",
+      "ok": true
+    },
+    {
+      "name": "assistant 回复包含本轮 nonce",
+      "ok": true
+    },
+    {
+      "name": "companion raw_events 与 DOM 观测对账一致（message_id + nonce）",
+      "ok": false,
+      "error": "companion 事件与 DOM 观测不一致：需要 user message_id=ddc46e53-b085-40c2-b73d-9a586d444aaf（含 nonce）命中=true，assistant message_id=446f5a77-e35d-4291-b27d-0d5a647b0551 命中=false。库内观测到的 message_id：[ddc46e53-b085-40c2-b73d-9a586d444aaf]。若事件含 nonce 但 message_id 对不上 DOM，疑似脚本绕过采集链直写 Companion 伪造入库。"
+    }
+  ],
+  "verdict": "degraded",
+  "degraded_reason": "companion 事件缺失或与 DOM message_id 对账不一致（采集链未闭合或疑似伪造入库）",
+  "generated_at": "2026-07-27T03:24:53.635Z",
+  "note": "判定只依赖机器可验证信号（nonce/计数增量/companion 回查）；screenshots 仅作附件。"
+}

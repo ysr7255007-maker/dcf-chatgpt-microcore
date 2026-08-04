@@ -112,7 +112,55 @@ class CompanionDB {
             } catch (e) {
                 // Ignore if already exists
             }
-            
+
+            // Migration (task #12): widen adapter_commands.kind CHECK to accept
+            // the historical-read command kinds. CREATE TABLE IF NOT EXISTS never
+            // alters an existing table, so databases created before this change
+            // keep the old constraint and would reject list-conversations /
+            // read-by-id. The command queue is transient state, so rebuilding the
+            // table in place (copying rows) is safe.
+            try {
+                const meta = this.db.prepare(
+                    "SELECT sql FROM sqlite_master WHERE type='table' AND name='adapter_commands'"
+                ).get();
+                if (meta && meta.sql && meta.sql.indexOf('list-conversations') === -1) {
+                    this.db.exec('BEGIN TRANSACTION');
+                    this.db.exec('ALTER TABLE adapter_commands RENAME TO adapter_commands_old;');
+                    this.db.exec(`
+                        CREATE TABLE adapter_commands (
+                            command_id TEXT PRIMARY KEY,
+                            kind TEXT NOT NULL,
+                            payload_json TEXT,
+                            status TEXT NOT NULL DEFAULT 'queued'
+                                CHECK (status IN ('queued', 'delivered', 'done', 'failed', 'expired')),
+                            result_json TEXT,
+                            timeout_ms INTEGER,
+                            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                            CHECK (command_id IS NOT NULL AND command_id != ''),
+                            CHECK (kind IN ('read-conversation', 'send-card', 'list-conversations', 'read-by-id'))
+                        );
+                    `);
+                    this.db.exec(`
+                        INSERT INTO adapter_commands
+                            (command_id, kind, payload_json, status, result_json, timeout_ms, created_at, updated_at)
+                        SELECT command_id, kind, payload_json, status, result_json, timeout_ms, created_at, updated_at
+                        FROM adapter_commands_old;
+                    `);
+                    this.db.exec('DROP TABLE adapter_commands_old;');
+                    this.db.exec('CREATE INDEX IF NOT EXISTS idx_adapter_commands_status ON adapter_commands(status);');
+                    this.db.exec('CREATE INDEX IF NOT EXISTS idx_adapter_commands_created_at ON adapter_commands(created_at);');
+                    this.db.exec('COMMIT');
+                    if (require.main === module) {
+                        console.log('✓ Migrated adapter_commands.kind constraint (task #12)');
+                    }
+                }
+            } catch (migrationError) {
+                try { this.db.exec('ROLLBACK'); } catch (_) { /* nothing to roll back */ }
+                // Migration failure must not crash startup; fail honestly loud.
+                console.warn('adapter_commands kind-constraint migration skipped:', migrationError.message);
+            }
+
             if (require.main === module) {
                 console.log(`✓ Database initialized at ${this.dbPath}`);
             }
@@ -835,6 +883,451 @@ e combination
         }
 
         return events;
+    }
+
+    // ==========================================================
+    // G3 (phase 3): adapter_commands - Surface -> Adapter command queue
+    // ==========================================================
+
+    /** Lazy mock table accessor */
+    _adapterCommandsMock() {
+        if (!this.db.data.adapter_commands) {
+            this.db.data.adapter_commands = [];
+        }
+        return this.db.data.adapter_commands;
+    }
+
+    /**
+     * Insert a new adapter command (status=queued).
+     * @param {{command_id:string, kind:string, payload?:Object, timeout_ms?:number}} cmd
+     * @returns {{success:boolean, error?:string}}
+     */
+    insertAdapterCommand(cmd) {
+        const now = new Date().toISOString();
+        const payloadText = cmd.payload == null
+            ? null
+            : (typeof cmd.payload === 'string' ? cmd.payload : JSON.stringify(cmd.payload));
+
+        if (this.db.isMock) {
+            this._adapterCommandsMock().push({
+                command_id: cmd.command_id,
+                kind: cmd.kind,
+                payload_json: payloadText,
+                status: 'queued',
+                result_json: null,
+                timeout_ms: cmd.timeout_ms || null,
+                created_at: now,
+                updated_at: now
+            });
+            return { success: true };
+        }
+
+        try {
+            this.db.prepare(`
+                INSERT INTO adapter_commands (command_id, kind, payload_json, status, timeout_ms, created_at, updated_at)
+                VALUES (?, ?, ?, 'queued', ?, ?, ?)
+            `).run(cmd.command_id, cmd.kind, payloadText, cmd.timeout_ms || null, now, now);
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    }
+
+    /**
+     * Atomically take all queued commands, marking them delivered.
+     * Idempotent from the adapter's perspective: a second poll returns [].
+     * @returns {Array} commands that were queued (now delivered)
+     */
+    pollAdapterCommands() {
+        this.expireAdapterCommands();
+        const now = new Date().toISOString();
+
+        if (this.db.isMock) {
+            const taken = this._adapterCommandsMock().filter(c => c.status === 'queued');
+            for (const c of taken) {
+                c.status = 'delivered';
+                c.updated_at = now;
+            }
+            return taken.map(c => ({ ...c }));
+        }
+
+        try {
+            const rows = this.db.prepare(
+                "SELECT * FROM adapter_commands WHERE status = 'queued' ORDER BY created_at ASC"
+            ).all();
+            for (const row of rows) {
+                this.db.prepare(
+                    "UPDATE adapter_commands SET status = 'delivered', updated_at = ? WHERE command_id = ? AND status = 'queued'"
+                ).run(now, row.command_id);
+            }
+            return rows;
+        } catch (error) {
+            console.error('pollAdapterCommands error:', error.message);
+            return [];
+        }
+    }
+
+    /**
+     * Record the adapter's result: done (ok) or failed (error).
+     * Terminal states (done/failed/expired) are never overwritten.
+     * @returns {{success:boolean, status?:string, error?:string}}
+     */
+    completeAdapterCommand(commandId, ok, resultOrError) {
+        const now = new Date().toISOString();
+        const status = ok ? 'done' : 'failed';
+        const resultText = resultOrError == null
+            ? null
+            : (typeof resultOrError === 'string' ? resultOrError : JSON.stringify(resultOrError));
+
+        if (this.db.isMock) {
+            const cmd = this._adapterCommandsMock().find(c => c.command_id === commandId);
+            if (!cmd) return { success: false, error: 'command not found' };
+            if (cmd.status === 'done' || cmd.status === 'failed' || cmd.status === 'expired') {
+                return { success: false, error: `command already terminal (${cmd.status})` };
+            }
+            cmd.status = status;
+            cmd.result_json = resultText;
+            cmd.updated_at = now;
+            return { success: true, status };
+        }
+
+        try {
+            const existing = this.db.prepare('SELECT status FROM adapter_commands WHERE command_id = ?').get(commandId);
+            if (!existing) return { success: false, error: 'command not found' };
+            if (['done', 'failed', 'expired'].includes(existing.status)) {
+                return { success: false, error: `command already terminal (${existing.status})` };
+            }
+            this.db.prepare(
+                'UPDATE adapter_commands SET status = ?, result_json = ?, updated_at = ? WHERE command_id = ?'
+            ).run(status, resultText, now, commandId);
+            return { success: true, status };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    }
+
+    /**
+     * Fetch a single command by id (expiry sweep applied first).
+     * @returns {Object|null}
+     */
+    getAdapterCommand(commandId) {
+        this.expireAdapterCommands();
+
+        if (this.db.isMock) {
+            const cmd = this._adapterCommandsMock().find(c => c.command_id === commandId);
+            return cmd ? { ...cmd } : null;
+        }
+
+        try {
+            return this.db.prepare('SELECT * FROM adapter_commands WHERE command_id = ?').get(commandId) || null;
+        } catch (error) {
+            return null;
+        }
+    }
+
+    /**
+     * Mark non-terminal commands whose timeout_ms window has elapsed as
+     * expired. Honest timeout semantics: an expired command never silently
+     * becomes done later (completeAdapterCommand refuses terminal states).
+     * @returns {number} number of commands expired by this sweep
+     */
+    expireAdapterCommands() {
+        const nowMs = Date.now();
+        const now = new Date(nowMs).toISOString();
+
+        if (this.db.isMock) {
+            let expired = 0;
+            for (const c of this._adapterCommandsMock()) {
+                if ((c.status === 'queued' || c.status === 'delivered') && c.timeout_ms
+                    && nowMs - new Date(c.created_at).getTime() >= c.timeout_ms) {
+                    c.status = 'expired';
+                    c.updated_at = now;
+                    expired++;
+                }
+            }
+            return expired;
+        }
+
+        try {
+            const rows = this.db.prepare(
+                "SELECT command_id, created_at, timeout_ms FROM adapter_commands WHERE status IN ('queued', 'delivered') AND timeout_ms IS NOT NULL"
+            ).all();
+            let expired = 0;
+            for (const row of rows) {
+                if (nowMs - new Date(row.created_at).getTime() >= row.timeout_ms) {
+                    this.db.prepare(
+                        "UPDATE adapter_commands SET status = 'expired', updated_at = ? WHERE command_id = ? AND status IN ('queued', 'delivered')"
+                    ).run(now, row.command_id);
+                    expired++;
+                }
+            }
+            return expired;
+        } catch (error) {
+            return 0;
+        }
+    }
+
+    // ==========================================================
+    // G4 (phase 4): ai_cards - AI digest card projection CRUD
+    // ==========================================================
+
+    _aiCardsMock() {
+        if (!this.db.data.ai_cards) this.db.data.ai_cards = [];
+        return this.db.data.ai_cards;
+    }
+
+    upsertAiCard(card) {
+        const now = new Date().toISOString();
+        const evidenceJson = Array.isArray(card.evidence)
+            ? JSON.stringify(card.evidence) : (card.evidence_json || '[]');
+        const sourceEventIds = card.source_event_ids
+            ? (typeof card.source_event_ids === 'string' ? card.source_event_ids : JSON.stringify(card.source_event_ids))
+            : null;
+
+        if (this.db.isMock) {
+            const arr = this._aiCardsMock();
+            const idx = arr.findIndex(c => c.card_id === card.card_id);
+            const record = {
+                card_id: card.card_id,
+                title: card.title,
+                summary: card.summary,
+                evidence_json: evidenceJson,
+                boundary_inherit: card.boundary_inherit,
+                source_conversation: card.source_conversation,
+                source_event_ids: sourceEventIds,
+                markdown_body: card.markdown_body || null,
+                json_body: card.json_body || null,
+                attribution_state: card.attribution_state || 'ai_proposed',
+                created_at: card.created_at || now,
+                updated_at: now
+            };
+            if (idx >= 0) arr[idx] = record; else arr.push(record);
+            return { success: true };
+        }
+
+        try {
+            this.db.prepare(`
+                INSERT OR REPLACE INTO ai_cards
+                    (card_id, title, summary, evidence_json, boundary_inherit,
+                     source_conversation, source_event_ids, markdown_body, json_body,
+                     attribution_state, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+                card.card_id, card.title, card.summary, evidenceJson,
+                card.boundary_inherit, card.source_conversation, sourceEventIds,
+                card.markdown_body || null, card.json_body || null,
+                card.attribution_state || 'ai_proposed',
+                card.created_at || now, now
+            );
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    }
+
+    getAiCard(cardId) {
+        if (this.db.isMock) {
+            return this._aiCardsMock().find(c => c.card_id === cardId) || null;
+        }
+        try {
+            return this.db.prepare('SELECT * FROM ai_cards WHERE card_id = ?').get(cardId) || null;
+        } catch (_) { return null; }
+    }
+
+    getAllAiCards() {
+        if (this.db.isMock) return [...this._aiCardsMock()];
+        try {
+            return this.db.prepare('SELECT * FROM ai_cards ORDER BY created_at DESC').all();
+        } catch (_) { return []; }
+    }
+
+    getAiCardsByConversation(conversationId) {
+        if (this.db.isMock) {
+            return this._aiCardsMock().filter(c => c.source_conversation === conversationId);
+        }
+        try {
+            return this.db.prepare('SELECT * FROM ai_cards WHERE source_conversation = ? ORDER BY created_at DESC').all(conversationId);
+        } catch (_) { return []; }
+    }
+
+    // ==========================================================
+    // G4 (phase 4): ai_maintenance_tasks - AI digest task CRUD
+    // ==========================================================
+
+    _aiMaintenanceTasksMock() {
+        if (!this.db.data.ai_maintenance_tasks) this.db.data.ai_maintenance_tasks = [];
+        return this.db.data.ai_maintenance_tasks;
+    }
+
+    upsertAiMaintenanceTask(task) {
+        const now = new Date().toISOString();
+        const criteriaJson = Array.isArray(task.criteria)
+            ? JSON.stringify(task.criteria) : (task.criteria_json || '[]');
+        const sourceEventIds = task.source_event_ids
+            ? (typeof task.source_event_ids === 'string' ? task.source_event_ids : JSON.stringify(task.source_event_ids))
+            : null;
+
+        if (this.db.isMock) {
+            const arr = this._aiMaintenanceTasksMock();
+            const idx = arr.findIndex(t => t.task_id === task.task_id);
+            const record = {
+                task_id: task.task_id,
+                task: task.task,
+                criteria_json: criteriaJson,
+                risk: task.risk || null,
+                rollback_plan: task.rollback_plan || null,
+                priority: task.priority || 5,
+                boundary_inherit: task.boundary_inherit,
+                source_conversation: task.source_conversation,
+                source_event_ids: sourceEventIds,
+                markdown_body: task.markdown_body || null,
+                json_body: task.json_body || null,
+                attribution_state: task.attribution_state || 'ai_proposed',
+                created_at: task.created_at || now,
+                updated_at: now
+            };
+            if (idx >= 0) arr[idx] = record; else arr.push(record);
+            return { success: true };
+        }
+
+        try {
+            this.db.prepare(`
+                INSERT OR REPLACE INTO ai_maintenance_tasks
+                    (task_id, task, criteria_json, risk, rollback_plan, priority,
+                     boundary_inherit, source_conversation, source_event_ids,
+                     markdown_body, json_body, attribution_state, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+                task.task_id, task.task, criteriaJson,
+                task.risk || null, task.rollback_plan || null, task.priority || 5,
+                task.boundary_inherit, task.source_conversation, sourceEventIds,
+                task.markdown_body || null, task.json_body || null,
+                task.attribution_state || 'ai_proposed',
+                task.created_at || now, now
+            );
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    }
+
+    getAiMaintenanceTask(taskId) {
+        if (this.db.isMock) {
+            return this._aiMaintenanceTasksMock().find(t => t.task_id === taskId) || null;
+        }
+        try {
+            return this.db.prepare('SELECT * FROM ai_maintenance_tasks WHERE task_id = ?').get(taskId) || null;
+        } catch (_) { return null; }
+    }
+
+    getAllAiMaintenanceTasks() {
+        if (this.db.isMock) return [...this._aiMaintenanceTasksMock()];
+        try {
+            return this.db.prepare('SELECT * FROM ai_maintenance_tasks ORDER BY priority ASC, created_at DESC').all();
+        } catch (_) { return []; }
+    }
+
+    getAiMaintenanceTasksByConversation(conversationId) {
+        if (this.db.isMock) {
+            return this._aiMaintenanceTasksMock().filter(t => t.source_conversation === conversationId);
+        }
+        try {
+            return this.db.prepare('SELECT * FROM ai_maintenance_tasks WHERE source_conversation = ? ORDER BY created_at DESC').all(conversationId);
+        } catch (_) { return []; }
+    }
+
+    // ==========================================================
+    // G4 (phase 4): digest_jobs - job queue persistence
+    // ==========================================================
+
+    _digestJobsMock() {
+        if (!this.db.data.digest_jobs) this.db.data.digest_jobs = [];
+        return this.db.data.digest_jobs;
+    }
+
+    insertDigestJob(job) {
+        const now = new Date().toISOString();
+        const eventIdsJson = job.event_ids
+            ? (typeof job.event_ids === 'string' ? job.event_ids : JSON.stringify(job.event_ids))
+            : null;
+
+        if (this.db.isMock) {
+            this._digestJobsMock().push({
+                job_id: job.job_id,
+                conversation_id: job.conversation_id,
+                event_ids_json: eventIdsJson,
+                status: 'queued',
+                source_level: null,
+                error_message: null,
+                products_json: null,
+                created_at: now,
+                updated_at: now
+            });
+            return { success: true };
+        }
+
+        try {
+            this.db.prepare(`
+                INSERT INTO digest_jobs (job_id, conversation_id, event_ids_json, status, created_at, updated_at)
+                VALUES (?, ?, ?, 'queued', ?, ?)
+            `).run(job.job_id, job.conversation_id, eventIdsJson, now, now);
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    }
+
+    updateDigestJob(jobId, updates) {
+        const now = new Date().toISOString();
+        if (this.db.isMock) {
+            const job = this._digestJobsMock().find(j => j.job_id === jobId);
+            if (!job) return { success: false, error: 'job not found' };
+            Object.assign(job, updates, { updated_at: now });
+            return { success: true };
+        }
+
+        try {
+            const fields = [];
+            const values = [];
+            for (const [k, v] of Object.entries(updates)) {
+                fields.push(`${k} = ?`);
+                values.push(v);
+            }
+            fields.push('updated_at = ?');
+            values.push(now);
+            values.push(jobId);
+            this.db.prepare(`UPDATE digest_jobs SET ${fields.join(', ')} WHERE job_id = ?`).run(...values);
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    }
+
+    getDigestJob(jobId) {
+        if (this.db.isMock) {
+            return this._digestJobsMock().find(j => j.job_id === jobId) || null;
+        }
+        try {
+            return this.db.prepare('SELECT * FROM digest_jobs WHERE job_id = ?').get(jobId) || null;
+        } catch (_) { return null; }
+    }
+
+    getDigestJobsByConversation(conversationId) {
+        if (this.db.isMock) {
+            return this._digestJobsMock().filter(j => j.conversation_id === conversationId);
+        }
+        try {
+            return this.db.prepare('SELECT * FROM digest_jobs WHERE conversation_id = ? ORDER BY created_at DESC').all(conversationId);
+        } catch (_) { return []; }
+    }
+
+    getQueuedDigestJobs() {
+        if (this.db.isMock) {
+            return this._digestJobsMock().filter(j => j.status === 'queued');
+        }
+        try {
+            return this.db.prepare("SELECT * FROM digest_jobs WHERE status = 'queued' ORDER BY created_at ASC").all();
+        } catch (_) { return []; }
     }
 }
 

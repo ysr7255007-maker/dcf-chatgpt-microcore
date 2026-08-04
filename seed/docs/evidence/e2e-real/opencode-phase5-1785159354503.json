@@ -1,0 +1,84 @@
+{
+  "task": "Phase 5 OpenCode production digest",
+  "started_at": "2026-07-27T13:35:34.368Z",
+  "finished_at": "2026-07-27T13:35:54.504Z",
+  "total": 9,
+  "success": 0,
+  "no_products": 0,
+  "errors": 9,
+  "duration_minutes": 0.3,
+  "per_conversation": [
+    {
+      "index": 1,
+      "conversation_id": "6a66f4de-4c70-83ee-9d08-b48170aa2eb2",
+      "source_id": "X87SN5DDP0M8VMY60HB9WV9QXG",
+      "title": "代码复述请求",
+      "status": "error",
+      "error": "No events found in database"
+    },
+    {
+      "index": 2,
+      "conversation_id": "6a66cf7a-4578-83ee-9fc5-0667ebb707ea",
+      "source_id": "4XGB9AMVCA581D5G3TSEW9M9QB",
+      "title": "复述代码请求",
+      "status": "error",
+      "error": "No events found in database"
+    },
+    {
+      "index": 3,
+      "conversation_id": "6a66cea1-9f00-83ee-8800-2a2c67de6a7c",
+      "source_id": "NM1EQT5YN588DNMP513ZQW27X9",
+      "title": "原样复述代码",
+      "status": "error",
+      "error": "No events found in database"
+    },
+    {
+      "index": 4,
+      "conversation_id": "6a66c949-c530-83ee-8423-1a92369af12f",
+      "source_id": "2NRZWK01M21RFJ10P5B5DX1CGC",
+      "title": "复述代码请求",
+      "status": "error",
+      "error": "No events found in database"
+    },
+    {
+      "index": 5,
+      "conversation_id": "6a66c884-6950-83ee-9811-c9c3bd22fd2d",
+      "source_id": "1NYHK37HYRCSY1TXKT9SYQZNTR",
+      "title": "原样复述代码",
+      "status": "error",
+      "error": "No events found in database"
+    },
+    {
+      "index": 6,
+      "conversation_id": "6a66c5ec-c874-83ee-b4fb-5efc54dd556e",
+      "source_id": "N9X0ZFGCKXQCNYKBW67FB7DC3Q",
+      "title": "原样复述代码",
+      "status": "error",
+      "error": "No events found in database"
+    },
+    {
+      "index": 7,
+      "conversation_id": "6a66a466-a078-83ee-a5e6-aa4a98fee472",
+      "source_id": "C96FZ58R70566JWY0677KKH03R",
+      "title": "代码复述请求",
+      "status": "error",
+      "error": "No events found in database"
+    },
+    {
+      "index": 8,
+      "conversation_id": "6a669c6b-402c-83e8-b67b-68f558120faa",
+      "source_id": "C0YP615V5AV8X83WAK4ZB8TYSP",
+      "title": "原样复述代码",
+      "status": "error",
+      "error": "No events found in database"
+    },
+    {
+      "index": 9,
+      "conversation_id": "6a65c2cf-f560-83ee-82ff-c8897cce7803",
+      "source_id": "2Y1FS2TT4AXSB0QJ651RBBYT56",
+      "title": "Cantus模型定价分析工作",
+      "status": "error",
+      "error": "No events found in database"
+    }
+  ]
+}

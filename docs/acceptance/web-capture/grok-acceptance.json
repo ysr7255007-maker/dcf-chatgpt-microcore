@@ -1,0 +1,42 @@
+{
+  "site": "grok",
+  "at": "2026-07-29T23:46:05.093Z",
+  "convId": "f84c7149-4009-43b1-bac0-941dae1f8980",
+  "sourceId": "CJ7AEGFK9DBBQPWR8HEAB7SVEQ",
+  "marker": "DCF验收MS6QG420",
+  "pageUrl": "page-189",
+  "beacon": {
+    "started": true,
+    "host": "grok.com",
+    "conv": "f84c7149-4009-43b1-bac0-941dae1f8980",
+    "at": 1785368756949,
+    "scan": "f84c7149-4009-43b1-bac0-941dae1f8980",
+    "elements": 2,
+    "baseline_done": true,
+    "emitted": 2,
+    "last_role": "assistant"
+  },
+  "checks": {
+    "user_event_present": true,
+    "user_text_matches_marker": true,
+    "assistant_event_present": true,
+    "assistant_text_nonempty": true,
+    "no_partial_stream_single_ai": true,
+    "source_id_matches_url": true
+  },
+  "events": [
+    {
+      "type": "conversation.message.sent",
+      "role": "user",
+      "text": "DCF验收MS6QG420：请用一句话介绍你自己。",
+      "ts": 1785368744083
+    },
+    {
+      "type": "conversation.message.received",
+      "role": "assistant",
+      "text": "我是Grok 4.5，由xAI构建的AI助手，致力于以好奇心、真相追求和对人类的关爱来帮助你理解宇宙并解答各种问题。",
+      "ts": 1785368750724
+    }
+  ],
+  "passed": true
+}

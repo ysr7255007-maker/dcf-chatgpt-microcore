@@ -1,0 +1,48 @@
+{
+  "site": "deepseek",
+  "at": "2026-07-29T23:51:10.833Z",
+  "convId": "8b68cea6-5f1c-4991-a192-ee23bb3e1a40",
+  "sourceId": "E24E9XE0EQ153QB9P054Z9ABGB",
+  "marker": "DCF验收MS6QMSK5",
+  "pageUrl": "page-193",
+  "beacon": {
+    "started": true,
+    "host": "chat.deepseek.com",
+    "conv": "8b68cea6-5f1c-4991-a192-ee23bb3e1a40",
+    "at": 1785369062689,
+    "scan": "8b68cea6-5f1c-4991-a192-ee23bb3e1a40",
+    "elements": 2,
+    "baseline_done": true,
+    "emitted": 3,
+    "last_role": "assistant"
+  },
+  "checks": {
+    "user_event_present": true,
+    "user_text_matches_marker": true,
+    "assistant_event_present": true,
+    "assistant_text_nonempty": true,
+    "no_partial_stream_single_ai": true,
+    "source_id_matches_url": true
+  },
+  "events": [
+    {
+      "type": "conversation.message.sent",
+      "role": "user",
+      "text": "DCF验收MS6QMSK5：请用一句话介绍你自己。",
+      "ts": 1785369054213
+    },
+    {
+      "type": "conversation.message.sent",
+      "role": "user",
+      "text": "DCF验收MS6QMSK5：请用一句话介绍你自己。",
+      "ts": 1785369055044
+    },
+    {
+      "type": "conversation.message.received",
+      "role": "assistant",
+      "text": "我是DeepSeek，一个由深度求索公司打造的免费AI助手，随时准备用热情、细腻的回复为你解答问题、激发灵感。😊",
+      "ts": 1785369056986
+    }
+  ],
+  "passed": true
+}

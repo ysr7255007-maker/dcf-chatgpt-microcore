@@ -1,0 +1,42 @@
+{
+  "run_id": "electron-e2e-1785141665323",
+  "scenario": "electron-command-queue-e2e (phase 3)",
+  "started_at": "2026-07-27T08:41:05.322Z",
+  "finished_at": "2026-07-27T08:41:09.762Z",
+  "nonce": "DCF-NONCE-MS2Z9AZF-F62A78333842",
+  "conversation_url_before": "https://chatgpt.com/",
+  "message_count_before": 0,
+  "message_count_after": 0,
+  "read_command": {
+    "ok": true,
+    "status": "done",
+    "result": {
+      "ok": true,
+      "messages": [],
+      "total_on_page": 0,
+      "conversation_id": null,
+      "conversation_path": "/",
+      "url": "https://chatgpt.com/",
+      "title": "ChatGPT",
+      "read_at": "2026-07-27T08:41:08.662Z"
+    },
+    "command_id": "01KYHBRASF4D67CRRNP4N2RZSC"
+  },
+  "send_command": {
+    "ok": false,
+    "status": "failed",
+    "error": "send button not found",
+    "command_id": "01KYHBRB9FKV6PSAVPJQC0ADF3"
+  },
+  "selectors_contract": "[data-message-author-role]",
+  "failures": [
+    "dcf-request-read 返回 0 条消息（页面明明有对话）",
+    "dcf-send-card 失败: send button not found",
+    "防造假失败 [消息计数增量 >= 2]: 消息计数增量不足：期望 ≥2，实际 0（before=0, after=0）。增量为 0/不足意味着没有新消息真实产生 —— 疑似读取预存会话冒充成功。",
+    "防造假失败 [新增 user 消息包含本轮 nonce]: baseline 之后没有任何新增 user 消息（新增共 0 条）。说明消息从未真实发送 —— 输入注入未进入页面状态，或发送动作未生效。",
+    "防造假失败 [助手回复包含本轮 nonce]: 回复未包含本轮 nonce，疑似读取预存消息。期望包含 \"DCF-NONCE-MS2Z9AZF-F62A78333842\"，实际回复（前 120 字符）：\"\"。预存的历史回复在结构上不可能包含本轮唯一 nonce，此断言失败即判定造假路径。"
+  ],
+  "verdict": "fail",
+  "generated_at": "2026-07-27T08:41:09.762Z",
+  "note": "判定只依赖机器可验证信号（nonce/计数增量/companion 回查）；screenshots 仅作附件。"
+}

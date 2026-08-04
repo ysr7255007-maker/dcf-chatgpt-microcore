@@ -1,6 +1,6 @@
 # DCF Current State
 
-Updated: 2026-07-26
+Updated: 2026-07-30
 
 ## Repository truth after P0 unification
 
@@ -116,3 +116,38 @@ Desired → Observed → Committed → Reconcile
 8. 输出结构化证据包，不让用户搬运日志。
 
 该旧候选不再作为新系统开工前置。只有其自身行为通过时，才可按旧语义显式提升 Stable；新系统不能借用旧候选的测试或 Stable 声明自己的行为通过。
+
+## G1 采集能力矩阵（2026-07-30 归位后）
+
+采集能力已从 spec 过渡形态（`chrome-extension/code-units/web-capture/`）归位至 G1 Target Adapter 终态（`seed/adapters/chrome/web-capture/`）。裁定见 [ADR 2026-07-30](adr/2026-07-30-dcf-web-capture-target-adapter.md)。
+
+### 8 站采集能力
+
+| 站点 | 域名 | 会话 URL 形态 | manifest host_permission | verified |
+|---|---|---|---|---|
+| Gemini | gemini.google.com | `/app/{hex}` | ✓ | Wave 0 baseline true |
+| 豆包 | doubao.com | `/chat/{digits}` | ✓ | Wave 0 baseline true |
+| Kimi | kimi.com | `/chat/{uuid}` | ✓ | Wave 0 baseline true |
+| DeepSeek | deepseek.com | `/a/chat/s/{uuid}` | ✓ | Wave 0 baseline true |
+| Grok | grok.com | `/c/{uuid}` | ✓ | Wave 0 baseline true |
+| Z.ai | chat.z.ai | `/c/{uuid}` | ✓ | Wave 0 baseline true |
+| MiniMax | agent.minimaxi.com | `?id={digits}` | ✓ | Wave 0 baseline true |
+| 小米 MiMo | aistudio.xiaomimimo.com | `#/chat/{hex}` | ✓ | Wave 0 baseline true |
+
+> Claude.ai 与元宝：适配器文件保留但 verified:false（登录墙，清单外）。
+> G1 归位后需按 Wave 1.6 用 G1 EXT_ID 逐站真实复验，产出 G1 链证据。
+
+### G1 adapter 复活状态
+
+- `seed/adapters/chrome/background.js`：原生 service worker，`dcf.observation` handler + OutboxCore + `dcf-outbox-flush` alarm（0.5min）。
+- `seed/adapters/chrome/manifest.json`：8 站 host_permissions + `web-capture/bundle.js` content_script。
+- `scripts/build-g1-adapter.js`：零依赖 bundle 构建（runtime-check + engine + sites/* + index），VM 可执行断言。
+- `tests/chrome-web-capture.unit.test.js`：30/30 通过，指向 `seed/adapters/chrome/web-capture/`，含 manifest↔sites 一致性断言。
+- 旧世界 `chrome-extension/src/web-capture-background.js` 已删除；manifest.template.json 无 web-capture 集成。
+
+### AI 归纳配置入口状态
+
+- `seed/companion/ai-config.js`：读取 `~/.dcf/ai-config.json`，`api_endpoint/api_key/model` 三字段全有或全无（部分缺失=未配置）。
+- `GET /rpc/ai/status`：如实报告 🟢API 可用 / 🔵本地兜底 / ⚪未配置，不伪造归纳能力。
+- `POST /rpc/ai/digest/trigger`：未配置时自动生成修复任务而非静默失败。
+- 模板 `~/.dcf/ai-config.json.template`（不入库真实凭证）。

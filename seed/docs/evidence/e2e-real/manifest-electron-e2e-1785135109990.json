@@ -1,0 +1,32 @@
+{
+  "run_id": "electron-e2e-1785135109990",
+  "scenario": "electron-command-queue-e2e (phase 3)",
+  "started_at": "2026-07-27T06:51:49.989Z",
+  "finished_at": "2026-07-27T06:51:54.017Z",
+  "nonce": "DCF-NONCE-MS2VCT00-D440FB0DB9A6",
+  "conversation_url_before": "https://chatgpt.com/",
+  "message_count_after": null,
+  "read_command": {
+    "ok": true,
+    "status": "done",
+    "result": {
+      "ok": true,
+      "messages": [],
+      "total_on_page": 0,
+      "conversation_id": null,
+      "conversation_path": "/",
+      "url": "https://chatgpt.com/",
+      "title": "ChatGPT",
+      "read_at": "2026-07-27T06:51:53.511Z"
+    },
+    "command_id": "01KYH5G98Z1V2J8M173Z072QE1"
+  },
+  "send_command": null,
+  "selectors_contract": "[data-message-author-role]",
+  "failures": [
+    "链路异常: Cannot read properties of undefined (reading 'map')"
+  ],
+  "verdict": "fail",
+  "generated_at": "2026-07-27T06:51:54.017Z",
+  "note": "判定只依赖机器可验证信号（nonce/计数增量/companion 回查）；screenshots 仅作附件。"
+}

@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<!--
+  DCF Surface - collapsed floating-ball state.
+
+  A small transparent always-on-top window rendered as a translucent sphere.
+  The outer ring is a drag region (movable), the center is a no-drag click
+  target that asks the main process to expand back to the 340x1200 panel.
+-->
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>DCF</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    overflow: hidden;
+    user-select: none;
+  }
+  .ball {
+    position: absolute;
+    inset: 2px;
+    border-radius: 50%;
+    /* MyTest 风格：深色半透明底 + 亮色描边圆环，边界清晰不突兀 */
+    background: radial-gradient(circle at 34% 30%,
+      rgba(52, 62, 78, 0.78),
+      rgba(24, 29, 38, 0.74) 60%,
+      rgba(14, 17, 23, 0.72));
+    border: 2px solid rgba(91, 140, 255, 0.75);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35),
+                inset 0 1px 2px rgba(255, 255, 255, 0.12);
+    -webkit-app-region: drag; /* whole ball is movable */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: breathe 3s ease-in-out infinite;
+  }
+  /* 呼吸：描边亮度与透明度轻微起伏 */
+  @keyframes breathe {
+    0%, 100% { transform: scale(1); opacity: 0.72; }
+    50% { transform: scale(1.05); opacity: 0.92; }
+  }
+  /* Pulse when a new recommendation arrives */
+  @keyframes pulse-new-recommendation {
+    0%, 100% { border-color: rgba(91, 140, 255, 0.75);
+               box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35),
+                           inset 0 1px 2px rgba(255, 255, 255, 0.12); }
+    50% { border-color: rgba(139, 92, 246, 0.95);
+          box-shadow: 0 2px 20px rgba(139, 92, 246, 0.55),
+                      inset 0 1px 2px rgba(255, 255, 255, 0.12); }
+  }
+  .ball.has-new {
+    animation: breathe 3s ease-in-out infinite,
+               pulse-new-recommendation 2s ease-in-out 3;
+  }
+  /* Accessibility: respect reduced-motion preference */
+  @media (prefers-reduced-motion: reduce) {
+    .ball, .ball.has-new { animation: none; }
+  }
+  .core {
+    width: 62%;
+    height: 62%;
+    border-radius: 50%;
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    -webkit-app-region: no-drag; /* 中央点击区；外圈环带保留 drag 拖拽 */
+    color: rgba(255, 255, 255, 0.92);
+    font: 600 13px/1 -apple-system, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .core:hover { color: #fff; }
+  .core:empty::before {
+    /* 无推荐时显示简约小点 */
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.45);
+  }
+  .ball:hover { opacity: 0.96; }
+</style>
+</head>
+<body>
+  <div class="ball" id="ball-indicator" role="button" tabindex="0" aria-label="DCF 悬浮球：点击展开面板">
+    <button class="core" id="expand" title="展开 DCF 面板" aria-label="展开 DCF 面板"></button>
+  </div>
+  <script>
+    // 仅点击展开；hover 自动展开已移除（导致球无法拖拽移动）
+    document.getElementById('expand').addEventListener('click', () => {
+      if (window.dcfBridge && window.dcfBridge.expandPanel) {
+        window.dcfBridge.expandPanel();
+      }
+    });
+
+    // ---- New-recommendation pulse (plan 1.4) ----
+    // Poll the Companion task projection every 5 minutes; when fresh
+    // recommendations exist, flash the pulse animation on the ball.
+    const CHECK_INTERVAL_MS = 5 * 60 * 1000;
+
+    function rpcGet(path) {
+      if (window.dcfBridge && window.dcfBridge.rpc) {
+        return window.dcfBridge.rpc('GET', path);
+      }
+      return fetch('http://127.0.0.1:8472' + path)
+        .then((res) => res.json().then((body) => ({ ok: res.ok, status: res.status, body })))
+        .catch((err) => ({ ok: false, status: 0, body: { error: String(err) } }));
+    }
+
+    async function checkForNewRecommendations() {
+      const res = await rpcGet('/rpc/projection/tasks?status=recommended&limit=9');
+      const core = document.getElementById('expand');
+      if (!res.ok || !res.body || res.body.ok === false) return; // honest failure: stay quiet
+      const items = res.body.data || [];
+
+      // MyTest 风格信息数字：推荐计数直显在球心，无推荐则空心点
+      core.textContent = items.length > 0 ? String(items.length) : '';
+
+      if (items.length === 0) return;
+      const latestTs = items[0].lastActivityTs || items[0].last_activity_ts || 0;
+      const lastSeen = Number(localStorage.getItem('dcf-last-seen-recommendation-ts') || 0);
+      if (latestTs && latestTs <= lastSeen) return; // nothing new since last flash
+
+      const ball = document.getElementById('ball-indicator');
+      ball.classList.add('has-new');
+      // pulse runs 3 iterations x 2s; remove the class afterwards
+      setTimeout(() => ball.classList.remove('has-new'), 6500);
+      localStorage.setItem('dcf-last-seen-recommendation-ts', String(latestTs || Date.now()));
+    }
+
+    checkForNewRecommendations();
+    setInterval(checkForNewRecommendations, CHECK_INTERVAL_MS);
+  </script>
+</body>
+</html>

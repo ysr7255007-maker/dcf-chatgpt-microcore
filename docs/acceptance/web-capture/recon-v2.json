@@ -1,0 +1,85 @@
+{
+  "xiaomimimo": {
+    "pageId": 167,
+    "convUrl": "https://aistudio.xiaomimimo.com/#/chat/f04abac635b0f0cc4306e3188aa3322d",
+    "marker": "DCFRCNMS6GAHUE",
+    "aiChain": [
+      {
+        "cls": "markdown-prose select-text Markdown_markdown__a19823a0",
+        "role": null,
+        "tag": "div"
+      },
+      {
+        "cls": "w-full flex-1",
+        "role": null,
+        "tag": "div"
+      },
+      {
+        "cls": "flex min-w-0 flex-col gap-2 w-full flex-1 items-start",
+        "role": null,
+        "tag": "div"
+      },
+      {
+        "cls": "flex w-full flex-row",
+        "role": null,
+        "tag": "div"
+      },
+      {
+        "cls": "flex min-w-0 flex-1 flex-col items-start",
+        "role": null,
+        "tag": "div"
+      },
+      {
+        "cls": "group flex min-w-0 flex-1 gap-2 flex-row",
+        "role": null,
+        "tag": "div"
+      },
+      {
+        "cls": "relative flex w-full group mb-[16px] select-none mx-auto max-w-[50rem]",
+        "role": null,
+        "tag": "div"
+      }
+    ],
+    "aiText": "已深度思考（用时 1.4 秒）\n\n我是小米大模型Core团队开发的AI助手MiMo，很高兴认识你。",
+    "beacon": null,
+    "stopBtns": [],
+    "url": "https://aistudio.xiaomimimo.com/#/chat/f04abac635b0f0cc4306e3188aa3322d",
+    "userChain": [
+      {
+        "cls": "relative inline-block whitespace-pre-wrap rounded-lg bg-mimo-bg-message px-3 py-2 leading-",
+        "role": null,
+        "tag": "div"
+      },
+      {
+        "cls": "flex min-w-0 flex-col gap-2 max-w-[90%] items-end",
+        "role": null,
+        "tag": "div"
+      },
+      {
+        "cls": "flex w-full flex-row-reverse",
+        "role": null,
+        "tag": "div"
+      },
+      {
+        "cls": "flex min-w-0 flex-1 flex-col items-end",
+        "role": null,
+        "tag": "div"
+      },
+      {
+        "cls": "group flex min-w-0 flex-1 gap-2 flex-row-reverse",
+        "role": null,
+        "tag": "div"
+      },
+      {
+        "cls": "relative flex w-full mx-auto max-w-[50rem]",
+        "role": null,
+        "tag": "div"
+      },
+      {
+        "cls": "",
+        "role": null,
+        "tag": "div"
+      }
+    ]
+  }
+}

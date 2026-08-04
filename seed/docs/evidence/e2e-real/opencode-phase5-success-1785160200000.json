@@ -1,0 +1,51 @@
+{
+  "task": "#18 OpenCode Deep Link main channel digest",
+  "timestamp": "2026-07-27T14:30:00Z",
+  "opencode_server": "http://127.0.0.1:4096",
+  "opencode_version": "1.18.3",
+  "session_id": "ses_05c2acb1fffe7GrS4mxwytm9er",
+  "conversation_id": "6a65c2cf-f560-83ee-82ff-c8897cce7803",
+  "source_id": "2Y1FS2TT4AXSB0QJ651RBBYT56",
+  "title": "Cantus模型定价分析工作",
+  "status": "success",
+  "source_level": "opencode",
+  "products": {
+    "cards": [
+      {
+        "card_id": "UF972794D088F4657AE5F270ED",
+        "title": "Vision–Implementation Gap"
+      },
+      {
+        "card_id": "U8C7091F08E444D37A4CFA938E",
+        "title": "Project Maturity Reality"
+      },
+      {
+        "card_id": "U9A99C10C080148A6AE6842D55",
+        "title": "Surface Definition Drift"
+      }
+    ],
+    "maintenance_tasks": [
+      {
+        "task_id": "U8E7692D669FC4CA387DB7FC04",
+        "task": "Complete G1–G2 vertical closed loop on Electron Surface",
+        "priority": 1
+      },
+      {
+        "task_id": "U7D3B69AFD4D74891921CF66D1",
+        "task": "Replace 501 stubs in Electron Surface read/send",
+        "priority": 1
+      },
+      {
+        "task_id": "U37BF75D5E81B431CADE9CF5D3",
+        "task": "Unify G3–G6 into Electron Surface as integrated panels",
+        "priority": 3
+      }
+    ]
+  },
+  "digest_job": {
+    "job_id": "U02C1D14B7DFE481A9416688EA",
+    "source_level": "opencode",
+    "status": "done"
+  },
+  "markdown_summary": "## Conversation Analysis\n\nThis conversation is a retrospective analysis of the DCF (Desktop Companion Framework) project's evolution from vision to implementation. The evaluator identifies a persisten..."
+}

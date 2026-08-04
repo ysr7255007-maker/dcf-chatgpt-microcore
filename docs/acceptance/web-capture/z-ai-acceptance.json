@@ -1,0 +1,42 @@
+{
+  "site": "z-ai",
+  "at": "2026-07-29T23:48:53.331Z",
+  "convId": "a6918c0c-2404-4aac-b53d-893df46888f4",
+  "sourceId": "4PAB74BVN3KNTZDYVN1T10YC26",
+  "marker": "DCF验收MS6QJTHX",
+  "pageUrl": "page-191",
+  "beacon": {
+    "started": true,
+    "host": "chat.z.ai",
+    "conv": "a6918c0c-2404-4aac-b53d-893df46888f4",
+    "at": 1785368924973,
+    "scan": "a6918c0c-2404-4aac-b53d-893df46888f4",
+    "elements": 2,
+    "baseline_done": true,
+    "emitted": 1,
+    "last_role": "user"
+  },
+  "checks": {
+    "user_event_present": true,
+    "user_text_matches_marker": true,
+    "assistant_event_present": true,
+    "assistant_text_nonempty": true,
+    "no_partial_stream_single_ai": true,
+    "source_id_matches_url": true
+  },
+  "events": [
+    {
+      "type": "conversation.message.sent",
+      "role": "user",
+      "text": "DCF验收MS6QJTHX：请用一句话介绍你自己。",
+      "ts": 1785368916073
+    },
+    {
+      "type": "conversation.message.received",
+      "role": "assistant",
+      "text": "我是由Z.ai训练的大型语言模型，致力于为您提供有用、准确和安全的解答与帮助。",
+      "ts": 1785368932973
+    }
+  ],
+  "passed": true
+}

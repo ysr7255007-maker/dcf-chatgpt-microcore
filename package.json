@@ -7,9 +7,10 @@
     "install:guard": "node scripts/install-push-guard.js",
     "build": "npm run build:chrome",
     "build:chrome": "node scripts/build-chrome-extension.js",
+    "build:g1": "node scripts/build-g1-adapter.js",
     "build:legacy": "node scripts/build-userscript.js",
     "test": "npm run test:chrome",
-    "test:chrome": "node tests/chrome-host.unit.test.js && node tests/chrome-release-identity.test.js && node tests/chrome-build.integration.test.js && node tests/chrome-workspace-ui.test.js && node tests/chrome-local-agent-dialogue.test.js && node tests/chrome-dialogue-control-survival.test.js && node tests/chrome-local-agent-status.test.js && node tests/chrome-local-agent-diagnostics.test.js && node tests/chrome-lifecycle.integration.test.js && node tests/chrome-build-determinism.test.js && node tests/chrome-enable-bounded-transaction.test.js && node tests/chrome-outbox-bounded.test.js && node tests/chrome-alarms-flush.test.js",
+    "test:chrome": "node tests/chrome-host.unit.test.js && node tests/chrome-release-identity.test.js && node tests/chrome-build.integration.test.js && node tests/chrome-workspace-ui.test.js && node tests/chrome-local-agent-dialogue.test.js && node tests/chrome-dialogue-control-survival.test.js && node tests/chrome-local-agent-status.test.js && node tests/chrome-local-agent-diagnostics.test.js && node tests/chrome-lifecycle.integration.test.js && node tests/chrome-build-determinism.test.js && node tests/chrome-enable-bounded-transaction.test.js && node tests/chrome-outbox-bounded.test.js && node tests/chrome-alarms-flush.test.js && node tests/chrome-web-capture.unit.test.js",
     "test:legacy": "node tests/dcf-ammo-protocol.unit.test.js && node tests/dcf-module-supersession.unit.test.js && node tests/dcf-supersession-health.unit.test.js && node tests/dcf-conversation-performance.unit.test.js && node tests/dcf-performance-attribution.unit.test.js && node tests/dcf-conversation-turn-attribution.unit.test.js && node tests/dcf-stateful-command-feedback.unit.test.js && node tests/dcf-bootstrap-package-sync.unit.test.js && node tests/dcf-conversation-environment.unit.test.js && node tests/dcf-capability-reconciliation.unit.test.js && node tests/dcf-declarative-ui-package.unit.test.js && node tests/dcf-core-architecture.unit.test.js && node tests/dcf-artifact-transaction.unit.test.js && node tests/dcf-command-runtime.unit.test.js && node tests/dcf-migration.unit.test.js && node tests/dcf-health-report.unit.test.js && node tests/dcf-module-visibility.unit.test.js && node tests/dcf-package-management-ui.unit.test.js && node tests/dcf-host-bounded-intake.unit.test.js && node tests/dcf-catalog.unit.test.js && node tests/dcf-viewport-fence.unit.test.js && node tests/dcf-release.integration.test.js && node tests/dcf-build-determinism.unit.test.js",
     "verify": "npm run verify:chrome && npm run verify:legacy",
     "verify:chrome": "npm run build:chrome && npm run test:chrome && node --check dist/dcf-chrome-extension/src/background.js && node scripts/validate-json.js dist/dcf-chrome-extension/config.json releases/chrome/official-index.json releases/chrome/build-manifest.json releases/chrome/code-unit-version-ledger.json dist/release-manifest.json dist/verification-summary.json",
@@ -17,5 +18,12 @@
     "doctor": "node scripts/doctor.js",
     "publish:chrome": "node scripts/publish-chrome-web-store.js"
   },
-  "devDependencies": {}
+  "dependencies": {
+    "node-fetch": "^3.3.2"
+  },
+  "devDependencies": {
+    "dependency-cruiser": "^18.1.0",
+    "sqlite3": "^6.0.1",
+    "zod": "^4.4.3"
+  }
 }

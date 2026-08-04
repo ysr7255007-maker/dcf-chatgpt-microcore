@@ -1,0 +1,42 @@
+{
+  "site": "kimi",
+  "at": "2026-07-29T23:43:39.045Z",
+  "convId": "19fb042d-6b72-84c7-8000-0928ff12c5bd",
+  "sourceId": "NK0Z8WXYDPYR3P3TY78RMN38N5",
+  "marker": "DCF验收MS6QD1QV",
+  "pageUrl": "page-187",
+  "beacon": {
+    "started": true,
+    "host": "kimi.com",
+    "conv": "19fb042d-6b72-84c7-8000-0928ff12c5bd",
+    "at": 1785368610885,
+    "scan": "19fb042d-6b72-84c7-8000-0928ff12c5bd",
+    "elements": 2,
+    "baseline_done": true,
+    "emitted": 2,
+    "last_role": "assistant"
+  },
+  "checks": {
+    "user_event_present": true,
+    "user_text_matches_marker": true,
+    "assistant_event_present": true,
+    "assistant_text_nonempty": true,
+    "no_partial_stream_single_ai": true,
+    "source_id_matches_url": true
+  },
+  "events": [
+    {
+      "type": "conversation.message.sent",
+      "role": "user",
+      "text": "DCF验收MS6QD1QV：请用一句话介绍你自己。",
+      "ts": 1785368599995
+    },
+    {
+      "type": "conversation.message.received",
+      "role": "assistant",
+      "text": "我是 Kimi，由月之暗面（Moonshot AI）开发的人工智能助手，擅长长文本处理、联网搜索、代码编写和数据分析。 高峰时段算力不足，已切换至 K2.6 快速，升级会员畅用思考模型",
+      "ts": 1785368606730
+    }
+  ],
+  "passed": true
+}

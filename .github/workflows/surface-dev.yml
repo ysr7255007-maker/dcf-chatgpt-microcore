@@ -1,0 +1,36 @@
+name: Surface Development Verification
+
+on:
+  push:
+    branches: ['feature/*']
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run test:legacy
+        run: npm run test:legacy
+
+      - name: Run test:chrome
+        run: npm run test:chrome
+
+      - name: Build Electron app
+        run: cd packages/desktop-electron && npm pack
+
+      - name: Smoke test surface rendering
+        run: node scripts/smoke-test-surface.js
+
+      - name: E2E projection test (event log -> three lenses)
+        run: node scripts/e2e-projection-test.js
