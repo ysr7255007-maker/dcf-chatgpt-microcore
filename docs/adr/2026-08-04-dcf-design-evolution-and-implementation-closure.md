@@ -1,7 +1,7 @@
 # ADR: DCF 从愿景文档到“实现闭合”的设计演化
 
 Date: 2026-08-04  
-Status: historical design record; current implementation authority moved to `docs/spec/2026-08-04-dcf-current-architecture-spec.md`
+Status: historical design record; current implementation authority moved to `docs/spec/2026-08-04-DCF-当前实施规范.md`
 
 ## Context
 
@@ -603,6 +603,6 @@ Current Spec
 
 当前实现权威：
 
-`docs/spec/2026-08-04-dcf-current-architecture-spec.md`
+`docs/spec/2026-08-04-DCF-当前实施规范.md`
 
 历史文档的价值不被删除，但不再允许历史候选路线重新取得实施权威。
