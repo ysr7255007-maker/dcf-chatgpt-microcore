@@ -1,9 +1,10 @@
 # DCF ADR canonical status index
 
-Updated: 2026-07-26
+Updated: 2026-08-06
 
 ## Current
 
+- `2026-08-06-dcf-self-contained-observation-intermediate-layer.md` — **accepted architecture direction; schema and weighting still open**; inserts a project-independent self-contained observation layer between deterministic fact pretranslation and all downstream narrative / project / residual / solver consumers, uses investigation AI only for context-to-self-contained translation, allows overlapping/gapped noisy slices, and feeds user narrative corrections back as localized reconstruction plus high-weight observations
 - `../vision/2026-07-26-dcf-from-zero-vision-adr.md` — **current evolving vision**; defines the authorized-life-material boundary, user ownership, DCF-owned visible Surface, cross-AI continuity and long-term value direction without inheriting old implementation structure
 - `2026-07-26-dcf-minimal-live-loop-growth-blueprint.md` — **accepted and executable**; P0 preserves and normalizes the old world, then `seed/` grows strictly from G1 “authorize—recover—save—review” through G7, with Companion as the only persistent core, DCF Surface owned by DCF, and target adapters kept silent and non-authoritative
 - `2026-07-21-dcf-control-plane-desired-observed-committed-reconcile.md` — **accepted for the retained rc.3 old-world control plane; fact-ownership method retained, universal business state machine rejected for seed**; CodeUnit identity is content-addressed inside that old implementation, Current/LKG commit after Canary loaded proof, Stable requires explicit behavior acceptance, and page migration cannot roll back Current
