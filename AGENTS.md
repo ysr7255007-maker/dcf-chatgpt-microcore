@@ -1,63 +1,289 @@
-# DCF (Dialog Control Framework)
+# DCF 施工入口
 
-## 项目定位
+DCF（Dialog Control Framework）是用户与 AI 共同维护的长期个人认知基础设施。
 
-DCF（Dialog Control Framework）是用户与 AI 共同维护的个人认知基础设施。
+本文件只承担一个职责：
 
-## 目录结构
+> **告诉施工 AI 当前该相信什么、从哪里开始、哪些东西绝不能从旧实现反推。**
 
-- `src/core/` — 核心引擎（artifacts、constants、state 管理）
-- `chrome-extension/` — Chrome 扩展（background、content scripts、UI pages）
-- `scripts/` — 构建与发布脚本
-- `tests/` — 单元与集成测试
+## 1. 当前权威顺序
 
-## 常用命令
+任何新实现、维护、架构判断、能力归属与验收，默认按以下顺序读取：
 
-```bash
-npm run build:chrome   # 构建 Chrome 扩展
-npm run test:chrome    # 运行 Chrome 测试
-npm run verify         # 完整验证：构建 + 测试 + 检查
+1. `docs/spec/2026-08-04-DCF-当前实施规范.md`
+   - 当前最高层总体实施权威；
+   - 定义现实 / 认知 / 查询 / 求解 / 行动的事实所有权与功能边界。
+2. `docs/spec/2026-08-06-DCF-功能包络与施工控制规范.md`
+   - 当前施工控制专项规范；
+   - 对施工顺序、功能施工资格、依赖解锁、通路验证和执行层权限，明确替代总规范旧第 19～20 节的阶段式 P0～P9 / G0～G9 调度语义。
+3. `docs/spec/2026-08-05-DCF-macOS-AI实验宿主规范.md`
+   - macOS 专用宿主、原生公共能力与实验能力边界。
+4. `docs/spec/2026-08-06-DCF-个人叙事功能块实施规范.md`
+   - 第一条正式认知产品闭环。
+5. `docs/spec/2026-08-06-DCF-锚定认知世界与查询求解公共能力规范.md`
+   - SQLite 锚定认知世界、查询诱导语义场与约束求解公共能力。
+6. `docs/current-state.md`
+   - 当前真实施工状态、已冻结研究裁决、尚未实现能力与当前施工入口。
+7. `docs/adr/`
+   - 历史推演、被替代路线与为什么发生过这些变化。
+8. 旧 blueprint / README / Chrome rc / legacy / seed / G1～G7 / 旧控制平面等
+   - 历史实现、证据、回退与零件来源；不再拥有当前架构权威。
+
+若旧代码、旧测试、旧 ADR、旧 README 与当前 `docs/spec/` 冲突：
+
+> **以当前 `docs/spec/` 为准。实现 AI 不得挑选更方便的一份。**
+
+---
+
+## 2. 当前施工模型
+
+DCF 的正式施工单位是：
+
+> **功能包络（Capability Envelope）**
+
+整个项目按一张能力有向无环图（Capability DAG）推进。
+
+阶段名、产品成熟度、P0～P9 等只能作为人类理解 / 里程碑视图，不得成为施工调度门。
+
+一个功能包络在进入施工层之前，其设计必须已经冻结：
+
+```text
+输入契约
+输出契约
+错误契约
+状态变化
+功能需求
+质量 / 性能要求
+依赖关系
+最小功能通路验证
+完整验收
 ```
 
-## 风险边界
+施工 AI 可以决定：
 
-- **不可变代码单元**不应直接编辑，应通过构建流程更新。Do not directly edit immutable code units.
-- **真实浏览器验收**仅限 controlled interface 进行。Never perform uncontrolled production validation.
-- 修改风险边界前应先 review 相关 ADR。
+```text
+内部代码怎么写
+内部文件怎么组织
+使用哪种不违反契约的成熟实现
+怎样修复本包络实现
+```
 
-## 修改后验证
+施工 AI 禁止决定：
 
-每次修改后必须运行针对性验证，确保改动不破坏现有行为：
+```text
+修改输入 / 输出契约
+降低功能或性能要求
+增加新的设计依赖
+扩大上游职责
+修改祖先功能包络语义
+为了方便本节点而重画能力 DAG
+```
 
-- **修改 Chrome 扩展代码** → 运行 `npm run test:chrome`（11 个测试）
-- **修改核心引擎代码** → 运行 `npm run test:legacy`（23 个测试）
-- **涉及构建流程** → 运行 `npm run verify`（构建 + 测试 + 检查）
+如果既定设计无法实现：
 
-仅当改动经过验证确认通过后，才能标记为完成。Run targeted tests after every modification.
+```text
+停止施工
++
+输出可重复失败证据
++
+标记 DESIGN_BLOCKED
+```
 
-## 决策规则
+不得由施工 AI 自行重新设计。
 
-- **ADR 优先**：修改架构前应查阅最新 ADR。Check the latest ADR before architecture changes.
-- Prefer consulting existing ADR rather than guessing architecture intent.
-- When in doubt, review the `docs/adr/` directory.
+---
 
-## 渐进式披露路由
+## 3. 通路验证纪律
 
-DCF 采用渐进式披露：本文件是默认加载的唯一入口，更深层的文档按需查阅，避免一次性加载全部上下文。动手前按下表匹配触发场景，按需加载对应文档。Load deeper documentation on demand, not upfront.
+每个正式功能包络内部都必须有一个：
 
-### 加载规则
+> **最小功能通路验证（Minimum Functional Path Validation）**
 
-| 触发场景 | 加载文档 | 说明 |
-|---|---|---|
-| 修改架构、判断方案或评估风险边界前 | [docs/adr/status-index.md](docs/adr/status-index.md) | 先查 ADR 状态索引，按索引指向阅读相关 ADR，再决定是否展开 `docs/adr/` 中的具体条目 |
-| 新 AI 窗口接入 DCF、执行维护任务、诊断运行时故障、决定能力归属或准备发布 | [docs/skills/dcf-maintenance-skill.md](docs/skills/dcf-maintenance-skill.md) | 维护技能协议，定义维护 DCF 时的操作规范 |
-| 执行或验证 Chrome 原生宿主发布线 | [docs/taskbooks/](docs/taskbooks/) | 任务书，记录历史执行结果与当前规范执行记录 |
-| 需要建立共识认知或插入认知提示 | [docs/prompts/](docs/prompts/) | 常驻认知提示词与共识插入指南 |
-| 需要确认当前运行态或能力矩阵 | [docs/current-state.md](docs/current-state.md)、[docs/acceptance-matrix.md](docs/acceptance-matrix.md) | 当前状态与验收矩阵 |
+它属于本功能包络，不是独立能力节点。
 
-### 加载顺序约定
+默认使用：
 
-1. **默认只读本文件**：日常编码、测试、构建命令以本文件为准。
-2. **先索引后展开**：查 ADR 时先读 `status-index.md`，再按需读单条 ADR；不要一次性加载整个 `docs/adr/` 目录。
-3. **维护任务先读技能**：任何涉及 DCF 维护语义的任务，先读维护技能，再按其指引展开其他文档。
-4. **任务书仅用于发布线追溯**：不作为日常编码参考，仅在执行或验证 Chrome 原生宿主发布线时加载。
+```text
+最小合成夹具（Minimal Synthetic Fixture）
+或
+真实样本切片（Real Sample Slice）
+```
+
+只要输入 / 输出契约在设计层已经明确，通路验证就可以提前执行；默认不等待真实上游功能完成。
+
+通路验证只回答：
+
+> **在符合既定输入契约的最小输入下，本功能最短逻辑路径能否产生规定的最小有效输出。**
+
+若上游真实样本被用于测试，并发现上游实际输出不满足上游自己的既定输出契约，可以提交上游契约违例报告；修改意见只能要求上游实现恢复到原契约，禁止扩大上游契约。
+
+若合法输入下本功能最小通路仍不能成立：
+
+```text
+DESIGN_BLOCKED
+```
+
+交还设计层重新评估。
+
+---
+
+## 4. `main` 与旧实现的地位
+
+`main` 同时保存：
+
+```text
+当前设计权威
+当前状态
+历史实现
+运行证据
+实验报告
+回退材料
+```
+
+因此必须严格区分：
+
+> **main 是历史与事实母线，不等于新 DCF 的代码结构母本。**
+
+旧代码允许：
+
+```text
+历史追溯
+行为证据
+旧产品回退
+提取已经被新功能包络证明仍适用的零件
+```
+
+旧代码禁止：
+
+```text
+决定新实现目录结构
+决定新功能边界
+决定新事实所有权
+因为“这里已经有代码”而改变新功能包络
+```
+
+正确复用方向：
+
+```text
+新功能包络
+↓
+检查旧代码是否恰好满足契约
+↓
+满足 → 复用
+不满足 → 不继承
+```
+
+禁止：
+
+```text
+旧代码已经存在
+↓
+把新需求塞进旧边界
+```
+
+---
+
+## 5. 新实现根目录
+
+新的原生 DCF 实现统一放在：
+
+```text
+native/
+```
+
+`native/` 不是旧 Chrome / Electron / userscript 的下一版本目录。
+
+它表示：
+
+> **按照当前 `docs/spec/` 与功能包络重新生长的原生 DCF 实现根。**
+
+当前旧目录继续原样保留：
+
+```text
+chrome-extension/
+engine/
+packages/desktop-electron/
+packages/target-adapter-chrome/
+dcf-chatgpt-microcore.user.js
+```
+
+它们默认视为历史实现 / 兼容资产，不作为 `native/` 的结构模板。
+
+新功能分支默认只应修改：
+
+```text
+native/
+对应功能包络 / 验收规范
+必要的 docs/current-state.md
+```
+
+除非功能包络明确要求兼容或复用旧资产，否则不得顺手重构旧实现。
+
+---
+
+## 6. 分支与验证纪律
+
+`main` 保存：
+
+> **已经被接受的设计事实、历史事实与通过验证的能力事实。**
+
+正式功能包络施工应在独立 branch / worktree 中进行。
+
+推荐命名：
+
+```text
+feature/<功能编号>-<简短名称>
+```
+
+每个包络通过自身完整验收后，才具备合回 `main` 的资格。
+
+每个 `PASSED` 必须绑定：
+
+```text
+功能包络编号 / 版本
+准确 Git commit SHA
+验证命令
+固定输入 / Fixture
+实际输出
+运行环境
+最终 PASS / FAIL
+```
+
+AI 自报“完成”不是验收证据。
+
+---
+
+## 7. 旧验证命令的地位
+
+以下命令继续用于验证旧产品是否被意外破坏：
+
+```bash
+npm run build:chrome
+npm run test:chrome
+npm run test:legacy
+npm run verify
+```
+
+但它们只证明旧实现的既定行为，不证明任何新的 `native/` 功能包络已经成立。
+
+新功能必须使用自己的包络验收入口。
+
+---
+
+## 8. 开工前最小读取
+
+实现一个正式功能包络前至少读取：
+
+```text
+AGENTS.md
+docs/spec/2026-08-06-DCF-功能包络与施工控制规范.md
+对应的当前 docs/spec/
+docs/current-state.md
+该功能包络自身规范
+```
+
+只有遇到历史原因、旧能力复用或架构裁决来源问题时，才继续展开相关 ADR / 旧代码。
+
+原则：
+
+> **新施工继承 main 的历史，不继承 main 的架构惯性。**
