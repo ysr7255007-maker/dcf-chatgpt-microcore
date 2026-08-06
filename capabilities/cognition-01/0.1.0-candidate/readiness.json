@@ -1,0 +1,66 @@
+{
+  "capability": "cognition-01",
+  "version": "0.1.0-candidate",
+  "baseline": "fee052a1e8af06bf1479550487d7e15ff271e7c7",
+  "status": "DESIGN_NOT_CLOSED",
+  "gates": {
+    "target_registration": {
+      "result": "FAIL",
+      "reason": "仓库中未找到正式 capability-dag.yaml；current-state 只把该能力称为第一个样板候选。"
+    },
+    "source_closure": {
+      "result": "PASS",
+      "reason": "已定位总体规范、施工控制规范、公共锚定认知规范、个人叙事局部规范和 current-state，并区分冻结事实、开放项与历史/实现问题。"
+    },
+    "boundary_closure": {
+      "result": "PASS",
+      "reason": "“稳定认知对象 + 不可变修订”的职责与不属于本包络的检索投影、审核 UI、锚点查询等可以由现行规范清晰划开。"
+    },
+    "contract_closure": {
+      "result": "FAIL",
+      "reason": "公开动作、ID、kind、created_at、author_kind、source_refs、content_hash、错误与幂等契约未冻结。"
+    },
+    "dependency_closure": {
+      "result": "FAIL",
+      "reason": "正式能力 DAG 尚未存在，无法绑定具体可消费上游能力版本。"
+    },
+    "fixture_closure": {
+      "result": "BLOCKED",
+      "reason": "没有冻结的公开输入 Schema，因此生成 Fixture 会把 create-envelope 自己的假设伪装成设计事实。"
+    },
+    "path_validation_closure": {
+      "result": "BLOCKED",
+      "reason": "最小行为目标已提取，但没有公开调用契约，无法生成可执行步骤。"
+    },
+    "acceptance_closure": {
+      "result": "PARTIAL",
+      "reason": "功能需求与验收意图已映射，但大部分测试无法在缺少机器契约时执行。"
+    },
+    "quality_performance_closure": {
+      "result": "FAIL",
+      "reason": "现行设计既没有数值门槛，也没有显式裁决本版本无性能门槛。"
+    },
+    "blind_builder_test": {
+      "result": "FAIL",
+      "reason": "施工 Agent 仍必须自行决定公开 API、ID、来源引用、哈希、错误和幂等语义。"
+    },
+    "blind_verifier_test": {
+      "result": "FAIL",
+      "reason": "验收 Agent 无法只依据当前来源对实现输出作确定 PASS/FAIL。"
+    }
+  },
+  "blocking_design_items": [
+    "OPEN-001",
+    "OPEN-002",
+    "OPEN-003",
+    "OPEN-004",
+    "OPEN-005",
+    "OPEN-006",
+    "OPEN-007",
+    "OPEN-008",
+    "OPEN-009",
+    "OPEN-010",
+    "OPEN-011",
+    "OPEN-012"
+  ]
+}

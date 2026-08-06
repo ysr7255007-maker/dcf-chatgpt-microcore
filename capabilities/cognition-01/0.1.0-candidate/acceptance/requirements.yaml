@@ -1,0 +1,51 @@
+能力: cognition-01
+候选版本: 0.1.0-candidate
+需求:
+- id: REQ-001
+  要求: 正式认知对象与修订的权威持久层必须是 SQLite。
+  来源:
+  - SRC-001
+  - SRC-002
+- id: REQ-002
+  要求: 认知对象必须具有稳定 object_id，并通过 current_revision_id 指向当前正式修订。
+  来源:
+  - SRC-002
+- id: REQ-003
+  要求: 每个正式修订必须具有独立 revision_id，并保存 object_id、content、created_at、author_kind、source_refs、content_hash。
+  来源:
+  - SRC-002
+- id: REQ-004
+  要求: 对既有对象产生新版本时必须创建新的 revision；旧 revision 不得被静默覆盖。
+  来源:
+  - SRC-001
+  - SRC-002
+  - SRC-003
+- id: REQ-005
+  要求: 已经成功形成的旧 revision 必须继续可读取，并可作为后续稳定锚点的落点。
+  来源:
+  - SRC-002
+  - SRC-003
+- id: REQ-006
+  要求: 新 revision 的写入与 object.current_revision_id 更新必须处于同一原子事务边界；失败不得留下半提交状态。
+  来源:
+  - SRC-003
+- id: REQ-007
+  要求: 任何正式提交失败必须回滚，不得出现新 revision 已成立但 current_revision_id 仍指向旧 revision 的状态。
+  来源:
+  - SRC-003
+- id: REQ-008
+  要求: FTS、embedding、多向量、自动切分等可重算投影不得成为正式认知保存成功的前置条件。
+  来源:
+  - SRC-002
+  - SRC-003
+- id: REQ-009
+  要求: 能力的公开契约不得依赖 SQLite 物理表名、列名或具体 SQL；这些属于可替换内部实现。
+  来源:
+  - SRC-004
+  - SRC-005
+  性质: 由施工控制原则和 current-state 边界推出的包络约束
+- id: REQ-010
+  要求: 在公开契约未冻结前，本候选不得进入正式施工。
+  来源:
+  - SRC-004
+  - SRC-005

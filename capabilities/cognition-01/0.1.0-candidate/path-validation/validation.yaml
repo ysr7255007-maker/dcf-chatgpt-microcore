@@ -1,0 +1,23 @@
+id: PATH-001
+状态: BLOCKED
+阻塞原因: 公开动作、输入/输出 Schema、ID 语义、错误契约尚未冻结，无法生成一个不靠实现者猜测的可执行通路。
+允许保留的来源支持目标:
+- 从空认知库形成一个稳定对象及其第一个正式 revision。
+- 成功后 object.current_revision_id 指向该 revision。
+- 同一对象产生第二个正式版本时新增 revision，第一 revision 内容保持不变。
+- 中途失败时不留下 revision/current_revision_id 半状态。
+禁止 create-envelope 擅自补充:
+- 调用命令或函数名
+- object_id / revision_id 格式
+- 请求/响应 JSON 字段
+- content_hash 算法
+- 公开错误码
+- 幂等键
+解除阻塞条件:
+- OPEN-002
+- OPEN-003
+- OPEN-005
+- OPEN-007
+- OPEN-008
+- OPEN-009
+- OPEN-010

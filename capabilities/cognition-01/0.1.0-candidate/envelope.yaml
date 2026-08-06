@@ -1,0 +1,93 @@
+功能:
+  编号: cognition-01
+  版本: 0.1.0-candidate
+  名称: 稳定认知对象与不可变修订
+  状态: DESIGN_NOT_CLOSED
+  生成方式: create-envelope 诊断运行
+  基线提交: fee052a1e8af06bf1479550487d7e15ff271e7c7
+功能定义: 在 SQLite 权威认知世界中维护稳定认知对象，为同一对象追加不可变正式修订，并以原子方式推进 current_revision_id；已经成功形成的旧修订不可被后续提交静默覆盖。
+能力边界:
+  拥有:
+  - 稳定认知对象逻辑身份
+  - 正式不可变 revision
+  - object.current_revision_id
+  - revision 正文及其正式元数据
+  - revision 来源引用与内容哈希
+  - 对象/修订提交的原子性
+  不拥有:
+  - AI 草稿与用户审核 UI
+  - 个人叙事写作语义
+  - 审核记录本身
+  - FTS / embedding / 多向量 / 自动切分等可重算投影
+  - revision + span 稳定锚点的公开查询契约
+  - 项目叙事 / Wiki / 知识卡 / 语言弹药
+  - SQLite 物理表名、索引和 SQL 结构
+来源已冻结的逻辑模型:
+  认知对象:
+    字段:
+    - object_id
+    - kind
+    - current_revision_id
+    - 生命周期元数据
+    说明: 仅为来源支持的逻辑模型，不等同于已经冻结的公开输入/输出 Schema。
+  认知修订:
+    字段:
+    - revision_id
+    - object_id
+    - content
+    - created_at
+    - author_kind
+    - source_refs
+    - content_hash
+    说明: 字段存在性由公共认知规范支持；格式、值域和产生责任存在 open-design 阻塞项。
+状态不变量:
+- 旧 revision 不得被后续提交静默覆盖。
+- 更新对象时必须通过新增 revision 表达新的正式版本。
+- 成功提交后 current_revision_id 必须指向本次正式 revision。
+- 正式保存失败不得留下 revision 与 current_revision_id 不一致的半状态。
+- 检索投影失败不得阻塞正式 revision 保存。
+公开输入契约:
+  状态: UNRESOLVED
+  阻塞项:
+  - OPEN-002
+  - OPEN-003
+  - OPEN-004
+  - OPEN-005
+  - OPEN-006
+  - OPEN-007
+  - OPEN-010
+  - OPEN-012
+公开输出契约:
+  状态: UNRESOLVED
+  阻塞项:
+  - OPEN-002
+  - OPEN-003
+  - OPEN-005
+  - OPEN-006
+  - OPEN-007
+  - OPEN-008
+  - OPEN-012
+公开错误契约:
+  状态: UNRESOLVED
+  阻塞项:
+  - OPEN-009
+  - OPEN-010
+真实能力依赖:
+  状态: UNRESOLVED
+  阻塞项:
+  - OPEN-001
+  说明: SQLite 是已冻结的实现方向/权威持久层，但正式 DAG 尚未决定是否把持久事务作为独立上游能力或由 cognition-01 自己拥有。create-envelope 不替设计层选择。
+质量与性能:
+  状态: UNRESOLVED
+  阻塞项:
+  - OPEN-011
+最小功能通路验证:
+  状态: BLOCKED
+  文件: path-validation/validation.yaml
+完整验收:
+  状态: PARTIAL
+  需求文件: acceptance/requirements.yaml
+  矩阵文件: acceptance/matrix.yaml
+来源映射: sources/source-map.yaml
+设计缺口: open-design.yaml
+Readiness: readiness.json

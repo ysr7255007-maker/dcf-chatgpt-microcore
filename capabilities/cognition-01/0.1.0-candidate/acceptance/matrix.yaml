@@ -1,0 +1,72 @@
+状态: PARTIAL_BLOCKED
+说明: 需求已经可从权威来源提取，但因为公开机器契约未闭合，只能生成验收意图，不能生成正式可执行测试。
+映射:
+- 需求: REQ-001
+  验收: ACC-AUTHORITY-001
+  意图: 所有正式对象/修订状态只写入 SQLite 权威持久层。
+  可执行: false
+  阻塞:
+  - OPEN-002
+- 需求: REQ-002
+  验收: ACC-OBJECT-001
+  意图: 首次正式提交后读取对象，current_revision_id 指向已存在正式 revision。
+  可执行: false
+  阻塞:
+  - OPEN-002
+  - OPEN-003
+- 需求: REQ-003
+  验收: ACC-REVISION-FIELDS-001
+  意图: 读取 revision 并验证逻辑字段均存在且语义与提交一致。
+  可执行: false
+  阻塞:
+  - OPEN-002
+  - OPEN-003
+  - OPEN-005
+  - OPEN-006
+  - OPEN-007
+  - OPEN-008
+- 需求: REQ-004
+  验收: ACC-IMMUTABILITY-001
+  意图: 提交第二版本后重新读取第一 revision，内容及正式元数据保持不变。
+  可执行: false
+  阻塞:
+  - OPEN-002
+  - OPEN-003
+- 需求: REQ-005
+  验收: ACC-HISTORY-READ-001
+  意图: 更新后旧 revision 仍可按其身份读取。
+  可执行: false
+  阻塞:
+  - OPEN-002
+  - OPEN-003
+- 需求: REQ-006
+  验收: ACC-ATOMICITY-001
+  意图: 在新 revision 写入与 current_revision 更新之间注入故障，重启后不得出现半状态。
+  可执行: false
+  阻塞:
+  - OPEN-002
+  - OPEN-009
+- 需求: REQ-007
+  验收: ACC-ROLLBACK-001
+  意图: 事务任一步失败后逻辑正式状态与失败前一致。
+  可执行: false
+  阻塞:
+  - OPEN-002
+  - OPEN-009
+- 需求: REQ-008
+  验收: ACC-PROJECTION-INDEPENDENCE-001
+  意图: 关闭/缺失检索投影处理器时，正式 revision 仍可提交。
+  可执行: false
+  阻塞:
+  - OPEN-002
+- 需求: REQ-009
+  验收: ACC-IMPLEMENTATION-OPAQUE-001
+  意图: 验收只通过公开契约，不读取 SQLite 物理表名作为成功条件。
+  可执行: false
+  阻塞:
+  - OPEN-002
+- 需求: REQ-010
+  验收: READINESS-GATE
+  意图: 所有阻塞设计项清零且 Gate 全部 PASS 后才允许正式施工。
+  可执行: true
+  阻塞: []
