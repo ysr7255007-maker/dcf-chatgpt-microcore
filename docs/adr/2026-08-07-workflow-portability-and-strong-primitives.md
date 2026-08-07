@@ -18,6 +18,8 @@
 
 > **外部 Workflow 首先视为可迁移的流程知识 / Source Language；DCF 不因模板生态规模自动继承其 Runtime。**
 
+> **Workflow Runtime 的选型目标不是“功能最强”或“模板最多”，而是“最适配 Bun + Becsy + DCF 运行主权边界”；外部生态主要作为 Workflow Knowledge（工作流知识）来源。**
+
 > **只有无法由普通 AI / 控制原语低损耗表达、且具有明显工程或状态语义杠杆的机制，才进入“直接采用 / 借机制 / 薄包装”候选。**
 
 当前最强候选为：
@@ -31,11 +33,48 @@ subflow state scope
 
 AI 角色、Prompt、写作/审阅循环、RAG、分类、参数提取、多 Agent 分工等当前优先视为 Workflow / Recipe 资产，不升级为底层强原语。
 
+## Strategy Closure After Structural Experiment
+
+本轮结构实验已经足以改变后续选型策略，但还不足以冻结具体 Runtime。
+
+后续不再把“社区 Workflow 数量最多的平台”直接等同于“DCF 最合适的 Workflow Runtime”。两类价值正式分开：
+
+```text
+Workflow Knowledge
+→ 专业人士已经验证过的流程结构、方法论、角色分工、检查点、决策路径
+→ 允许从 n8n / Dify / LangGraph / Mastra / 其他生态迁移、重编译、复刻
+
+Workflow Runtime
+→ 真正负责流程执行、持久状态、暂停恢复、失败恢复和运行语义的内核
+→ 优先选择与 Bun、Becsy World、ExternalOperation 和 DCF 权威边界最自然匹配的实现
+```
+
+因此当前策略不是“选择最强大的 Workflow 平台”，而是：
+
+> **选择修改半径最小、主权边界最清楚、能最大程度复用 Bun + Becsy 既有体质的 Workflow 核心；再把外部生态中的 Workflow 知识迁移进来。**
+
+如果某个外部 Workflow 只依赖常见 AI / 控制原语，则优先迁移其语义，不继承其 Runtime。
+
+如果某个外部 Workflow 依赖真正高杠杆、难以低损耗复刻的特殊运行语义，则单独评估该机制是否应：
+
+```text
+直接采用
+借机制重做
+薄包装接入
+保留为外部 Provider
+```
+
+不得因为单个特殊组件反向绑定整个 Workflow 平台。
+
 ## Why
 
 10 / 10 样本的主要流程拓扑可以重新表达为平台无关原语；没有观察到某个 n8n / Dify 品牌节点在逻辑上不可替代。
 
 反而是 checkpoint、pause/resume 等越重要的运行机制越在多个框架中独立收敛，说明其强度来自问题结构而不是品牌封闭性。
+
+这意味着：
+
+> **模板生态的网络效应可以被当作“流程知识库”吸收，而不必把 DCF 的运行主权交给同一个平台。**
 
 ## Boundary
 
@@ -49,9 +88,11 @@ Becsy 主权边界：未测试
 crash / resume：未测试
 ```
 
-因此不得据此把 Workflow Facility 写入当前正式公共设施规范。
+因此不得据此把 Workflow Facility 写入当前正式公共设施规范，也不得提前冻结某个 Workflow Runtime。
 
 ## Next Gate
+
+下一轮实验不再寻找“功能最全框架”，而是寻找**最适配 DCF 体系的运行核心**。
 
 执行：
 
@@ -62,7 +103,20 @@ Bun + Becsy
 × Activepieces durable mechanisms
 ```
 
-用真实进程死亡、pause/resume、subflow state、World lifecycle 证明最终边界后，再决定是否 Accepted。
+重点验证：
+
+```text
+与 Bun 的真实运行亲和度
+与 Becsy World 的运行主权边界
+ExternalOperation 是否能成为统一外部生命周期
+持久 checkpoint / interrupt / resume
+进程死亡后的恢复
+副作用幂等与重复恢复
+subflow state scope
+需要多少 DCF glue / adapter
+```
+
+用真实进程死亡、pause/resume、subflow state、World lifecycle 证明最终边界后，再决定具体 Workflow Runtime 是否进入 Accepted。
 
 ## Capability 16
 
