@@ -37,35 +37,23 @@ AI 负责开放理解
 当前正式构件：
 
 ```text
-Capability
+Capability（能力）
 → 对用户独立成立的完整软件功能
 
-Public Facility
-→ 吸收多个 Capability 重复工程复杂度的低业务语义设施
+Public Facility（公共设施）
+→ 吸收多个能力重复工程复杂度的低业务语义设施
 
-Provider / Probe
+Provider / Probe（提供者 / 探针）
 → 把具体外部系统、模型、Agent、来源接进稳定公共契约
 
-Shared Semantic Component
-→ 多个 Capability 共同认识的真实世界状态
+Shared Semantic Component（共享语义组件）
+→ 多个能力共同认识的真实世界状态
 
-ExternalOperation
+ExternalOperation（外部操作）
 → 所有 World 外异步执行在 World 内的统一生命周期身份
 ```
 
-Capability 必须通过：
-
-```text
-Standalone World
-```
-
-独立证明，并在正式运行时进入：
-
-```text
-Composite World
-```
-
-组合。
+每个能力必须通过 Standalone World（独立 World）证明，并在正式运行时进入 Composite World（组合 World）。
 
 核心原则：
 
@@ -79,7 +67,7 @@ Composite World
 
 ## 3.1 Capability × Bun+Becsy World 组合实验
 
-证据 ADR：
+证据 ADR（架构决策记录）：
 
 ```text
 docs/adr/2026-08-07-capability-world-composition-runtime-seam-absorption.md
@@ -94,12 +82,12 @@ ARCHITECTURE_FEASIBLE
 已验证：
 
 ```text
-Capability Standalone World 独立成立
-Shared Semantic Component 真实 overlap
-Composite World 唯一 provider
-Becsy 自动 precedence
-无业务 Adapter / Mapper / Bridge
-新增 Capability 不要求修改旧 Capability
+能力在独立 World 中独立成立
+共享语义组件表达真实重叠
+组合 World 只保留一个活动提供者
+Becsy 根据组件访问形成执行先后关系
+无业务适配器 / 映射器 / 桥接器
+新增能力不要求修改旧能力
 坏组合在启动前拒绝
 ```
 
@@ -142,35 +130,35 @@ E4 BORROW_PATTERNS_BUILD_THIN_INTAKE
 E5 E5_REALITY_LOOP_PASS
 ```
 
-无 blocking finding。
+无阻塞问题。
 
-有 7 项非阻塞 finding，正式施工不得遗忘：
+有 7 项非阻塞问题，正式施工不得遗忘：
 
 ```text
-CJK_FTS_TOKENIZER_PENDING
-PERMISSION_EXERCISE_INSUFFICIENT
-TOOL_EVENT_COVERAGE_PARTIAL
-E4 B/C 只有 structural assessment
-LanceDB teardown / handle lifecycle
-Codex custom-provider / ACP model enumeration compatibility
-SECOND_PROVIDER_LOCAL_ONLY
+中文全文检索分词器待选
+真实 Agent 权限请求尚未触发
+工具事件覆盖仍不完整
+E4 B/C 只有结构性评估
+LanceDB 退出与句柄生命周期问题
+Codex 自定义 Provider / ACP 模型枚举兼容缺口
+第二真实 AI Provider 目前只有本地 Ollama
 ```
 
 ---
 
 # 4. 已收敛的公共设施
 
-## AI Turn Facility
+## AI Turn Facility（AI 单轮调用公共设施）
 
 当前结构：
 
 ```text
-DCF AI Turn Contract
+DCF AI 单轮调用契约
 → Vercel AI SDK Core
-→ Provider
+→ Provider（模型提供者）
 ```
 
-不再计划自研完整 AI Harness。
+不再计划自研完整 AI Harness（AI 调用运行框架）。
 
 第一方产品候选：
 
@@ -180,19 +168,19 @@ AI 工作台
 
 ---
 
-## Agent Execution Facility
+## Agent Execution Facility（Agent 执行公共设施）
 
 当前结构：
 
 ```text
-DCF Agent Semantics
-→ ACP
+DCF Agent 语义
+→ ACP（Agent 客户端协议）
 → Codex / Claude / future agents
 ```
 
 双真实 Agent 已通过同一客户端验证。
 
-第一条正式可写 Agent 任务需要补真实 permission request/decision 验收。
+第一条正式可写 Agent 任务需要补真实 permission request/decision（权限请求 / 决策）验收。
 
 第一方产品候选：
 
@@ -202,40 +190,36 @@ AI 任务执行台
 
 ---
 
-## Cognition Data Facility
+## Cognition Data Facility（认知数据公共设施）
 
 正式冻结的是：
 
 ```text
-SQLite Authority
+SQLite 权威层
 +
-replaceable / rebuildable Derived Retrieval
+可替换 / 可删除 / 可重建的派生检索层
 ```
 
-LanceDB 是当前通过实验的 default candidate，不是永久不可替换标准。
+LanceDB 是当前通过实验的默认候选，不是永久不可替换标准。
 
-`bge-small-zh-v1.5` 是 E3 固定变量，不是生产 embedding 选型。
+`bge-small-zh-v1.5` 是 E3 固定实验变量，不是生产向量模型选型。
 
-查询必须支持多范式：
+查询必须支持多种方式：
 
 ```text
-Structured
-Exact / Phrase
-Lexical
-Temporal
-Relationship
-Dense
-Hybrid
-future strategies
+结构化查询
+精确 / 短语查询
+词法查询
+时间查询
+关系查询
+稠密语义查询
+混合查询
+未来自定义查询策略
 ```
 
-语义引力场只是 Query Strategy 之一。
+语义引力场只是查询策略之一。
 
-AI self-contained chunk 当前仍是：
-
-```text
-SELF_CONTAINED_CHUNKS_EXPERIMENTAL
-```
+AI 自包含切片当前仍是实验机制，不是默认机制。
 
 第一方产品候选：
 
@@ -245,72 +229,274 @@ SELF_CONTAINED_CHUNKS_EXPERIMENTAL
 
 ---
 
-## Evidence Intake Facility
+## Evidence Intake Facility（证据接入公共设施）
 
 当前裁决：
 
 ```text
-DCF thin intake
+DCF 薄证据接入层
 ```
 
 借鉴：
 
 ```text
-Home Assistant → lifecycle / unique identity
-OTel → ack / pipeline / time semantics
-Redpanda → cursor / checkpoint
+Home Assistant → 生命周期 / 唯一身份
+OpenTelemetry → 确认机制 / 管道分层 / 时间语义
+Redpanda → 游标 / 检查点
 ```
 
-不直接采用 OTel / Redpanda 作为 DCF 通用数据面。
+不直接采用 OpenTelemetry / Redpanda 作为 DCF 通用数据面。
 
-第一方产品候选：
+最新边界已经进一步收敛：
 
 ```text
-证据源管理器
+来源生命周期
+确认
+游标 / 检查点
+健康
+缓冲 / 背压
+重试 / 恢复
+去重基础机制
 ```
+
+属于证据接入公共设施。
+
+第一方产品候选已从单纯“证据源管理器”扩展为：
+
+```text
+证据源采集管理
+```
+
+它不仅管理来源，还负责为每个来源配置采集方式、运行策略与来源输出语义。
 
 ---
 
-# 5. Reality / Fact 与 Cognition 当前边界
+# 5. Capability Discovery（能力发现）最新进展：前两个能力
+
+最新增量规范：
+
+```text
+docs/spec/2026-08-07-DCF-证据采集与多源证据编译增量规范.md
+```
+
+## 5.1 证据源采集管理
+
+当前状态：
+
+```text
+强 Capability 候选
+独立目的已成立
+输入侧边界已收敛
+尚未冻结正式编号与 Capability Envelope（能力包络）
+```
+
+它负责：
+
+```text
+来源发现 / 注册 / 配置
+权限
+启停
+事件触发
+轮询
+定时获取
+手动获取
+新鲜度要求
+并发
+限流
+重试
+游标 / 检查点
+缓冲 / 积压
+去重
+健康
+恢复
+每个来源自己的输出方式
+```
+
+当前来源范围不再局限于人物和电脑活动，未来允许包括：
+
+```text
+RSS / 新闻
+网页 / API
+论文 / PDF
+探索文档
+邮件
+公开数据源
+现实验收来源
+其他用户关心的可追溯来源
+```
+
+核心原则：
+
+> **采集能力负责把现实可靠地拿进来，并吃掉输入侧复杂度。**
+
+---
+
+## 5.2 来源输出改为 ECS 小组件自由组合优先
+
+当前不优先建立一个万能 `RawEvidence`（原始证据）大对象。
+
+来源进入 World 后，优先表达为：
+
+```text
+一个证据实体
++
+若干可组合的语义组件
+```
+
+例如：
+
+```text
+原始证据标记
+来源身份
+证据类型
+内容引用
+时间信息
+来源特有语义
+工程 / 会话 / 操作 / 文档等可选身份
+```
+
+不同来源可以输出不同组件组合。
+
+大正文、PDF、网页和长日志不要求进入 ECS（实体组件系统）；World 只需保存稳定身份、公共语义与内容引用，实际内容留在适合的持久层。
+
+正式原则：
+
+> **来源差异停留在来源侧；能够共享的意义通过 ECS 公共语义组件自然汇合。**
+
+---
+
+## 5.3 多源证据编译
+
+当前状态：
+
+```text
+强 Capability 候选
+独立目的已成立
+输出侧边界已收敛
+尚未冻结正式编号与 Capability Envelope（能力包络）
+```
+
+它不负责：
+
+```text
+抓 RSS
+监听文件
+申请来源权限
+来源轮询
+来源并发 / 限流
+来源重试
+来源游标恢复
+```
+
+对于编译器而言：
+
+> **证据已经来了。**
+
+它只负责：
+
+```text
+选择
+分组
+原样直通
+规范化
+替换 / 翻译
+去噪
+排序
+确定关系闭合
+有事实依据的少量关系补充
+拆分 / 合并产物
+输出格式
+输出时机
+```
+
+同一批输入允许产生多个不同文件或产物，供不同消费环节使用。
+
+编译时机允许：
+
+```text
+证据到达立即编译
+事件触发
+定时
+累计到数量阈值
+时间窗口结束
+手动触发
+消费端请求时触发
+```
+
+但编译器不得为了满足输出目标自行去抓来源。
+
+---
+
+## 5.4 能力一与能力二不通过私有 Source Output 接口连接
+
+当前优先关系：
+
+```text
+证据源采集管理
+↓
+写入 World 中的 ECS 公共语义组件
+↓
+多源证据编译按组件组合查询
+```
+
+编译器订阅的是：
+
+> **自己真正关心的证据语义。**
+
+不是：
+
+> 某个具体 RSS / Git / Codex / Qoder Provider。
+
+因此未来新增一种来源，只要它提供已有公共语义组件，原有下游编译规则原则上可以零修改接入。
+
+核心原则：
+
+> **新增实现，不新增接缝。**
+
+---
+
+# 6. Reality / Fact 与 Cognition 当前边界
 
 E5 已验证：
 
 ```text
-AgentExecutionStatus
+Agent 执行状态
 ≠
-ObservedEffect
+现实观察结果
 ```
 
-Agent 声称完成不能进入 Reality Verifier 输入。
+Agent 声称完成不能进入 Reality Verifier（现实验证器）输入。
 
 同时：
 
 ```text
-Fact Authority
+事实权威
 ≠
-Cognition Authority
+认知权威
 ```
 
 当前不存在自动：
 
 ```text
-ObservedEffect / RawEvidence
-→ Cognition Authority
+现实效果 / 原始证据
+→ 正式认知权威
 ```
 
 的晋级通道。
 
 未来必须经过显式认知形成 / 审核 / 确认流程才能进入正式认知。
 
+行动验证所需的现实证据也可以由统一的证据源采集管理体系负责采集；验证能力不应为自己重复建立采集链。
+
 ---
 
-# 6. 当前功能候选池
+# 7. 当前功能候选池
 
 以下是讨论后有独立产品意义的候选，**尚未冻结编号与最终边界**：
 
 ```text
-证据源管理器
-多源证据编译器
+证据源采集管理
+多源证据编译
 AI 协作审阅编辑器
 个人叙事
 认知数据工作台
@@ -327,19 +513,15 @@ Wiki
 环境悬浮球
 ```
 
-注意：
+目前前两个候选已经完成第一轮边界收敛；后续继续执行 Capability Discovery（能力发现）。
 
-```text
-项目叙事
-```
+注意：项目叙事不能提前假设只是展示层；它未来很可能拥有 AI 主动理解、查询与递归取证行为。
 
-不能提前假设只是展示层；它未来很可能拥有 AI 主动理解、查询与递归取证行为。
-
-同样，Wiki / 知识卡 / 语言弹药虽然可以大量复用 Cognition Data Facility，仍允许因独立产品目的和 Surface 成为薄 Capability。
+Wiki / 知识卡 / 语言弹药虽然可以大量复用认知数据公共设施，仍允许因独立产品目的和 Surface（界面形态）成为薄能力。
 
 ---
 
-# 7. 当前施工位置
+# 8. 当前施工位置
 
 公共设施的大架构探索阶段已经结束。
 
@@ -347,25 +529,26 @@ Wiki
 
 ```text
 再找一套平行大架构
-为了保险重做第二套 Agent runtime
+为了保险重做第二套 Agent 运行时
 为了搜索自己造数据库内核
 为了采集直接引入完整遥测平台
+为了采集 / 编译 / 外部长任务再造一个统一工作流权威
 ```
 
 当前下一步：
 
 ```text
-Capability Discovery
+继续 Capability Discovery（能力发现）
 ↓
-Capability Registry 候选收敛
+Capability Registry（能力登记表）候选收敛
 ↓
-选择第一个 Capability
+选择第一个能力
 ↓
-关闭 Capability Envelope
+关闭 Capability Envelope（能力包络）
 ↓
-Standalone World
+Standalone World（独立 World）
 ↓
-Composite World
+Composite World（组合 World）
 ↓
 正式施工
 ```
@@ -380,11 +563,13 @@ docs/spec/2026-08-06-DCF-功能包络与施工控制规范.md
 
 ---
 
-# 8. 当前最重要的设计纪律
+# 9. 当前最重要的设计纪律
 
 1. **不要让第三方轮子定义 DCF 世界。**
 2. **不要让不确定 AI 做确定机制已经能做的事。**
 3. **功能可以增加，运行权威和接缝不能同比增加。**
-4. **新功能优先复用 Public Facility；新来源优先新增 Provider；新认知表达优先新增 Recipe / Query Strategy。**
-5. **只有出现新的独立用户目的与无法被已有机制表达的业务行为，才增加新的 Capability。**
-6. **旧认知与旧设计保留为历史；新裁决通过显式版本追加，不静默改写过去。**
+4. **新来源优先扩展 Provider（提供者）与来源配置；下游优先复用已有 ECS 公共语义组件。**
+5. **采集侧复杂度归采集能力；编译侧复杂度归编译能力；不要先造横跨两者的总工作流层。**
+6. **只有出现新的独立用户目的与无法被已有机制表达的业务行为，才增加新的 Capability。**
+7. **旧认知与旧设计保留为历史；新裁决通过显式版本追加，不静默改写过去。**
+8. **面向用户判断与架构选择的文档，中文优先；必须保留英文原名时，第一次同时给出中文含义。**
