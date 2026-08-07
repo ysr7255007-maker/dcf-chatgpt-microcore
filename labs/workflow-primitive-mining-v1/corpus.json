@@ -1,0 +1,175 @@
+{
+  "schema": "dcf-workflow-primitive-mining-corpus/v1",
+  "date": "2026-08-07",
+  "base_commit": "e9281955daa743ed4265013eac4ee0d0db50ece6",
+  "evidence_state": "observed_sources_plus_structural_mapping",
+  "core_primitives": [
+    "input",
+    "ai.turn",
+    "agent.run",
+    "tool.invoke",
+    "structured.output",
+    "retrieve",
+    "sequence",
+    "branch",
+    "loop",
+    "parallel",
+    "join",
+    "subflow",
+    "state",
+    "human.input",
+    "wait.external",
+    "output"
+  ],
+  "residual_primitives": [
+    "durable.interrupt_resume",
+    "durable.conversation_cursor",
+    "durable.resume_race_idempotency",
+    "evaluation.dataset_metric"
+  ],
+  "samples": [
+    {
+      "id": "n8n-recursive-writing-editing",
+      "platform": "n8n",
+      "title": "Generate written content with GPT Recursive Writing & Editing agents",
+      "source": "https://n8n.io/workflows/3503-generate-written-content-with-gpt-recursive-writing-and-editing-agents/",
+      "observed_shape": "writer -> structured editor verdict -> incomplete loops to writer -> complete output",
+      "mapped_primitives": ["input", "ai.turn", "structured.output", "branch", "loop", "state", "output"],
+      "residuals": [],
+      "portability_verdict": "STRUCTURAL_PORTABLE"
+    },
+    {
+      "id": "n8n-phase-blog-subagents",
+      "platform": "n8n",
+      "title": "Phase-based blog creation system with specialized AI sub-agents",
+      "source": "https://n8n.io/workflows/10524-phase-based-blog-creation-system-with-specialized-ai-sub-agents/",
+      "observed_shape": "phase state -> one sub-agent per turn -> user proceed/rerun gate -> next phase; research may be added without advancing phase",
+      "mapped_primitives": ["input", "state", "branch", "subflow", "ai.turn", "human.input", "loop", "output"],
+      "residuals": ["durable.conversation_cursor"],
+      "portability_verdict": "PORTABLE_WITH_RUNTIME_GUARANTEE"
+    },
+    {
+      "id": "n8n-multi-agent-research-cross-critique",
+      "platform": "n8n",
+      "title": "Generate multi-agent AI research reports with OpenAI and Google Sheets",
+      "source": "https://n8n.io/workflows/15201-generate-multi-agent-ai-research-reports-with-openai-and-google-sheets/",
+      "observed_shape": "parallel specialist agents -> cross-critique -> synthesis -> persistence",
+      "mapped_primitives": ["input", "parallel", "agent.run", "join", "ai.turn", "tool.invoke", "output"],
+      "residuals": [],
+      "portability_verdict": "STRUCTURAL_PORTABLE"
+    },
+    {
+      "id": "n8n-human-tool-approval",
+      "platform": "n8n",
+      "title": "Production AI Playbook: Human Oversight (Exercise 2)",
+      "source": "https://n8n.io/workflows/13848-production-ai-playbook-human-oversight-exercise-2/",
+      "observed_shape": "agent proposes sensitive tool action -> pause for human approval -> execute or decline",
+      "mapped_primitives": ["input", "agent.run", "tool.invoke", "human.input", "branch", "output"],
+      "residuals": ["durable.interrupt_resume"],
+      "portability_verdict": "PORTABLE_WITH_RUNTIME_GUARANTEE"
+    },
+    {
+      "id": "n8n-pyragogy-handbook",
+      "platform": "n8n",
+      "title": "Pyragogy AI-driven handbook generator with multi-agent orchestration",
+      "source": "https://n8n.io/workflows/4904-pyragogy-ai-driven-handbook-generator-with-multi-agent-orchestration/",
+      "observed_shape": "meta-orchestrator -> selected agents -> peer review -> major-issue redraft loop -> human webhook approval -> persist/version",
+      "mapped_primitives": ["input", "agent.run", "ai.turn", "branch", "loop", "state", "human.input", "wait.external", "tool.invoke", "output"],
+      "residuals": ["durable.interrupt_resume", "durable.resume_race_idempotency"],
+      "portability_verdict": "PORTABLE_WITH_RUNTIME_GUARANTEE"
+    },
+    {
+      "id": "n8n-ai-evaluation-correctness",
+      "platform": "n8n",
+      "title": "Evaluation metric example: Correctness (judged by AI)",
+      "source": "https://n8n.io/workflows/4271-evaluation-metric-example-correctness-judged-by-ai/",
+      "observed_shape": "alternate evaluation trigger -> dataset row -> normal AI path -> judge against reference -> emit metric",
+      "mapped_primitives": ["input", "branch", "ai.turn", "structured.output", "output"],
+      "residuals": ["evaluation.dataset_metric"],
+      "portability_verdict": "PORTABLE_WITH_SPECIALIZED_TOOLING"
+    },
+    {
+      "id": "dify-multi-question-rag",
+      "platform": "Dify",
+      "title": "Multi-Question RAG Workflow",
+      "source": "https://marketplace.dify.ai/template/langgenius/Multi-Question%20RAG%20Workflow?creationType=templates&language=en-US&templateId=d2d2ae92-d95b-4d55-b343-be411c3147d3",
+      "observed_shape": "extract standalone questions -> iterate -> retrieve knowledge -> agent answer with citations -> format collection",
+      "mapped_primitives": ["input", "ai.turn", "structured.output", "loop", "retrieve", "agent.run", "join", "output"],
+      "residuals": [],
+      "portability_verdict": "STRUCTURAL_PORTABLE"
+    },
+    {
+      "id": "dify-human-writing-assistant",
+      "platform": "Dify",
+      "title": "Human Input: Writing Assistant",
+      "source": "https://marketplace.dify.ai/template/langgenius/Human%20Input%3A%20Writing%20Assistant?creationType=templates&language=en-US&templateId=646708b7-26d9-44d9-8c8b-e2ebf41d44b6",
+      "observed_shape": "brief -> LLM draft -> workflow pause for human feedback -> LLM refine -> output",
+      "mapped_primitives": ["input", "ai.turn", "human.input", "state", "output"],
+      "residuals": ["durable.interrupt_resume"],
+      "portability_verdict": "PORTABLE_WITH_RUNTIME_GUARANTEE"
+    },
+    {
+      "id": "dify-enterprise-ai-project-planner",
+      "platform": "Dify",
+      "title": "Enterprise AI Project Planner",
+      "source": "https://marketplace.dify.ai/template/priyanshu/Enterprise%20AI%20Project%20Planner?creationType=templates&language=en-US&templateId=17bad031-9ac8-451c-9f88-8bb30b0cea8f",
+      "observed_shape": "project idea -> multiple specialist roles/documents -> executive review -> human approval/revision -> final report",
+      "mapped_primitives": ["input", "sequence", "agent.run", "ai.turn", "human.input", "loop", "state", "output"],
+      "residuals": ["durable.interrupt_resume"],
+      "portability_verdict": "PORTABLE_WITH_RUNTIME_GUARANTEE"
+    },
+    {
+      "id": "n8n-research-publish-circuit-breaker",
+      "platform": "n8n",
+      "title": "Run a multi-agent research and publishing pipeline with GPT-4o, Tavily and Notion",
+      "source": "https://n8n.io/workflows/16662-run-a-multi-agent-research-and-publishing-pipeline-with-gpt-4o-tavily-and-notion/",
+      "observed_shape": "researcher -> writer -> reviewer -> self-correcting revision loop bounded by max revision circuit breaker -> publish",
+      "mapped_primitives": ["input", "agent.run", "tool.invoke", "ai.turn", "branch", "loop", "state", "output"],
+      "residuals": [],
+      "portability_verdict": "STRUCTURAL_PORTABLE"
+    }
+  ],
+  "strong_primitive_observations": [
+    {
+      "primitive": "durable.interrupt_resume",
+      "sources": [
+        "https://docs.langchain.com/oss/javascript/langgraph/interrupts",
+        "https://www.activepieces.com/docs/build-pieces/piece-reference/flow-control",
+        "https://mastra.ai/blog/resumeworkflows",
+        "https://marketplace.dify.ai/template/langgenius/Human%20Input%3A%20Writing%20Assistant?creationType=templates&language=en-US&templateId=646708b7-26d9-44d9-8c8b-e2ebf41d44b6"
+      ],
+      "assessment": "STRUCTURAL_CONVERGENCE"
+    },
+    {
+      "primitive": "durable.checkpoint_replay",
+      "sources": [
+        "https://docs.langchain.com/oss/javascript/langgraph/interrupts",
+        "https://www.activepieces.com/docs/install/architecture/durable-execution",
+        "https://mastra.ai/blog/introducing-temporal-workflows"
+      ],
+      "assessment": "STRUCTURAL_CONVERGENCE"
+    },
+    {
+      "primitive": "subflow.state_scope",
+      "sources": [
+        "https://docs.langchain.com/oss/javascript/langgraph/use-subgraphs"
+      ],
+      "assessment": "HIGH_LEVERAGE_SPECIALIZED_SEMANTIC"
+    },
+    {
+      "primitive": "durable.resume_race_idempotency",
+      "sources": [
+        "https://www.activepieces.com/docs/install/architecture/waitpoints"
+      ],
+      "assessment": "HIGH_LEVERAGE_ENGINEERING_MECHANISM"
+    },
+    {
+      "primitive": "evaluation.dataset_metric",
+      "sources": [
+        "https://n8n.io/workflows/4271-evaluation-metric-example-correctness-judged-by-ai/",
+        "https://n8n.io/workflows/4268-evaluation-metric-example-check-if-tool-was-called/"
+      ],
+      "assessment": "VALUABLE_AI_WORKFLOW_TOOLING_NOT_FOUNDATIONAL"
+    }
+  ]
+}

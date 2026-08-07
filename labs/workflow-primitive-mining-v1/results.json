@@ -1,0 +1,36 @@
+{
+  "schema": "dcf-workflow-primitive-mining-result/v1",
+  "generated_at": "2026-08-07",
+  "validator_runtime": "v22.16.0",
+  "sample_count": 10,
+  "topology_portable_count": 10,
+  "topology_portable_ratio": 1,
+  "zero_residual_count": 4,
+  "durable_runtime_residual_count": 5,
+  "residual_usage": {
+    "durable.conversation_cursor": 1,
+    "durable.interrupt_resume": 4,
+    "durable.resume_race_idempotency": 1,
+    "evaluation.dataset_metric": 1
+  },
+  "primitive_usage": {
+    "agent.run": 6,
+    "ai.turn": 9,
+    "branch": 6,
+    "human.input": 5,
+    "input": 10,
+    "join": 2,
+    "loop": 6,
+    "output": 10,
+    "parallel": 1,
+    "retrieve": 1,
+    "sequence": 1,
+    "state": 6,
+    "structured.output": 3,
+    "subflow": 1,
+    "tool.invoke": 4,
+    "wait.external": 1
+  },
+  "validation_errors": [],
+  "verdict": "STRUCTURAL_PORTABILITY_PASS_WITH_STRONG_RUNTIME_RESIDUALS"
+}

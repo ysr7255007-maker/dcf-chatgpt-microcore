@@ -1,0 +1,56 @@
+{
+  "schema": "dcf-workflow-primitive-mining-decision/v1",
+  "date": "2026-08-07",
+  "base_commit": "e9281955daa743ed4265013eac4ee0d0db50ece6",
+  "verdict": "STRUCTURAL_PORTABILITY_PASS_WITH_STRONG_RUNTIME_RESIDUALS",
+  "evidence_state": {
+    "workflow_sources": "observed",
+    "semantic_mapping": "structural_mapped",
+    "vocabulary_validation": "machine_validated",
+    "bun_runtime": "not_tested",
+    "becsy_integration": "not_tested",
+    "cross_engine_replay": "not_tested"
+  },
+  "metrics": {
+    "sample_count": 10,
+    "topology_portable_count": 10,
+    "topology_portable_ratio": 1.0,
+    "zero_residual_count": 4,
+    "durable_runtime_residual_count": 5
+  },
+  "strong_primitives": [
+    {
+      "name": "durable.interrupt_resume",
+      "class": "STRUCTURAL_CONVERGENCE",
+      "observed_in": ["LangGraph JS", "Activepieces", "Mastra", "Dify"]
+    },
+    {
+      "name": "durable.checkpoint_replay",
+      "class": "STRUCTURAL_CONVERGENCE",
+      "observed_in": ["LangGraph JS", "Activepieces", "Mastra/Temporal"]
+    },
+    {
+      "name": "durable.resume_race_idempotency",
+      "class": "HIGH_LEVERAGE_ENGINEERING_MECHANISM",
+      "observed_in": ["Activepieces"]
+    },
+    {
+      "name": "subflow.state_scope",
+      "class": "HIGH_LEVERAGE_SPECIALIZED_SEMANTIC",
+      "observed_in": ["LangGraph JS"]
+    },
+    {
+      "name": "evaluation.dataset_metric",
+      "class": "VALUABLE_AI_WORKFLOW_TOOLING_NOT_FOUNDATIONAL",
+      "observed_in": ["n8n"]
+    }
+  ],
+  "strategy": [
+    "Treat n8n/Dify workflows primarily as portable professional process knowledge, not runtime lock-in.",
+    "Create a compact vendor-neutral Workflow IR only after runtime experiment confirms strong primitive boundaries.",
+    "Preserve source workflow, provenance, translated IR and unsupported residuals; never silently approximate unknown semantics.",
+    "Prefer mature implementations/mechanisms for durable execution, interrupt/resume and recovery instead of reimplementing them casually.",
+    "Run a next experiment on Bun+Becsy x LangGraph JS/Mastra/Activepieces durable mechanisms before freezing a Workflow Facility."
+  ],
+  "capability_16": "KEEP_DISCOVERY_DEFERRED"
+}
