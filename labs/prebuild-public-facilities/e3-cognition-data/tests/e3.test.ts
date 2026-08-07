@@ -107,6 +107,8 @@ function evaluate(name: string, perQuery: Record<string, { objectId: string }[]>
 }
 
 beforeAll(async () => {
+  // clean state 纪律：每次套件启动自清残留（派生目录与权威 DB 均为运行时产物）
+  await rm(new URL("../derived/", import.meta.url), { recursive: true, force: true });
   await mkdir(new URL("../derived/", import.meta.url), { recursive: true });
   await mkdir(new URL("../results/", import.meta.url), { recursive: true });
 });

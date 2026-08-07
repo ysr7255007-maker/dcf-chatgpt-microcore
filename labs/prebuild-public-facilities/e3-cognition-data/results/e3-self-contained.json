@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-07T02:37:44.802Z",
+  "generated_at": "2026-08-07T03:13:03.125Z",
   "recipe": "sc-recipe-v1",
   "span_provenance": [
     {
@@ -30,7 +30,7 @@
       "recipeVersion": "sc-recipe-v1"
     }
   ],
-  "ai_generation_cost_tokens": 2164,
+  "ai_generation_cost_tokens": 1561,
   "strategy_comparison": {
     "fixed": {
       "recall_at_3": 1,
@@ -53,7 +53,7 @@
     "ai-self-contained": {
       "recall_at_3": 1,
       "mrr": 1,
-      "size_increase": 4.39,
+      "size_increase": 4.1,
       "term_retention": 1
     }
   }

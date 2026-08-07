@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-07T02:38:02.012Z",
+  "generated_at": "2026-08-07T03:13:14.789Z",
   "embedding_backend": {
     "runtime": "@huggingface/transformers (onnxruntime-node, in-process)",
     "model": "Xenova/bge-small-zh-v1.5",
@@ -88,7 +88,7 @@
       "expectedChunks": 323,
       "writtenChunks": 64,
       "recipe": "fixed-600-overlap-100-v1",
-      "at": "2026-08-07T02:39:07.893Z"
+      "at": "2026-08-07T03:14:18.451Z"
     }
   },
   "stale_derived_after_new_revision": {
