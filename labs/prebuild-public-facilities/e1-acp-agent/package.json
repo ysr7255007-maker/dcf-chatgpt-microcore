@@ -1,0 +1,11 @@
+{
+  "name": "e1-acp-agent",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "bun test tests/" },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "1.3.0",
+    "@agentclientprotocol/codex-acp": "1.1.13",
+    "@agentclientprotocol/claude-agent-acp": "0.65.0"
+  }
+}

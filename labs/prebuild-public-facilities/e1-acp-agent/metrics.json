@@ -1,0 +1,39 @@
+{
+  "experiment": "e1-acp-agent",
+  "generated_at": "2026-08-07",
+  "runtime": { "os": "darwin 26.5.2 (arm64)", "bun": "1.3.14" },
+  "dependencies": {
+    "@agentclientprotocol/sdk": { "version": "1.3.0", "pin": "exact" },
+    "@agentclientprotocol/codex-acp": { "version": "1.1.13", "pin": "exact" },
+    "@agentclientprotocol/claude-agent-acp": { "version": "0.65.0", "pin": "exact" }
+  },
+  "interop_evidence": {
+    "real_agents": ["codex (codex-acp@1.1.13)", "claude (claude-agent-acp@0.65.0)"],
+    "same_client_class": true,
+    "agent_name_branches_in_client": 0,
+    "resume_across_reconnect_codeword_hit": true
+  },
+  "loc": {
+    "shared_client_non_empty_loc": 305,
+    "dcf_semantics_loc": 58,
+    "codex_specific_behavior_loc": 0,
+    "claude_specific_behavior_loc": 0,
+    "per_agent_manifest_lines": 9
+  },
+  "tests": {
+    "total": 10,
+    "pass": 10,
+    "independent_full_reruns": 2,
+    "run_command": "bun test tests/"
+  },
+  "evidence_gaps": [
+    "PERMISSION_EXERCISE_INSUFFICIENT: 权限请求路径已实现但未被真实触发",
+    "TOOL_EVENT_COVERAGE_PARTIAL: tool_call/file_change/plan/usage 归一待 E5 真实任务流经"
+  ],
+  "protocol_risks": [
+    "PromptRequest 字段名漂移（SDK content vs 运行时 prompt），以 manifest 数据吸收",
+    "resume 前置条件（rollout 持久化）不可由 capability 声明表达",
+    "宿主 CLI 配置兼容性不在协议表达范围（E0 F1）"
+  ],
+  "verdict": "ACP_STANDARD_CORE"
+}

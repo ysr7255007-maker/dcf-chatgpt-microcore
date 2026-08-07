@@ -1,0 +1,75 @@
+{
+  "generated_at": "2026-08-07T01:56:17.700Z",
+  "agents": {
+    "codex": {
+      "agentName": "@agentclientprotocol/codex-acp",
+      "agentVersion": "1.1.13",
+      "sessionList": true,
+      "sessionResume": true,
+      "sessionClose": true,
+      "sessionDelete": true,
+      "loadSession": true,
+      "promptEmbeddedContext": true,
+      "promptImage": true,
+      "authMethods": [
+        "api-key",
+        "chat-gpt"
+      ]
+    },
+    "claude": {
+      "agentName": "@agentclientprotocol/claude-agent-acp",
+      "agentVersion": "0.65.0",
+      "sessionList": true,
+      "sessionResume": true,
+      "sessionClose": true,
+      "sessionDelete": true,
+      "loadSession": true,
+      "promptEmbeddedContext": true,
+      "promptImage": true,
+      "authMethods": []
+    },
+    "codex_activity_types": [
+      "raw_update",
+      "agent_message"
+    ],
+    "claude_activity_types": [
+      "raw_update",
+      "agent_thought",
+      "agent_message"
+    ],
+    "codex_lifecycle": {
+      "listSupported": true,
+      "sessionCountAtList": 25,
+      "resumeSupported": true,
+      "resumeAfterTurnError": null,
+      "closeSupported": true
+    },
+    "claude_lifecycle": {
+      "listSupported": true,
+      "sessionCountAtList": 14,
+      "resumeSupported": true,
+      "resumeAfterTurnError": null,
+      "closeSupported": true
+    }
+  },
+  "permission_requests_observed": 0,
+  "permission_decisions_applied": 0,
+  "notes": [],
+  "cancel_test": {
+    "stopReason": "cancelled",
+    "activitiesBeforeStop": 3
+  },
+  "kill_subprocess": {
+    "kind": "error",
+    "message": "Error: ACP connection closed"
+  },
+  "malformed_json": {
+    "kind": "survived",
+    "stopReason": "end_turn"
+  },
+  "resume_across_reconnect": {
+    "supported": true,
+    "followUpStopReason": "end_turn",
+    "followUpContainsCodeword": true
+  }
+}
