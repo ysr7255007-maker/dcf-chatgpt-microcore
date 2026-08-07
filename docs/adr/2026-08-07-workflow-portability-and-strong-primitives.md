@@ -66,6 +66,68 @@ Workflow Runtime
 
 不得因为单个特殊组件反向绑定整个 Workflow 平台。
 
+## Workflow Knowledge 不是新系统，而是现有证据链上的涌现用途
+
+外部 Workflow 生态不需要新建一个独立“Workflow Knowledge Miner / Workflow Marketplace Manager”系统。
+
+它可以自然复用当前已经收敛的能力链：
+
+```text
+外部 Workflow / 模板 / DSL / 文档 / 示例仓库
+↓
+证据源采集管理
+↓
+保存原始 Workflow、来源、版本、依赖与可回源锚点
+↓
+多源证据编译
+↓
+确定性提取拓扑、节点、参数、依赖、数据流与平台显式语义
+↓
+AI 开放理解
+↓
+识别流程目的、角色、隐含阶段、可迁移语义与平台特殊原语
+↓
+形成“当前 Workflow 内核可接受”的候选流程表示
+↓
+确定性 schema / contract / unsupported residual 校验
+↓
+进入当前 Workflow Runtime
+```
+
+这条链上各层继续遵守既有职责边界：
+
+```text
+证据源采集管理
+→ 只负责可靠获得和保存来源事实，不理解工作流意义
+
+多源证据编译
+→ 只做来源事实 + 显式规则能够确定推出的结构化转换，不做开放语义猜测
+
+AI
+→ 只负责真正需要理解的方法论、意图、角色和语义等开放判断
+
+确定性验证器
+→ 负责检查目标 Workflow IR / Runtime contract、依赖可解性、未知原语和不允许的语义降级
+```
+
+因此外部 Workflow 可以成为 DCF 的一种普通 Evidence Source（证据来源），而“专业 Workflow 知识矿场”只是现有 Capability 组合后的一个自然用途。
+
+这进一步强化：
+
+> **Workflow Knowledge 的来源生态与 Workflow Runtime 的实现选型可以长期独立演化。**
+
+未来 Runtime 更换时，应优先重新编译 / 重放已有 Workflow Knowledge，而不是重新采集和重新绑定原生态。
+
+同时禁止静默近似：若某个来源 Workflow 的特殊语义无法证明能被当前 Runtime 等价表达，必须显式保留为：
+
+```text
+UNSUPPORTED_PRIMITIVE
+OPAQUE_EXTENSION
+NEEDS_RUNTIME_PROVIDER
+```
+
+并保留原始来源与翻译证据，不得让 AI 把“看起来差不多”冒充语义等价。
+
 ## Why
 
 10 / 10 样本的主要流程拓扑可以重新表达为平台无关原语；没有观察到某个 n8n / Dify 品牌节点在逻辑上不可替代。
