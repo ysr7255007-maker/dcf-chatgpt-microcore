@@ -1,962 +1,390 @@
 # DCF Current State
 
-Updated: 2026-08-06
+Updated: 2026-08-07
 
-> 本文件只回答三个问题：**现在已经确定了什么、当前代码真实处在哪里、下一步从哪里开始施工。**
+> 本文件只回答三个问题：**现在已经确定了什么、证据真实处在哪里、下一步从哪里开始。**
 >
-> 架构定义与实施硬约束以 `docs/spec/` 为准；本文件不得重新发明已经完成的架构裁决。
+> 当前规范入口：`docs/spec/README.md`。
 
 ---
 
-# 1. 当前权威读取顺序
+# 1. 当前最高层定义
 
-当前设计、实现与验收默认按以下顺序读取：
-
-1. `docs/spec/2026-08-04-DCF-当前实施规范.md`
-   - 当前最高层总规范；
-   - 定义总体世界模型、事实所有权、功能边界与最高不变量。
-2. `docs/spec/2026-08-06-DCF-功能包络与施工控制规范.md`
-   - 当前施工控制专项规范；
-   - 对施工顺序、功能施工资格、依赖解锁、通路验证与执行层权限，明确替代总规范旧第 19～20 节的阶段式 P0～P9 / G0～G9 调度语义。
-3. `docs/spec/2026-08-05-DCF-macOS-AI实验宿主规范.md`
-   - 定义专用 macOS 实验宿主与机器能力边界。
-4. `docs/spec/2026-08-06-DCF-个人叙事功能块实施规范.md`
-   - 定义第一条正式认知产品闭环。
-5. `docs/spec/2026-08-06-DCF-锚定认知世界与查询求解公共能力规范.md`
-   - 定义 SQLite 锚定认知世界、查询诱导语义场与约束求解公共能力。
-6. 本文件 `docs/current-state.md`
-   - 记录当前已经完成的研究 / 实现、当前施工位置和近期下一步。
-7. `docs/adr/`
-   - 保存历史推演、被替代路线与为什么发生过这些变化。
-8. 旧 blueprint / README / Chrome rc / seed / G1～G7 等
-   - 只作为历史实现、旧基线与经验来源，不再自动拥有当前架构权威。
-
-若旧代码、旧 ADR、旧 README 与当前 `docs/spec/` 冲突：
-
-> **以当前规范为准；旧内容保留为历史，不允许由实现 AI 挑选更方便的一份。**
-
----
-
-# 2. 当前 DCF 定义
-
-DCF 当前定义为：
+DCF 仍然是：
 
 > **长期个人认知基础设施。**
 
-它维护三个长期互相闭环、但不能互相冒充的世界：
+长期不可变价值仍然成立：
 
 ```text
-现实世界
-→ 真正发生了什么
-
-认知世界
-→ 我当时怎样理解、后来怎样重新理解
-
-行动世界
-→ 基于当前认知决定做什么，并重新接受现实反馈
-```
-
-当前主闭环已经收敛为：
-
-```text
-现实发生
-↓
-系统 / 来源留下事实
-↓
-第 0 层确定性翻译成人可读现实
-↓
-个人叙事 AI 起草
-↓
-用户审核、修改、补充、重新理解
-↓
-SQLite 保存正式个人认知与不可变修订
-↓
-未来新问题通过查询诱导语义场重新寻找过去
-↓
-独立功能形成项目叙事 / Wiki / 知识卡 / 语言弹药等新认知对象
-↓
-需要确定组合时进入 AI 约束编译 + 求解器
-↓
-必要时形成行动
-↓
-现实继续发生
-```
-
-核心分工：
-
-```text
-系统负责现实
-机器负责提纯与翻译
+系统拥有现实，DCF 拥有认知
+机器负责确定事实与可重放材料
 AI 负责开放理解
 用户负责最终校准
-SQLite 负责长期锚定
-查询负责未来重新发现关系
-求解器负责明确条件下的确定组合
-时间负责持续提供新现实与新解释机会
+历史认知不允许静默覆写
+后来理解只能追加为新的解释与变化记录
+事实、认知、查询相关性、求解结果、Agent 自述、真实 Effect 不得互相冒充
 ```
+
+2026-08-07 的架构更新改变的是**实现与组合方式**，不是这些价值。
 
 ---
 
-## 2.1 当前施工控制模型：能力 DAG + 功能包络
+# 2. 当前正式架构语言
 
-旧 P0～P9 可以继续作为产品成熟度 / 人类理解视图，但不再决定实际施工顺序。
+旧的“六层流水节点 = 功能边界”不再拥有施工权威。
 
-当前正式施工控制模型是：
-
-> **功能包络（Capability Envelope）组成的能力有向无环图（Capability DAG）。**
-
-每个正式功能包络在交给执行层之前，设计层必须已经冻结：
+当前正式构件：
 
 ```text
-输入格式与输入契约
-输出格式与输出契约
-错误格式与错误契约
-允许 / 禁止状态变化
-完整功能需求
-质量 / 性能要求
-真实依赖关系
-最小功能通路验证
-完整验收步骤与 PASS / FAIL 条件
+Capability
+→ 对用户独立成立的完整软件功能
+
+Public Facility
+→ 吸收多个 Capability 重复工程复杂度的低业务语义设施
+
+Provider / Probe
+→ 把具体外部系统、模型、Agent、来源接进稳定公共契约
+
+Shared Semantic Component
+→ 多个 Capability 共同认识的真实世界状态
+
+ExternalOperation
+→ 所有 World 外异步执行在 World 内的统一生命周期身份
 ```
 
-执行层只有实现权限，没有设计权限。
-
-禁止执行层：
+Capability 必须通过：
 
 ```text
-修改输入 / 输出契约
-降低验收要求
-增加新设计依赖
-要求上游为本节点承担更多职责
-修改祖先节点语义
-自行添加 Adapter 来修复设计错误
-重画能力 DAG
+Standalone World
 ```
 
-若设计在合法输入下无法成立：
+独立证明，并在正式运行时进入：
 
 ```text
-DESIGN_BLOCKED
-+
-可重复证据
+Composite World
 ```
 
-返回设计层重新评估。
-
-### 最小功能通路验证
-
-每个功能包络内部都必须包含一个最小功能通路验证。
-
-它不是独立能力节点，也不是必须启动真实上游的端到端集成测试。
-
-默认输入来源：
-
-```text
-最小合成夹具（Minimal Synthetic Fixture）
-或
-真实样本切片（Real Sample Slice）
-```
-
-因此只要设计层已经明确输入 / 输出契约，就应该尽早执行通路验证；默认不等待上游真实实现完成。
-
-通路验证只证明：
-
-> **在符合既定输入契约的最小输入下，该功能最短底层逻辑路径能够产生规定的最小有效输出。**
-
-如果真实上游样本被用于验证，并发现上游实际输出没有满足上游自己的输出契约：
-
-- 可以提交契约违例报告；
-- 必须提供之前不符合要求的证据；
-- 修改意见只能要求上游实现恢复为原契约；
-- 禁止改变或扩大上游契约。
-
-### 正式能力成立
-
-通路验证通过，只表示设计的最小逻辑路径可活。
-
-正式功能包络要成为 `PASSED`，仍必须：
-
-```text
-必要上游真实能力已经成立
-+
-完整功能实现完成
-+
-本包络全部完整验收通过
-```
-
-因此施工同时存在两股工作：
-
-```text
-通路验证
-→ 尽可能沿已经设计好的功能图提前探路
-
-真实能力实现
-→ 按真正的能力依赖逐步解锁
-```
-
-没有阶段式全局门。
-
----
-
-# 3. 已完成并冻结的研究裁决
-
-以下内容已经完成专门研究 / 实验或明确设计裁决。普通实现任务不得重新从候选阶段开始讨论。
-
-## 3.1 macOS 实验宿主能力开放：完成
-
-2026-08-05 回到正常 macOS 后的独立复核状态：`behavior_passed`。
-
-当前宿主能力：
-
-| 能力 | 当前状态 |
-| --- | --- |
-| SIP | disabled |
-| Security Mode | Permissive |
-| custom kernel / BootKC 能力入口 | enabled；当前无 custom KC |
-| third-party kext / AuxKC 能力入口 | enabled；当前无第三方 kext |
-| CTRR enforcement | disabled |
-| boot-args filtering | disabled；当前 `boot-args` 为空 |
-| SSV / authenticated-root | disabled |
-| Research Guests | enabled |
-| FileVault | Off |
-
-当前没有因为“开门”形成新的长期自维护系统补丁：
-
-```text
-无第三方 kext
-无 custom kernel
-无 custom BootKC
-无系统卷 patch
-无 framework / daemon / Apple binary patch
-无实验 boot-args
-无 custom SSV snapshot
-```
-
-结论：
-
-> **机器权限不是当前架构推进的主要未知；后续失败不得默认重新归因到 SIP / SSV / CTRR。**
-
----
-
-## 3.2 macOS 公共能力黑洞勘探：完成裁决
-
-此前 E1～E7 已经从候选研究进入正式架构裁决，不再处于“继续看看 macOS 还能提供什么”的主阶段。
-
-当前正式公共事实 / 基础设施组合：
-
-### A — 正式公共底座
-
-```text
-FSEvents + Spotlight
-→ 文件现实层
-
-KnowledgeC / CoreDuet + NSWorkspace
-→ 活动时间骨架
-
-IMK + Unified Logging Persist
-→ 用户最终表达事实
-
-launchd + XPC
-→ 生命周期与稳定本地通信
-```
-
-### B — 辅助公共能力
-
-```text
-Endpoint Security / eslogger NOTIFY 精简集
-→ Agent / 进程机器副作用收据
-
-Apple Events / ScriptingBridge / Shortcuts
-→ 结构化行动接缝
-```
-
-### C — 探真 / 研究仪器
-
-```text
-全量 Unified Log 普查
-自建 Endpoint Security client（宿主专用研究）
-其他深层系统探针
-```
-
-### D — 来源专用增强
-
-```text
-Codex / IDE / Agent 本地数据库与事件流
-ChatGPT / Web 来源适配器
-AX 机会主义语义读取
-```
-
-### E — 不作为当前公共现实基础
-
-```text
-屏幕 / OCR 全量观察
-DCF 自建全盘 watcher
-DCF 自建全盘索引
-DCF 自建前台 session detector
-每个 Agent 自建一套结果自报事实链
-```
-
-核心裁决：
-
-> **系统尽量拥有现实，DCF 自己拥有认知。**
-
-> **先寻找系统和成熟软件本来就在维护的事实，再考虑自己制造新的传感器、索引或守护结构。**
-
----
-
-## 3.3 存储黑洞实验：完成，角色已改变
-
-`experiment/storage-kernel-local` 与 `labs/storage-kernel/reports/leverage-v1/` 已证明：
-
-> 对完整、大体量 AI trace，压缩自索引结构相对普通 `SQLite + FTS5 trigram + zstd + span mapping` 可以形成明显空间、精确查询与同步接缝杠杆。
-
-该实验结论继续有效，不删除、不否认。
-
-但当前长期认知存储问题已经改变：
-
-```text
-过去：
-大量原始 AI trace 长期保存
-→ 存储规模本身是核心问题
-
-现在：
-现实先经过个人叙事与用户审核
-→ 长期认知库主要保存高价值个人叙事与正式文档
-→ 数据规模被需求层直接压低
-```
-
-因此：
-
-- 压缩自索引不再是个人叙事主存储候选；
-- 它保留为大原始语料 / 精确 substring 等专项技术资产；
-- 当前正式长期认知主库采用 SQLite；
-- 当前主要优化目标从“大小 + 性能 + 准确度同时黑洞化”转为“搜索准确度优先”。
-
----
-
-# 4. 当前正式总体架构
-
-当前 DCF 采用六层世界：
-
-```text
-6. 行动与执行世界
-   任务 / Agent / Job / Effect / Reality
-                ▲
-5. 确定求解世界
-   AI 约束编译 → SMT / 专用求解器
-                ▲
-4. 查询诱导语义场
-   词法 / 稠密语义 / 后期交互 / 联合阅读
-                ▲
-3. 锚定认知世界
-   SQLite：认知对象 / 不可变修订 / 锚点 / 人工关系
-                ▲
-2. 认知形成世界
-   个人叙事 AI → 用户审核 → 正式认知
-                ▲
-1. 公共现实与事实世界
-   macOS / 来源系统 / Git / Agent Reality
-```
-
-必须保持：
-
-```text
-现实事实
-≠ AI 理解
-≠ 用户确认认知
-≠ 查询临时相关性
-≠ 求解器结果
-≠ 行动后真正发生的现实
-```
-
----
-
-# 5. 个人叙事功能：设计已闭合，代码尚待新架构实现
-
-当前正式局部规范：
-
-`docs/spec/2026-08-06-DCF-个人叙事功能块实施规范.md`
-
-当前数据流：
-
-```text
-macOS / 来源现实
-↓
-公共事实提纯
-↓
-第 0 层机器事实翻译
-↓
-初始现实文档
-↓
-个人叙事 AI 草稿
-↓
-人物日历 / 审核 UI
-↓
-用户批准 / 纠正 / 局部重写 / 拆分 / 合并
-↓
-审核记录
-+
-正式个人叙事对象
-+
-不可变用户确认 revision
-↓
-SQLite 单事务 COMMIT
-↓
-个人叙事功能 END
-```
-
-当前已冻结原则：
-
-- 个人叙事不是生活日记；
-- 时间是导航坐标，不是必须按小时流水写作的结构；
-- AI 原稿不冒充正式个人认知；
-- 审核记录保留 AI 原稿、用户修改和差异；
-- 只有用户确认正文形成正式 personal_narrative revision；
-- 旧正式 revision 不原地覆盖；
-- 当时理解与审核时新理解必须区分；
-- 日历直接查询 SQLite，不扫描 Markdown；
-- Markdown / JSON / HTML 是导出与交换格式，不是第二个可写事实权威；
-- 语义索引失败不得阻塞正式个人叙事保存；
-- 保存结束以后不得强制调用项目叙事 / Wiki / 知识卡 / 语言弹药 / 求解器。
-
-现状：
-
-> **设计与规范已经闭合；当前仓库尚未完成这一新原生 macOS + SQLite 个人叙事纵向实现。**
-
----
-
-# 6. 锚定认知世界：当前存储裁决
-
-正式长期认知采用：
-
-> **SQLite = 认知对象与关系的权威持久层。**
-
-核心模型：
-
-```text
-稳定认知对象
-+
-不可变修订
-+
-revision + span 稳定锚点
-+
-来源引用
-+
-人工明确关系
-+
-多套可重算标注 / 检索视图
-```
-
-正式权威包括：
-
-```text
-用户确认的个人叙事
-未来其他正式认知对象
-不可变修订历史
-人工明确保存的关系
-来源锚点
-```
-
-不属于正式权威：
-
-```text
-FTS 索引
-embedding
-多向量表示
-自动切分
-项目型检索视图
-Wiki 型检索视图
-模型评分
-查询时临时关系
-```
-
-这些全部必须可以删除后重算。
-
----
-
-# 7. 查询诱导语义场：设计已闭合，算法逐层实验
-
-当前不是建立一个中央永久知识图谱，而是：
-
-> **保存稳定认知原文与锚点；未来每次查询根据当前问题临时计算哪些过去材料相关。**
+组合。
 
 核心原则：
 
-```text
-关系不要求提前全部保存
-查询可以产生未来才出现的新语义维度
-所有语义结果最终回到真实 revision + span
-```
+> **重复代码允许存在；重复运行权威不允许存在。**
 
-当前搜索晋级路线仍保留为能力成熟度视图：
-
-```text
-词法基线
-FTS5 + 中文词法 + 字符三元组
-↓
-精确稠密语义扫描
-↓
-多路召回 + 倒数排名融合
-↓
-词元级后期交互（ColBERT / MaxSim 类实验）
-↓
-联合阅读重排
-↓
-查询条件化评分器（Hypencoder 类实验位）
-```
-
-它不是全项目施工阶段门。
-
-当前纪律：
-
-- 个人规模下优先搜索准确度；
-- 不因为互联网搜索习惯提前引入 ANN / HNSW；
-- 不提前固定唯一切分；
-- 不建立中央语义本体；
-- 不寻找一种万能检索器；
-- 每一层只在 DCF 真实查询集上证明准确度收益后晋级。
-
-需要建立的正式评估资产：
-
-> **DCF 真实认知查询集。**
-
-核心指标：Top-1、Recall@K、MRR、nDCG@K、锚点准确率。
+> **执行位置可以在 World 外；运行身份必须在 World 内。**
 
 ---
 
-# 8. 独立认知功能：当前架构已经确定，具体功能尚未实现
+# 3. 已完成的架构实验
 
-未来：
+## 3.1 Capability × Bun+Becsy World 组合实验
+
+证据 ADR：
 
 ```text
+docs/adr/2026-08-07-capability-world-composition-runtime-seam-absorption.md
+```
+
+裁决：
+
+```text
+ARCHITECTURE_FEASIBLE
+```
+
+已验证：
+
+```text
+Capability Standalone World 独立成立
+Shared Semantic Component 真实 overlap
+Composite World 唯一 provider
+Becsy 自动 precedence
+无业务 Adapter / Mapper / Bridge
+新增 Capability 不要求修改旧 Capability
+坏组合在启动前拒绝
+```
+
+---
+
+## 3.2 公共能力架构消歧实验 E0–E5
+
+远端实验分支：
+
+```text
+experiment/prebuild-public-facilities-v1
+```
+
+完整证据基准：
+
+```text
+159d579d586934bd798d36f62bc7f48faef2a8bf
+```
+
+报告元数据修订：
+
+```text
+2959fd0c55009110c50c5eb1ce1f0da89badc439
+```
+
+总体裁决：
+
+```text
+READY_WITH_EXPLICIT_EXCEPTIONS
+```
+
+六项实验：
+
+```text
+E0 WORLD_EXTERNAL_OPERATION_PASS
+E1 ACP_STANDARD_CORE
+E2 AI_SDK_CORE_ADOPT_WITH_THIN_DCF_LAYER
+E3 SQLITE_AUTHORITY_PLUS_LANCEDB_DERIVED
+E4 BORROW_PATTERNS_BUILD_THIN_INTAKE
+E5 E5_REALITY_LOOP_PASS
+```
+
+无 blocking finding。
+
+有 7 项非阻塞 finding，正式施工不得遗忘：
+
+```text
+CJK_FTS_TOKENIZER_PENDING
+PERMISSION_EXERCISE_INSUFFICIENT
+TOOL_EVENT_COVERAGE_PARTIAL
+E4 B/C 只有 structural assessment
+LanceDB teardown / handle lifecycle
+Codex custom-provider / ACP model enumeration compatibility
+SECOND_PROVIDER_LOCAL_ONLY
+```
+
+---
+
+# 4. 已收敛的公共设施
+
+## AI Turn Facility
+
+当前结构：
+
+```text
+DCF AI Turn Contract
+→ Vercel AI SDK Core
+→ Provider
+```
+
+不再计划自研完整 AI Harness。
+
+第一方产品候选：
+
+```text
+AI 工作台
+```
+
+---
+
+## Agent Execution Facility
+
+当前结构：
+
+```text
+DCF Agent Semantics
+→ ACP
+→ Codex / Claude / future agents
+```
+
+双真实 Agent 已通过同一客户端验证。
+
+第一条正式可写 Agent 任务需要补真实 permission request/decision 验收。
+
+第一方产品候选：
+
+```text
+AI 任务执行台
+```
+
+---
+
+## Cognition Data Facility
+
+正式冻结的是：
+
+```text
+SQLite Authority
++
+replaceable / rebuildable Derived Retrieval
+```
+
+LanceDB 是当前通过实验的 default candidate，不是永久不可替换标准。
+
+`bge-small-zh-v1.5` 是 E3 固定变量，不是生产 embedding 选型。
+
+查询必须支持多范式：
+
+```text
+Structured
+Exact / Phrase
+Lexical
+Temporal
+Relationship
+Dense
+Hybrid
+future strategies
+```
+
+语义引力场只是 Query Strategy 之一。
+
+AI self-contained chunk 当前仍是：
+
+```text
+SELF_CONTAINED_CHUNKS_EXPERIMENTAL
+```
+
+第一方产品候选：
+
+```text
+认知数据工作台
+```
+
+---
+
+## Evidence Intake Facility
+
+当前裁决：
+
+```text
+DCF thin intake
+```
+
+借鉴：
+
+```text
+Home Assistant → lifecycle / unique identity
+OTel → ack / pipeline / time semantics
+Redpanda → cursor / checkpoint
+```
+
+不直接采用 OTel / Redpanda 作为 DCF 通用数据面。
+
+第一方产品候选：
+
+```text
+证据源管理器
+```
+
+---
+
+# 5. Reality / Fact 与 Cognition 当前边界
+
+E5 已验证：
+
+```text
+AgentExecutionStatus
+≠
+ObservedEffect
+```
+
+Agent 声称完成不能进入 Reality Verifier 输入。
+
+同时：
+
+```text
+Fact Authority
+≠
+Cognition Authority
+```
+
+当前不存在自动：
+
+```text
+ObservedEffect / RawEvidence
+→ Cognition Authority
+```
+
+的晋级通道。
+
+未来必须经过显式认知形成 / 审核 / 确认流程才能进入正式认知。
+
+---
+
+# 6. 当前功能候选池
+
+以下是讨论后有独立产品意义的候选，**尚未冻结编号与最终边界**：
+
+```text
+证据源管理器
+多源证据编译器
+AI 协作审阅编辑器
+个人叙事
+认知数据工作台
+AI 工作台
+AI 任务执行台
 项目叙事
 Wiki
 知识卡
 语言弹药
-其他认知功能
+约束决策助手
+可验证行动执行
+能力主页
+上下文侧边栏
+环境悬浮球
 ```
 
-全部作为独立功能块。
-
-统一模式：
+注意：
 
 ```text
-功能提出自己的问题
-↓
-调用公共认知查询
-↓
-取得真实锚点
-↓
-功能内部 AI / 规则 / 算法处理
-↓
-形成自己的正式对象 / 视图
+项目叙事
 ```
 
-禁止重新建立：
+不能提前假设只是展示层；它未来很可能拥有 AI 主动理解、查询与递归取证行为。
 
-```text
-个人叙事
-↓
-唯一中央标准切分层
-↓
-所有功能强制消费
-```
-
-允许同一 revision 同时拥有：
-
-```text
-paragraph/v1
-semantic-window/v2
-project-view/v1
-project-view/v2
-wiki-view/v3
-knowledge-view/v1
-未来其他视图
-```
-
-原则：
-
-> **源认知统一，切法不统一。**
-
-> **功能之间共享认知世界和公共查询，不共享彼此的私有理解。**
+同样，Wiki / 知识卡 / 语言弹药虽然可以大量复用 Cognition Data Facility，仍允许因独立产品目的和 Surface 成为薄 Capability。
 
 ---
 
-# 9. 项目叙事：当前定义
+# 7. 当前施工位置
 
-项目叙事不以“考古还原每个工程事实”为首要目标。
+公共设施的大架构探索阶段已经结束。
 
-它主要回答：
-
-> **这段项目经历最终留下了什么价值，并怎样把项目的可行动边界推进到今天。**
-
-关注：
+当前不应该继续：
 
 ```text
-最初缺什么
-关键探索
-失败留下什么
-成功留下什么
-哪些中间成果后来继续有用
-判断怎样变化
-现在已经具备什么
-为什么下一步现在才成为可能
+再找一套平行大架构
+为了保险重做第二套 Agent runtime
+为了搜索自己造数据库内核
+为了采集直接引入完整遥测平台
 ```
 
-核心原则：
+当前下一步：
 
-> **项目是价值的生产现场，不是价值的永久住所。**
+```text
+Capability Discovery
+↓
+Capability Registry 候选收敛
+↓
+选择第一个 Capability
+↓
+关闭 Capability Envelope
+↓
+Standalone World
+↓
+Composite World
+↓
+正式施工
+```
 
-> **项目拥有关系，不拥有材料。**
+正式施工控制以：
 
-项目功能引用个人叙事、正式文档、Git / GitHub 工程事实，而不是复制这些材料进入项目私有仓库。
+```text
+docs/spec/2026-08-06-DCF-功能包络与施工控制规范.md
+```
+
+的 2026-08-07 同步版为准。
 
 ---
 
-# 10. 约束求解公共能力：设计已确定，等待首个真实闭环
-
-查询诱导语义场与约束求解解决不同问题：
-
-```text
-语义未知
-→ 不知道过去哪些材料有关
-→ 查询诱导语义场
-
-组合未知
-→ 已经知道对象和规则，但不知道哪些组合成立
-→ 约束求解器
-```
-
-完整链：
-
-```text
-自然语言问题
-↓
-语义场找相关历史材料
-↓
-AI 约束编译器
-↓
-实体 / 变量 / 硬约束 / 软约束 / 目标 / 来源锚点 / 不确定项
-↓
-SMT / 专用求解器
-↓
-可行 / 冲突 / 最优
-↓
-AI 回译解释
-↓
-关键结论回到来源
-```
-
-当前第一通用求解器候选：
-
-> **Z3 / SMT。**
-
-未来纯排程 / 指派问题可以通过同一接口增加 CP-SAT 等专用求解器。
-
-硬纪律：
-
-- 求解器不能直接读取自然语言后自行猜变量；
-- AI 模糊推断不能偷偷升级成硬约束；
-- 用户当前明确要求和确定系统事实才可以直接成为硬约束；
-- 历史约束必须携带来源锚点和适用条件；
-- 无解必须允许返回无解；
-- 求解正确性必须有独立确定性测试集。
-
-当前首个真实闭环优先候选：
-
-```text
-架构选择
-或
-项目涌现
-```
-
----
-
-# 11. 产品与运行架构：当前裁决
-
-主产品：
-
-> **独立 macOS App。**
-
-三个 Surface：
-
-```text
-完整形态
-侧边栏
-悬浮球
-```
-
-三者共享同一业务状态与动作语义。
-
-原则：
-
-> **功能块拥有展示能力；宿主拥有展示秩序。**
-
-> **限制关系，不限制功能内部能力。**
-
-功能块可以自由使用：
-
-```text
-Swift / SwiftUI / AppKit
-Bun / TypeScript
-WKWebView
-BlockNote
-Becsy
-Metal
-第三方库
-专用算法
-```
-
-但不能：
-
-- 偷偷修改另一个功能块私有长期事实；
-- 建立第二份业务权威；
-- 因为新增功能要求所有旧功能增加硬编码调用；
-- 为了统一 UI 造一个限制能力的万能 JSON DSL。
-
-Becsy 当前最先借用的是 World：
-
-```text
-World = 功能活动运行边界
-公共能力 = 资源复用边界
-ECS = 以后有真实大规模同质 workload 时的优化手段
-```
-
----
-
-# 12. 旧实现真实状态
-
-当前仓库仍保留：
-
-```text
-Chrome rc.3
-legacy
-seed/
-旧 Surface / Companion
-旧控制平面
-P0～G7 历史任务与验收证据
-storage-kernel 实验分支
-macOS blackhole probe 实验证据
-```
-
-这些内容具有四类价值：
-
-```text
-历史可运行基线
-架构经验
-实验 / 行为证据
-旧产品回退
-```
-
-但必须明确：
-
-> **旧 Chrome / Companion / Electron / legacy engine 架构不是当前新 macOS 产品路线的实现母本。**
-
-当前新总体规范完成以后，代码世界与规范世界之间存在一个真实转换期：
-
-```text
-规范
-→ 已经进入 2026-08-06 新架构
-
-主要正式产品代码
-→ 仍需从旧实现 / 实验证据中选择性提取可复用部分，开始新原生实现
-```
-
-不得把“仓库里存在很多旧代码”误报成“新架构能力已经实现”。
-
-复用判断必须是：
-
-```text
-新功能包络
-↓
-旧代码是否满足既定契约
-↓
-满足 → 复用
-不满足 → 不继承
-```
-
-不得反过来让旧代码决定新功能边界。
-
----
-
-# 13. 当前施工 baseline
-
-本轮入口整理完成后，`main` 的职责定义为：
-
-```text
-当前设计权威
-+
-当前真实状态
-+
-完整 Git 历史
-+
-旧实现 / 旧产品 LKG
-+
-实验与行为证据
-+
-新原生实现的干净入口
-```
-
-而不是：
-
-```text
-上一代代码结构
-+
-继续在旧架构上迭代
-```
-
-新的原生 DCF 实现统一从：
-
-```text
-native/
-```
-
-开始。
-
-`native/` 表示：
-
-> **按照当前 `docs/spec/` 与正式功能包络重新生长的新实现世界。**
-
-旧实现不搬迁、不删除、不重构，只在某个新功能包络明确证明适用时复用局部零件。
-
----
-
-# 14. 当前施工入口
-
-当前尚未开始正式新架构代码施工。
-
-下一步不再定义为“进入 P0”，而是：
-
-```text
-功能包络元格式定死
-↓
-用一个确定性功能验证元格式
-↓
-设计层完成正式能力 DAG 与节点契约
-↓
-从 baseline 为每个可施工功能建立独立 branch / worktree
-↓
-所有已设计节点尽早执行最小功能通路验证
-↓
-真实能力按 DAG 依赖逐步解锁
-↓
-完整验收 PASSED 后才进入 main
-```
-
-当前第一个功能包络样板候选：
-
-> **稳定认知对象 + 不可变修订。**
-
-当前它的目的首先是验证：
-
-> **独立可验证功能包络（Independently Verifiable Capability Envelope）的元格式是否足够严密。**
-
-只有样板的输入 / 输出 / 错误格式、功能需求、验证步骤、固定 Fixture 和机器断言全部冻结以后，才可以把它从设计样板晋级为正式施工包络。
-
----
-
-# 15. 分支与验收纪律
-
-正式功能包络施工默认：
-
-```text
-main baseline
-↓
-feature/<功能编号>-<简短名称>
-```
-
-无真实依赖关系的功能可以使用独立 worktree 并行施工。
-
-一个功能分支默认只修改：
-
-```text
-native/ 内本功能实现
-本功能自己的契约 / Fixture / 验收资产
-必要的 current-state 状态记录
-```
-
-除非既定包络明确要求复用 / 兼容旧实现，否则不得顺手重构历史代码。
-
-每个 `PASSED` 必须绑定：
-
-```text
-功能包络编号 / 版本
-准确 Git commit SHA
-验证命令
-固定输入 / Fixture
-实际输出
-运行环境
-最终 PASS / FAIL
-```
-
-AI 自报“完成”不是证据。
-
-最小通路验证通过也不等于完整功能 `PASSED`。
-
----
-
-# 16. 当前禁止重新打开的问题
-
-没有新反证以前，普通实现任务禁止重新讨论：
-
-```text
-是否重新启用屏幕 / OCR 作为基础现实面
-是否自建第二套全盘 watcher / index
-是否重新做一轮 macOS 公共能力候选普查
-个人叙事是否必须保存成 Markdown 权威
-是否建立唯一中央自包含切分层
-是否让项目叙事 / Wiki / 知识卡强制串联
-是否建立中央永久语义本体
-是否一开始就使用 ANN / HNSW
-是否让 AI 模糊判断直接替代确定求解器
-是否让求解器直接读取自然语言自行猜变量
-是否因为数据呈图状就立即引入图数据库
-```
-
-如果未来真实运行证据推翻其中某项，应新增 ADR / 规范修订，明确写出：
-
-```text
-旧裁决
-↓
-新证据
-↓
-为什么旧裁决不再成立
-↓
-新裁决生效时间
-```
-
-不得静默改历史。
-
----
-
-# 17. 当前仍然开放的真实实施问题
-
-以下仍属于设计 / 实验空间，不应假装已经决定：
-
-```text
-Swift 原生功能扩展最终使用 Bundle / dylib / helper 哪种装载形态
-Bun 与原生 UI Host 的具体进程边界
-伪热更新具体重启哪些进程
-World Registry / Surface Registry 的最终协议字段
-SQLite 最终表名与局部字段
-文本 span 的最终字符 / 字节 / Unicode 坐标编码
-最终中文分词器
-最终 embedding 模型
-ColBERT / MaxSim 是否对真实 DCF 查询有足够收益
-Hypencoder 类查询条件化评分是否值得进入正式层
-联合阅读模型与成本策略
-项目叙事第一版具体 Prompt / 生成算法
-知识卡 / Wiki / 语言弹药的正式对象 Schema
-首个 Solver 用例最终选择架构选择还是项目涌现
-行动层不可逆副作用的最终幂等协议
-```
-
-这些问题不得由施工 Agent 临时猜测。
-
-当其中某项成为某个正式功能包络的必要设计输入时，必须先由设计 / 实验层形成明确裁决，再把冻结后的结果暴露给执行层。
-
----
-
-# 18. 当前状态一句话
-
-> **DCF 已经完成从“Chrome 对话增强工具 / 原始交互存档”向“macOS 原生长期个人认知基础设施”的总体架构收敛：macOS 公共现实能力、个人叙事定义、SQLite 锚定认知世界、查询诱导语义场、独立认知功能和约束求解之间的边界已经进入当前规范；旧 Chrome / Electron / legacy 实现继续作为历史、证据、回退与可选零件保留，但不再指导新代码结构。当前施工控制已经从 P0→P9 阶段推进切换为功能包络组成的能力 DAG；新的原生实现从 `native/` 生长，每个功能先以固定契约和最小 Fixture 验证最短逻辑通路，再按真实能力依赖完整施工与验收。**
+# 8. 当前最重要的设计纪律
+
+1. **不要让第三方轮子定义 DCF 世界。**
+2. **不要让不确定 AI 做确定机制已经能做的事。**
+3. **功能可以增加，运行权威和接缝不能同比增加。**
+4. **新功能优先复用 Public Facility；新来源优先新增 Provider；新认知表达优先新增 Recipe / Query Strategy。**
+5. **只有出现新的独立用户目的与无法被已有机制表达的业务行为，才增加新的 Capability。**
+6. **旧认知与旧设计保留为历史；新裁决通过显式版本追加，不静默改写过去。**
