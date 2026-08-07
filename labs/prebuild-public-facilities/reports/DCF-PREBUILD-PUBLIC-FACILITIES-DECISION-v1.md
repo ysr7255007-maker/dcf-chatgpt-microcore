@@ -13,7 +13,7 @@
 READY_WITH_EXPLICIT_EXCEPTIONS
 ```
 
-六项实验全部完成且无 BLOCK；三项显式例外不阻塞正式 Capability 施工，
+六项实验全部完成且无 BLOCK；七项非阻塞 finding 不阻塞正式 Capability 施工，
 但必须在吸收进架构时一并登记（见 E 节与 decision.json `blocking_findings`=空、
 `non_blocking_findings` 清单）。
 

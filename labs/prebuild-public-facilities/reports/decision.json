@@ -1,7 +1,7 @@
 {
   "schema": "dcf-prebuild-public-facilities-decision/v1",
   "generated_at": "2026-08-07",
-  "repo_commit": "see git log on branch experiment/prebuild-public-facilities-v1 (worktree dcf-prebuild-pf, base origin/main 732a0b6)",
+  "repo_commit": "159d579d586934bd798d36f62bc7f48faef2a8bf",
   "environment": {
     "os": "darwin 26.5.2 (arm64)",
     "bun": "1.3.14",
