@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-07T01:56:17.700Z",
+  "generated_at": "2026-08-07T03:04:14.467Z",
   "agents": {
     "codex": {
       "agentName": "@agentclientprotocol/codex-acp",
@@ -46,7 +46,7 @@
     },
     "claude_lifecycle": {
       "listSupported": true,
-      "sessionCountAtList": 14,
+      "sessionCountAtList": 16,
       "resumeSupported": true,
       "resumeAfterTurnError": null,
       "closeSupported": true

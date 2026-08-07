@@ -45,3 +45,11 @@
   Recall/MRR 相同；术语保留率均为 1.0（无事实丢失证据，但也无增益证据）。
 - 结论：不允许晋级正式机制；样本过小且 LLM judge 未引入（纪律），
   记 SELF_CONTAINED_CHUNKS_EXPERIMENTAL，待真实查询集扩大后再裁。
+
+## F7 — 套件对运行残留状态敏感（审计期独立复现）
+
+- 现象：未清理 derived/ 与权威 DB 直接复跑时，T1/T6 的幂等断言失败
+  （上轮 T6 追加的 revision 残留使 revisionCount 偏离真值）。
+- 解决：beforeAll 自清 derived/（含权威 DB），clean state 由套件自身保证。
+- 教训："两次独立复跑"必须包含套件级自清，不能依赖外部 shell 步骤；
+  正式认知施工的测试基座应默认自管理运行态残留。

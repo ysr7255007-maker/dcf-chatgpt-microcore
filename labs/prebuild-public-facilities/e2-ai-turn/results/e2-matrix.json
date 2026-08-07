@@ -1,19 +1,19 @@
 {
-  "generated_at": "2026-08-07T02:07:18.618Z",
+  "generated_at": "2026-08-07T03:04:00.428Z",
   "model": "deepseek-v4-flash",
   "matrix": {
     "generate": {
       "A1": {
         "status": "PASS",
-        "detail": "text=\"1161\" reasoning=57B usage={\"inputTokens\":96,\"outputTokens\":21,\"totalTokens\":117} answer_ok=true finish=stop"
+        "detail": "text=\"1161\" reasoning=80B usage={\"inputTokens\":96,\"outputTokens\":35,\"totalTokens\":131} answer_ok=true finish=stop"
       },
       "A2": {
         "status": "PASS",
-        "detail": "text=\"1161\" reasoning=0B usage={\"inputTokens\":96,\"outputTokens\":27,\"totalTokens\":123} answer_ok=true finish=stop"
+        "detail": "text=\"1161\" reasoning=0B usage={\"inputTokens\":96,\"outputTokens\":18,\"totalTokens\":114} answer_ok=true finish=stop"
       },
       "A3": {
         "status": "PASS",
-        "detail": "text=\"1161\" reasoning=63B usage={\"inputTokens\":96,\"outputTokens\":22,\"totalTokens\":118} answer_ok=true finish=completed"
+        "detail": "text=\"1161\" reasoning=92B usage={\"inputTokens\":96,\"outputTokens\":37,\"totalTokens\":133} answer_ok=true finish=completed"
       }
     },
     "stream": {
@@ -51,7 +51,7 @@
       },
       "A2": {
         "status": "PASS",
-        "detail": "structured={\"capital\":\"Paris\",\"population_estimate\":67000000} text=\"{\\\"capital\\\": \\\"Paris\\\", \\\"population_estimate\\\": 67000000}\""
+        "detail": "structured={\"capital\":\"Paris\",\"population_estimate\":68000000} text=\"{\\\"capital\\\": \\\"Paris\\\", \\\"population_estimate\\\": 68000000}\""
       },
       "A3": {
         "status": "NOT_IMPLEMENTED",
@@ -75,11 +75,11 @@
     "tool_execution_failure": {
       "A1": {
         "status": "OBSERVED",
-        "detail": "survived; finish=stop text=\"I attempted to compute 1 + 2 using the add tool twice, but both attempts failed \""
+        "detail": "survived; finish=stop text=\"The `add` tool call failed with an error: `tool-execution-failure-injected`. It \""
       },
       "A2": {
         "status": "OBSERVED",
-        "detail": "survived; finish=stop text=\"I attempted to use the `add` tool to compute 1 + 2, but the tool execution faile\""
+        "detail": "survived; finish=stop text=\"I attempted to compute 1 + 2 using the add tool, but the tool execution failed w\""
       },
       "A3": {
         "status": "NOT_IMPLEMENTED",

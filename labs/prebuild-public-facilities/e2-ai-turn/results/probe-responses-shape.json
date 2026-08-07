@@ -46,10 +46,10 @@
     "input_tokens_details": {
       "cached_tokens": 0
     },
-    "output_tokens": 16,
+    "output_tokens": 38,
     "output_tokens_details": {
-      "reasoning_tokens": 13
+      "reasoning_tokens": 35
     },
-    "total_tokens": 107
+    "total_tokens": 129
   }
 }
