@@ -1,0 +1,60 @@
+{
+  "generated_at": "2026-08-07T02:37:44.802Z",
+  "recipe": "sc-recipe-v1",
+  "span_provenance": [
+    {
+      "sourceRevision": "rev:adr/2026-08-07:0",
+      "sourceSpan": {
+        "start": 2514,
+        "end": 2560
+      },
+      "transformVersion": "t0",
+      "recipeVersion": "sc-recipe-v1"
+    },
+    {
+      "sourceRevision": "rev:adr/2026-08-07:0",
+      "sourceSpan": {
+        "start": 6717,
+        "end": 6744
+      },
+      "transformVersion": "t0",
+      "recipeVersion": "sc-recipe-v1"
+    },
+    {
+      "sourceRevision": "rev:adr/2026-08-07:0",
+      "sourceSpan": {
+        "start": 4469,
+        "end": 4505
+      },
+      "transformVersion": "t0",
+      "recipeVersion": "sc-recipe-v1"
+    }
+  ],
+  "ai_generation_cost_tokens": 2164,
+  "strategy_comparison": {
+    "fixed": {
+      "recall_at_3": 1,
+      "mrr": 0.8333333333333334,
+      "size_increase": 17.31,
+      "term_retention": 1
+    },
+    "semantic": {
+      "recall_at_3": 1,
+      "mrr": 1,
+      "size_increase": 1,
+      "term_retention": 1
+    },
+    "semantic-nb": {
+      "recall_at_3": 1,
+      "mrr": 1,
+      "size_increase": 3.66,
+      "term_retention": 1
+    },
+    "ai-self-contained": {
+      "recall_at_3": 1,
+      "mrr": 1,
+      "size_increase": 4.39,
+      "term_retention": 1
+    }
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "experiment": "e3-cognition-data",
+  "generated_at": "2026-08-07",
+  "runtime": { "os": "darwin 26.5.2 (arm64)", "bun": "1.3.14" },
+  "dependencies": {
+    "@lancedb/lancedb": { "version": "0.33.0", "pin": "exact" },
+    "apache-arrow": { "version": "21.1.0", "pin": "exact", "role": "lancedb peer" },
+    "@huggingface/transformers": { "version": "3.8.1", "pin": "exact" },
+    "onnxruntime-node": { "version": "1.21.0", "pin": "transitive(lancedb/transformers)" },
+    "bun:sqlite": { "version": "builtin", "role": "SQLite Authority" }
+  },
+  "embedding_backend_fixed": {
+    "runtime": "@huggingface/transformers (onnxruntime-node, in-process)",
+    "model": "Xenova/bge-small-zh-v1.5",
+    "dims": 512,
+    "network_note": "HF Hub 直连 ECONNRESET；HF_ENDPOINT=https://hf-mirror.com 成功（F5）",
+    "deepseek_key_used": false
+  },
+  "corpus": {
+    "source": "worktree 真实 DCF 文档：docs/spec(13) + current-state + 2 骨干 ADR",
+    "objects": 16,
+    "note": "非玩具语料；未为任何引擎定制简单语料"
+  },
+  "tests": { "total": 9, "pass": 9, "independent_full_reruns": 2 },
+  "retrieval_truth": {
+    "queries": 8,
+    "dense": { "recall_at_5": 0.875, "mrr": 0.8125 },
+    "hybrid_rrf": { "recall_at_5": 0.875, "mrr": 0.8125 },
+    "lance_fts": { "recall_at_5": 0, "mrr": 0, "reason": "CJK tokenizer gap (F1)" }
+  },
+  "destruction_experiments": {
+    "full_delete_rebuild": "PASS（命中集合逐条一致）",
+    "fs_delete_new_connection_rebuild": "PASS",
+    "interrupted_observable": "PASS（build-manifest interrupted + 缺口数字）",
+    "new_revision_derived_failure": "PASS（权威历史正确，派生不假装更新）"
+  },
+  "self_contained_chunks": {
+    "verdict": "SELF_CONTAINED_CHUNKS_EXPERIMENTAL",
+    "ai_gain_observed": false,
+    "fact_loss_observed": false,
+    "ai_cost_tokens": 2235
+  },
+  "known_issues": ["F1 CJK FTS 分词缺口", "F2 句柄悬空", "F3 teardown trace trap", "F4 数字型查询未命中"],
+  "verdict": "SQLITE_AUTHORITY_PLUS_LANCEDB_DERIVED (exception: CJK_FTS_TOKENIZER_PENDING)"
+}

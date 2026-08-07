@@ -1,0 +1,13 @@
+{
+  "name": "e3-cognition-data",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test tests/"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "3.8.1",
+    "@lancedb/lancedb": "0.33.0",
+    "apache-arrow": "21.1.0"
+  }
+}

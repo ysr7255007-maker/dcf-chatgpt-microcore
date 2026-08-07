@@ -1,0 +1,101 @@
+{
+  "generated_at": "2026-08-07T02:38:02.012Z",
+  "embedding_backend": {
+    "runtime": "@huggingface/transformers (onnxruntime-node, in-process)",
+    "model": "Xenova/bge-small-zh-v1.5",
+    "dims": 512,
+    "pooling": "mean",
+    "normalize": true
+  },
+  "query_truth": [
+    {
+      "id": "q1",
+      "query": "World Composer 的 LOC 预算是多少",
+      "expectedObject": "doc:adr/2026-08-07-capability-world-composition-runtime-seam-absorption.md",
+      "kind": "semantic"
+    },
+    {
+      "id": "q2",
+      "query": "哪些内容不属于正式认知权威而必须可以删除重算",
+      "expectedObject": "doc:current-state.md",
+      "kind": "semantic"
+    },
+    {
+      "id": "q3",
+      "query": "重复代码允许存在 重复运行权威不允许",
+      "expectedObject": "doc:adr/2026-08-07-capability-world-composition-runtime-seam-absorption.md",
+      "kind": "lexical"
+    },
+    {
+      "id": "q4",
+      "query": "为什么不预存所有语义关系而由查询临时计算",
+      "expectedObject": "doc:spec/2026-08-06-DCF-锚定认知世界与查询求解公共能力规范.md",
+      "kind": "semantic"
+    },
+    {
+      "id": "q5",
+      "query": "功能包络的正式施工资格如何判定",
+      "expectedObject": "doc:spec/2026-08-06-DCF-功能包络与施工控制规范.md",
+      "kind": "semantic"
+    },
+    {
+      "id": "q6",
+      "query": "Capability 脱离 DCF 语境仍然独立的四个条件",
+      "expectedObject": "doc:adr/2026-08-07-capability-world-composition-runtime-seam-absorption.md",
+      "kind": "semantic"
+    },
+    {
+      "id": "q7",
+      "query": "查询晋级路线 词法基线 FTS5 中文词法",
+      "expectedObject": "doc:current-state.md",
+      "kind": "lexical"
+    },
+    {
+      "id": "q8",
+      "query": "稳定认知对象与不可变修订的第一个样板包络",
+      "expectedObject": "doc:current-state.md",
+      "kind": "semantic"
+    }
+  ],
+  "corpus": {
+    "objects": 15,
+    "revisions": 15
+  },
+  "engine_dense": {
+    "recall_at_5": 0.875,
+    "mrr": 0.8125
+  },
+  "engine_lance_fts": {
+    "recall_at_5": 0,
+    "mrr": 0
+  },
+  "engine_hybrid_rrf": {
+    "recall_at_5": 0.875,
+    "mrr": 0.8125
+  },
+  "destruction_full_rebuild": {
+    "pass": true,
+    "chunksRestored": 323,
+    "baselineHits": 7,
+    "afterHits": 7
+  },
+  "destruction_fs_delete_rebuild": {
+    "pass": true
+  },
+  "destruction_interrupted": {
+    "manifest": {
+      "state": "interrupted",
+      "expectedChunks": 323,
+      "writtenChunks": 64,
+      "recipe": "fixed-600-overlap-100-v1",
+      "at": "2026-08-07T02:39:07.893Z"
+    }
+  },
+  "stale_derived_after_new_revision": {
+    "pass": true
+  },
+  "query_strategy": {
+    "temporal_gate": "PASS",
+    "gravity_minimal": "PASS"
+  }
+}
