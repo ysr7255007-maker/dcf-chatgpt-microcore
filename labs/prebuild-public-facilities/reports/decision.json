@@ -1,0 +1,112 @@
+{
+  "schema": "dcf-prebuild-public-facilities-decision/v1",
+  "generated_at": "2026-08-07",
+  "repo_commit": "see git log on branch experiment/prebuild-public-facilities-v1 (worktree dcf-prebuild-pf, base origin/main 732a0b6)",
+  "environment": {
+    "os": "darwin 26.5.2 (arm64)",
+    "bun": "1.3.14",
+    "node": "v22.22.3",
+    "real_agents": ["codex-cli 0.146.1 (via codex-acp@1.1.13)", "Claude Code 2.1.191 (via claude-agent-acp@0.65.0)"],
+    "ai_providers": ["deepseek-v4-flash (chat/completions + /v1/responses)", "Ollama qwen3:0.6b (local, OpenAI-compatible)"],
+    "embedding_backend": "@huggingface/transformers + Xenova/bge-small-zh-v1.5 (fixed for all candidates)",
+    "credentials": "env/gitignored only; none in repo or reports"
+  },
+  "experiments": [
+    {
+      "id": "E0",
+      "name": "World x ExternalOperation",
+      "verdict": "WORLD_EXTERNAL_OPERATION_PASS",
+      "hard_gates": "7/7",
+      "tests": "20/20 x2 reruns",
+      "evidence": "e0-world-external-operation/{decision.md,metrics.json,failures.md}"
+    },
+    {
+      "id": "E1",
+      "name": "ACP x external long-task agents",
+      "verdict": "ACP_STANDARD_CORE",
+      "hard_gates": "9/10 (permission path not exercised: PERMISSION_EXERCISE_INSUFFICIENT)",
+      "tests": "10/10 x2 reruns",
+      "evidence": "e1-acp-agent/{decision.md,metrics.json,results/e1-measurements.json}"
+    },
+    {
+      "id": "E2",
+      "name": "AI SDK Core x AI Turn",
+      "verdict": "AI_SDK_CORE_ADOPT_WITH_THIN_DCF_LAYER",
+      "hard_gates": "8 capabilities x 2 SDK routes PASS",
+      "tests": "11/11 x2 reruns",
+      "evidence": "e2-ai-turn/{decision.md,metrics.json,results/e2-matrix.json}"
+    },
+    {
+      "id": "E3",
+      "name": "SQLite Authority x derived retrieval",
+      "verdict": "SQLITE_AUTHORITY_PLUS_LANCEDB_DERIVED",
+      "sub_verdict": "SELF_CONTAINED_CHUNKS_EXPERIMENTAL",
+      "hard_gates": "8/8 structural; CJK FTS PARTIAL (tokenizer pending)",
+      "tests": "9/9 x2 reruns",
+      "evidence": "e3-cognition-data/{decision.md,metrics.json,results/e3-results.json}"
+    },
+    {
+      "id": "E4",
+      "name": "Evidence Source lifecycle x reliable intake",
+      "verdict": "BORROW_PATTERNS_BUILD_THIN_INTAKE",
+      "route_b": "OTEL_DATA_PLANE_ADOPT rejected -> DIRECT_ADOPTION_REJECT/BORROW_PATTERNS_ONLY (early-stop gate)",
+      "route_c": "REDPANDA_DATA_PLANE_ADOPT rejected -> DIRECT_ADOPTION_REJECT/BORROW_PATTERNS_ONLY (early-stop gate)",
+      "tests": "6/6 x2 reruns",
+      "evidence": "e4-evidence-intake/{decision.md,failures.md}"
+    },
+    {
+      "id": "E5",
+      "name": "Cross-facility Reality Loop",
+      "verdict": "E5_REALITY_LOOP_PASS",
+      "hard_gates": "9/9 composition gates",
+      "tests": "5/5 x2 reruns",
+      "evidence": "e5-reality-loop/{decision.md,failures.md,results/e5-results.json}"
+    }
+  ],
+  "overall_verdict": "READY_WITH_EXPLICIT_EXCEPTIONS",
+  "recommended_facilities": [
+    "AI Turn: Vercel AI SDK Core + DCF thin layer",
+    "Agent: ACP SDK + DcfAcpClient + AgentManifest data",
+    "Cognition: bun:sqlite authority + LanceDB derived + thin QueryStrategy(RRF/temporal)",
+    "Evidence: DCF thin intake (borrowed HA/OTel/Redpanda mechanisms)",
+    "World: Becsy World + ExternalOperation skeleton",
+    "Fact: Action/Evidence fact authority separated from cognition authority (no promotion path)"
+  ],
+  "adopted_wheels": [
+    "@lastolivegames/becsy@0.16.0",
+    "ai@7.0.55 + @ai-sdk/deepseek@3.0.24 + @ai-sdk/openai@4.0.33",
+    "@agentclientprotocol/sdk@1.3.0 + codex-acp@1.1.13 + claude-agent-acp@0.65.0",
+    "@lancedb/lancedb@0.33.0",
+    "@huggingface/transformers@3.8.1 (embedding runtime)",
+    "bun:sqlite"
+  ],
+  "borrowed_patterns": [
+    "Home Assistant: source lifecycle state machine + unique_id registry dedup",
+    "OTel Collector: receiver/processor/exporter split + ack semantics + event-time/observed-time separation",
+    "Redpanda Connect: durable cursor/checkpoint + declarative pipeline boundary"
+  ],
+  "rejected_wheels": [
+    "OpenTelemetry Collector as data plane (semantic coercion + second authority + Go custom components)",
+    "Redpanda Connect as sidecar data plane (daemon ops + message coercion)",
+    "LiteLLM (control condition not triggered)",
+    "@ai-sdk/openai-compatible pointed at Responses endpoint (plan prohibition)"
+  ],
+  "blocking_findings": [],
+  "non_blocking_findings": [
+    "CJK_FTS_TOKENIZER_PENDING: Lance FTS/FTS5 中文零召回，lexical 通道暂按精确/短语计",
+    "PERMISSION_EXERCISE_INSUFFICIENT: ACP 权限路径已实现未被真实触发",
+    "TOOL_EVENT_COVERAGE_PARTIAL: 工具事件归一待真实任务流经（E5 部分补证）",
+    "E4 routes B/C: STRUCTURAL_ASSESSMENT only (early-stop per gate)",
+    "LanceDB teardown trace trap + handle invalidation: needs dispose order or process isolation",
+    "Codex custom-provider config breaks ACP model enumeration: host config compatibility must enter Source health checks",
+    "SECOND_PROVIDER_LOCAL_ONLY: second AI provider was local Ollama"
+  ],
+  "untested": [
+    "ACP permission real trigger; third agent (OpenCode)",
+    "cache hit/miss controlled experiment; multimodal; real TCP interruption",
+    "multivector/late interaction; post-tokenizer hybrid retest; large corpus performance",
+    "B/C live pipelines; cross-machine/network partition; >10k events/s",
+    "E5 long tasks/multi-turn tool loops/parallel tasks",
+    "multi-process World; production hardening; migrations (taskbook §10 scope)"
+  ]
+}
