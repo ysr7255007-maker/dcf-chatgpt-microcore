@@ -1,0 +1,114 @@
+{
+  "generated_at": "2026-08-07T02:07:18.618Z",
+  "model": "deepseek-v4-flash",
+  "matrix": {
+    "generate": {
+      "A1": {
+        "status": "PASS",
+        "detail": "text=\"1161\" reasoning=57B usage={\"inputTokens\":96,\"outputTokens\":21,\"totalTokens\":117} answer_ok=true finish=stop"
+      },
+      "A2": {
+        "status": "PASS",
+        "detail": "text=\"1161\" reasoning=0B usage={\"inputTokens\":96,\"outputTokens\":27,\"totalTokens\":123} answer_ok=true finish=stop"
+      },
+      "A3": {
+        "status": "PASS",
+        "detail": "text=\"1161\" reasoning=63B usage={\"inputTokens\":96,\"outputTokens\":22,\"totalTokens\":118} answer_ok=true finish=completed"
+      }
+    },
+    "stream": {
+      "A1": {
+        "status": "PASS",
+        "detail": "deltas=39 finalLen=50 finish=stop"
+      },
+      "A2": {
+        "status": "PASS",
+        "detail": "deltas=39 finalLen=50 finish=stop"
+      },
+      "A3": {
+        "status": "PASS",
+        "detail": "deltas=39 finalLen=50 finish=completed"
+      }
+    },
+    "abort": {
+      "A1": {
+        "status": "PASS",
+        "detail": "error=AbortError: The operation was aborted."
+      },
+      "A2": {
+        "status": "PASS",
+        "detail": "error=AbortError: The operation was aborted."
+      },
+      "A3": {
+        "status": "PASS",
+        "detail": "error=AbortError: The operation was aborted."
+      }
+    },
+    "structured_output": {
+      "A1": {
+        "status": "PASS",
+        "detail": "structured={\"capital\":\"Paris\",\"population_estimate\":67000000} text=\"{\\\"capital\\\":\\\"Paris\\\",\\\"population_estimate\\\":67000000}\""
+      },
+      "A2": {
+        "status": "PASS",
+        "detail": "structured={\"capital\":\"Paris\",\"population_estimate\":67000000} text=\"{\\\"capital\\\": \\\"Paris\\\", \\\"population_estimate\\\": 67000000}\""
+      },
+      "A3": {
+        "status": "NOT_IMPLEMENTED",
+        "detail": "A3 为极小对照，不承担 structured output 实现（任务书纪律）"
+      }
+    },
+    "tool_call": {
+      "A1": {
+        "status": "OBSERVED",
+        "detail": "text=\"6912\" finish=stop"
+      },
+      "A2": {
+        "status": "OBSERVED",
+        "detail": "text=\"6912\" finish=stop"
+      },
+      "A3": {
+        "status": "NOT_IMPLEMENTED",
+        "detail": "A3 极小对照不承担 tool loop"
+      }
+    },
+    "tool_execution_failure": {
+      "A1": {
+        "status": "OBSERVED",
+        "detail": "survived; finish=stop text=\"I attempted to compute 1 + 2 using the add tool twice, but both attempts failed \""
+      },
+      "A2": {
+        "status": "OBSERVED",
+        "detail": "survived; finish=stop text=\"I attempted to use the `add` tool to compute 1 + 2, but the tool execution faile\""
+      },
+      "A3": {
+        "status": "NOT_IMPLEMENTED",
+        "detail": "A3 极小对照不承担 tool loop"
+      }
+    },
+    "provider_error": {
+      "A1": {
+        "status": "PASS",
+        "detail": "classified error: AI_APICallError: The supported API model names are deepseek-v4-pro or deepseek-v4-flash, but you passed deepseek-no-such-model."
+      },
+      "A2": {
+        "status": "PASS",
+        "detail": "classified error: AI_APICallError: The supported API model names are deepseek-v4-pro or deepseek-v4-flash, but you passed deepseek-no-such-model."
+      }
+    },
+    "escape_hatch": {
+      "A1": {
+        "status": "PASS",
+        "detail": "rawMetadata keys=deepseek"
+      },
+      "A2": {
+        "status": "PASS",
+        "detail": "rawMetadata keys=openai"
+      },
+      "A3": {
+        "status": "PASS",
+        "detail": "rawMetadata keys=id,object,created_at,status,background,completed_at,content_filters,error,frequency_penalty,incomplete_details"
+      }
+    }
+  }
+}

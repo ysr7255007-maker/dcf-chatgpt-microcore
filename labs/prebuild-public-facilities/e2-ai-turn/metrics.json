@@ -1,0 +1,27 @@
+{
+  "experiment": "e2-ai-turn",
+  "generated_at": "2026-08-07",
+  "runtime": { "os": "darwin 26.5.2 (arm64)", "bun": "1.3.14" },
+  "dependencies": {
+    "ai": { "version": "7.0.55", "pin": "exact" },
+    "@ai-sdk/deepseek": { "version": "3.0.24", "pin": "exact", "route": "A1" },
+    "@ai-sdk/openai": { "version": "4.0.33", "pin": "exact", "route": "A2" },
+    "zod": { "version": "4.3.6", "pin": "exact" }
+  },
+  "model": "deepseek-v4-flash",
+  "wire_probe": "results/probe-responses-shape.json（/v1/responses wire 独立探针）",
+  "tests": { "total": 11, "pass": 11, "independent_full_reruns": 2 },
+  "matrix_file": "results/e2-matrix.json",
+  "second_provider": {
+    "found": "Ollama qwen3:0.6b (127.0.0.1:11434, OpenAI-compatible)",
+    "swap_result": "PASS（同一 @ai-sdk/openai 结构零上层改动）",
+    "coverage_note": "SECOND_PROVIDER_LOCAL_ONLY"
+  },
+  "litellm_control": "NOT_TRIGGERED（无路由/账户池/fallback/预算中央化缺口）",
+  "key_differences": [
+    "A1 可见 reasoning 文本；A2 经 SDK 标准字段为空（raw wire 中存在，见 failures F1）",
+    "structured output 需 Output.object 包装（v7 API 形态，failures F2）",
+    "tool 执行失败被 SDK 回灌模型而非抛错（failures F3）"
+  ],
+  "verdict": "AI_SDK_CORE_ADOPT_WITH_THIN_DCF_LAYER"
+}

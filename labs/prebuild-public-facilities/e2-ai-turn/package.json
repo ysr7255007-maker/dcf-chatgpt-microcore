@@ -1,0 +1,12 @@
+{
+  "name": "e2-ai-turn",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "bun test tests/" },
+  "dependencies": {
+    "ai": "7.0.55",
+    "@ai-sdk/deepseek": "3.0.24",
+    "@ai-sdk/openai": "4.0.33",
+    "zod": "4.3.6"
+  }
+}

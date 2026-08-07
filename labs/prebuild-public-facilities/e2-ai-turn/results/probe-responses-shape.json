@@ -1,0 +1,55 @@
+{
+  "top_level_keys": [
+    "background",
+    "completed_at",
+    "content_filters",
+    "created_at",
+    "error",
+    "frequency_penalty",
+    "id",
+    "incomplete_details",
+    "instructions",
+    "max_output_tokens",
+    "max_tool_calls",
+    "metadata",
+    "model",
+    "moderation",
+    "object",
+    "output",
+    "parallel_tool_calls",
+    "presence_penalty",
+    "previous_response_id",
+    "prompt_cache_key",
+    "prompt_cache_retention",
+    "reasoning",
+    "safety_identifier",
+    "service_tier",
+    "status",
+    "store",
+    "temperature",
+    "text",
+    "tool_choice",
+    "tools",
+    "top_logprobs",
+    "top_p",
+    "truncation",
+    "usage",
+    "user"
+  ],
+  "status": "completed",
+  "output_item_types": [
+    "reasoning",
+    "message"
+  ],
+  "usage": {
+    "input_tokens": 91,
+    "input_tokens_details": {
+      "cached_tokens": 0
+    },
+    "output_tokens": 16,
+    "output_tokens_details": {
+      "reasoning_tokens": 13
+    },
+    "total_tokens": 107
+  }
+}
