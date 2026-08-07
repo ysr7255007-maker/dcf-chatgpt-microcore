@@ -1,6 +1,6 @@
 # DCF Current State
 
-Updated: 2026-08-07
+Updated: 2026-08-08
 
 > 本文件只回答三个问题：**现在已经确定了什么、证据真实处在哪里、下一步从哪里开始。**
 >
@@ -26,194 +26,76 @@ AI 负责开放理解
 事实、认知、查询相关性、求解结果、Agent 自述、真实 Effect 不得互相冒充
 ```
 
-2026-08-07 的架构变化改变的是**功能怎样组合、运行和施工**，不是这些价值。
+2026-08-08 的运行时更新改变的是：
+
+```text
+Capability 如何承载长期过程
+普通工作由谁执行
+机器优化何时出现
+UI 如何保持可替换
+```
+
+不改变 DCF 的长期价值与 Capability Registry v1。
 
 ---
 
 # 2. 当前正式架构语言
 
-当前正式构件：
+当前最高运行架构：
 
 ```text
-Capability（能力）
-→ 拥有稳定用户目的与产品主权的完整软件能力
+Capability
+→ 用户可独立理解、使用和验收的产品能力
 
-Public Facility（公共设施）
-→ 吸收多个 Capability 重复专业工程复杂度的低业务语义设施
+Go
+→ 默认应用执行宿主
+→ 普通即时逻辑
+→ 未知问题 / 未形成 P0 的默认退路
 
-Provider / Probe（提供者 / 探针）
-→ 把具体外部系统、模型、Agent、来源接入稳定公共契约
+DBOS Go
+→ 跨时间长期 Workflow
+→ Step checkpoint / recovery / wait / child flow
 
-Shared Semantic Component（共享语义组件）
-→ 多个 Capability 共同认识的真实世界状态
+PostgreSQL
+→ DBOS durable state
+→ 新运行侧事务事实的默认候选底座
 
-ExternalOperation（外部操作）
-→ World 外异步执行在 World 内的统一生命周期身份
+P0 Backend
+→ 只在真实瓶颈形成后，为某类稳定 Effect 提供局部机器黑洞
 
-Becsy World（运行世界）
-→ Capability 共同参与并推进的统一运行现实
-
-Bun
-→ 当前宿主层一体化 JavaScript / TypeScript 运行时
+Replaceable UI
+→ Capability / Workflow / durable state 之上的可替换交互投影
 ```
 
 核心原则：
 
-> **Capability 看产品主权，不看独占代码量。**
+> **长期过程进入 Workflow；即时逻辑留在 Go。**
 
-> **重复代码允许存在；重复运行权威不允许存在。**
+> **先让 Go 承担未知，再让 P0 吸收已知。**
 
-> **执行位置可以在 World 外；运行身份必须在 World 内。**
+> **功能硬化，界面软化。**
+
+> **架构上的可替换性优先于炫技式 Hot Reload。**
 
 ---
 
 # 3. Capability Discovery 已正式收口
 
-当前最高权威：
+当前 Capability 身份最高权威：
 
 ```text
 docs/spec/2026-08-07-DCF-Capability-Registry-v1与能力发现收口规范.md
 ```
 
-本轮开放式 Capability Discovery（能力发现）已经关闭。
-
-当前结果：
+当前结果保持不变：
 
 ```text
 Capability Registry v1：15 项
 Discovery 暂缓：1 项
-下一阶段：逐项关闭 Capability Envelope（能力包络）
+开放式 Capability Discovery：关闭
 ```
 
-能力身份不再要求拥有大量独占底层机制。
-
-当前判断门禁：
-
-```text
-稳定用户目的
-产品主权
-独立产品身份
-独立验收
-四刀净化后的职责边界
-```
-
-“去 DCF 测试”继续成立，但解释为：
-
-> **去掉 DCF 品牌以后，这个用户目的是否仍然是可以独立命名、使用和验收的软件能力。**
-
-而不是“去掉所有公共设施后还能不能自己实现所有底层机制”。
-
----
-
-# 4. 原生能力与涌现能力
-
-当前正式承认：
-
-```text
-原生能力
-→ 直接对应一个独立问题闭环
-
-涌现能力
-→ 公共设施、共享语义、配方、查询、交互等组合后形成新的稳定产品目的
-```
-
-两者在 Registry 和运行时地位相同。
-
-因此：
-
-> **能力独立性 ≠ 实现独立性。**
-
-> **四刀法用于净化 Capability 的职责，不用于按实现厚度否定产品。**
-
-当前两条额外独立性证据：
-
-```text
-跨多个 Capability 被产生 / 消费 / 引用后仍保持同一业务身份
-→ 强独立性证据
-
-稳定高频使用 + 独特交互节奏
-→ 可以形成产品重力
-```
-
-Wiki、知识卡、语言弹药据此继续保留独立 Capability 身份。
-
----
-
-# 5. 三条复杂度切线
-
-## ECS（实体组件系统）切线
-
-主要吸收：
-
-```text
-谁通知谁
-谁订阅谁
-谁把结果交给谁
-一对多 / 多对一分发
-状态交接
-UI 贡献发现
-权限 / 审核交接
-诊断共享
-恢复需求发现
-```
-
-正式原则：
-
-> **上游不指定消费者；下游不指定生产者；双方围绕共同理解的世界状态和产物语义发生关系。**
-
-> **关系不是“谁订阅谁”，而是“谁认识同一种现实”。**
-
----
-
-## Becsy World（运行世界）切线
-
-主要吸收：
-
-```text
-系统生命周期
-系统启停
-运行身份
-组件读写形成的大量执行先后
-坏组合启动前拒绝
-统一活动 Provider 运行权威
-ExternalOperation 生命周期
-```
-
-当前理解：
-
-> **DCF 是一个 World；Capability 是共同参与并推进这个 World 的系统。**
-
-World 不替代长期权威数据库与历史存储。
-
----
-
-## Bun 切线
-
-当前采用 Bun-first Host（Bun 优先宿主）原则：
-
-> **Bun 已稳定原生提供的宿主层通用工程能力，默认先直接使用；只有出现明确不足证据才新增替代层。**
-
-优先覆盖：
-
-```text
-子进程
-HTTP
-WebSocket
-IPC / PTY
-SQLite 驱动
-测试
-构建
-单文件部署
-常规文件 / 定时机制
-```
-
-Bun 只吸收宿主工程，不定义 DCF 业务世界。
-
----
-
-# 6. Capability Registry v1
-
-当前已登记 15 项：
+当前 15 项：
 
 ```text
 1. 证据源采集管理
@@ -233,25 +115,178 @@ Bun 只吸收宿主工程，不定义 DCF 业务世界。
 15. 环境微交互
 ```
 
-这些能力的**产品身份已经承认**，但不等于 Envelope 已关闭，也不等于已经实现或验收。
+`现实闭环行动` 继续：
 
-当前详细产品主权、形成方式与边界见 Registry v1 权威规范。
+```text
+DISCOVERY_DEFERRED
+```
+
+Workflow 不是新的 Capability。
 
 ---
 
-# 7. 三种交互能力
+# 4. 2026-08-08 运行时转向
 
-旧候选名：
+当前运行时最高权威：
 
 ```text
-能力主页
-上下文侧边栏
-环境悬浮球
+docs/spec/2026-08-08-DCF-Workflow执行底座、机器特化后置与可替换UI架构规范.md
 ```
 
-已经降级为当前 Surface（界面载体）名称。
+对应 ADR：
 
-当前 Capability 名称：
+```text
+docs/adr/2026-08-08-workflow-go-dbos-postgresql-late-specialization-replaceable-ui.md
+```
+
+当前裁决：
+
+```text
+GO_DBOS_POSTGRES_ARCHITECTURE_SELECTED
+BEHAVIOR_VERIFICATION_PENDING
+```
+
+即：
+
+- Go 作为新的默认主实现 / 执行宿主方向；
+- DBOS Go 承担长期 Workflow；
+- PostgreSQL 承担 DBOS durable state；
+- 普通 Step / Effect 默认先用 Go；
+- 尚未完成 workflow-kernel 行为验证，因此不得写成 `behavior_passed`。
+
+---
+
+# 5. 旧 Bun + Becsy / ECS 证据如何处理
+
+2026-08-07 已完成：
+
+```text
+Capability × Bun+Becsy World 组合实验
+→ ARCHITECTURE_FEASIBLE
+```
+
+该实验继续证明：
+
+```text
+声明式共享状态能减少私有调用链
+读写声明可以吸收部分执行 precedence
+Standalone / Composite 组合验证能暴露接缝
+```
+
+但以下旧表述不再拥有当前全局运行主权：
+
+```text
+DCF 必须是一个全局 Becsy World
+Capability 必须作为全局 ECS System
+Bun 是唯一默认核心宿主
+为了未来机器优化必须提前组件化业务世界
+```
+
+当前理解：
+
+> **ECS 可以是局部机器 P0，但不是 DCF 全局世界观。**
+
+旧实验和旧规范继续保留，不静默改写。
+
+---
+
+# 6. Late Machine Specialization（机器特化后置）
+
+当前默认：
+
+```text
+Workflow Step / Effect
+→ Go implementation
+```
+
+只有真实运行中出现：
+
+```text
+稳定 Problem Signature
+明确规模瓶颈
+可利用同质性
+成熟结构性 P0
+净杠杆高于接缝残差
+```
+
+才晋升到专用 backend。
+
+潜在岗位示例：
+
+```text
+大集合筛选 → Bitmap
+列式批量数据 → Arrow / Columnar / SIMD
+LLM 推理 → continuous batching engine
+约束满足 → Solver
+结构化关系 / 事务 → SQL / PostgreSQL
+```
+
+不冻结具体产品，不把它们作为第一阶段前置依赖。
+
+正式原则：
+
+> **Generic First → Evidence → Problem Signature → P0 Promotion。**
+
+---
+
+# 7. Effect 不要求提前穷举
+
+当前不建立完整固定的 Effect Vocabulary。
+
+允许先只有：
+
+```text
+Workflow
+→ Step
+→ Go
+```
+
+未来真实工作长出稳定共同结构，再抽出：
+
+```text
+SetSelection
+BatchTransform
+LLMInference
+ConstraintSolve
+...
+```
+
+Effect taxonomy 本身允许演化。
+
+当前也不建立中央 Physical Optimizer。
+
+只有未来跨多个 backend 的物理计划选择本身形成独立复杂度时，才重新发现该 P0 岗位。
+
+---
+
+# 8. PostgreSQL 与既有 Cognition Data Authority
+
+必须保持两件事同时成立：
+
+```text
+DBOS durable state
+→ PostgreSQL
+```
+
+以及此前已经验证的：
+
+```text
+Cognition Data
+→ SQLite Authority
+→ replaceable / rebuildable Derived Retrieval
+```
+
+因此：
+
+> **DBOS 采用 PostgreSQL，不等于 Cognition Data 自动迁移 PostgreSQL。**
+
+SQLite → PostgreSQL 的认知权威迁移如果未来发生，必须通过独立专项 ADR / 实验完成。
+
+---
+
+# 9. UI 当前最高原则
+
+三种交互 Capability 身份继续成立：
 
 ```text
 全景沉浸交互
@@ -259,225 +294,156 @@ Bun 只吸收宿主工程，不定义 DCF 业务世界。
 环境微交互
 ```
 
-## 全景沉浸交互
+但具体 UI 不冻结。
 
-当用户主动把主要注意力交给 DCF 时：
+当前最高原则：
 
-```text
-自动发现 Capability
-收集状态 / 健康 / 产物 / 动作
-归纳 / 组织
-形成能力交互投影
-提供完整浏览 / 搜索 / 配置 / 管理 / 操作 / 诊断
-```
+> **Function Hard, UI Soft —— 功能硬化，界面软化。**
 
-当前典型 Surface：主页。
+> **Replaceable UI —— 可替换 UI，而不是伪自定义 UI。**
 
-## 嵌入式交互
-
-把 DCF 的部分信息与操作嵌入其他宿主工作空间，与原工作并存。
-
-筛选可以来自：
+稳定的是：
 
 ```text
-用户固定配置
-手动钉住
-当前任务
-当前项目
-上下文匹配
-其他规则
+Capability semantic contract
+State / Action / Event
+Workflow
+Durable data
+Surface semantic contract
 ```
 
-“上下文相关”不是能力定义。
+可替换的是：
 
-当前典型 Surface：侧边栏 / IDE 面板 / 浏览器面板等。
+```text
+Shell
+Navigation
+Sidebar
+Panel / Panel Host
+Layout
+Toolbar
+Card
+Modal
+Canvas
+Theme
+Components
+具体交互模型
+```
 
-## 环境微交互
+明确禁止：
 
-不占据工作空间，以极低信息量和极短操作路径长期存在于环境中。
-
-当前典型 Surface：悬浮球 / 菜单栏状态等。
-
-三者不是三个 UI 控件，而是三种稳定的交互空间与注意力带宽。
+> 因为某个元素叫“系统 UI / 核心导航 / 固定 Panel”，就不给后续修改权限。
 
 ---
 
-# 8. 现实闭环行动：暂缓
+# 10. UI 更新目标
 
-`现实闭环行动` 当前状态：
+DCF 不要求所有 UI 在同一个 JS VM 中做到零帧 HMR。
 
-```text
-DISCOVERY_DEFERRED
-```
-
-原因：
+真正要求：
 
 ```text
-当前讨论最少
-潜在边界最广
-会同时触及执行、权限、风险、副作用、现实观察、效果验收、失败、补偿、人工介入、因果归属等问题
+能力可以动态注册 / 注销 Surface
+Panel 可以替换
+Shell 可以整体换代
+Theme / Layout 可以快速更新
+soft reload 后能够恢复当前交互上下文
 ```
 
-当前只保留 E5 已验证不变量：
-
-> **Agent 执行状态 ≠ 现实效果。Agent 负责劳动；现实负责验收。**
-
-暂不冻结：
+并保证：
 
 ```text
-最终名称
-完整 Capability 边界
-Reality Verifier 是否独立公共设施
-完整状态机
-施工结构
+Go backend 不停
+DBOS Workflow 不丢
+PostgreSQL durable truth 不丢
+Capability 行为不失效
 ```
 
-本阶段不进入 Envelope 与施工。
+因此：
+
+> **能力热插拔优先于 Shell 热更新；UI Replaceability 优先于 HMR。**
 
 ---
 
-# 9. 已完成的架构实验
+# 11. Frontend Deletion / Shell Replacement 验收
 
-## Capability × Bun+Becsy World 组合实验
-
-ADR：
+未来正式 UI 架构必须能证明：
 
 ```text
-docs/adr/2026-08-07-capability-world-composition-runtime-seam-absorption.md
+删除整个 frontend
+↓
+重写极简 UI
+↓
+仍然可以发现 Capability、读状态、执行 Action、观察 Workflow
 ```
 
-裁决：
+以及：
 
 ```text
-ARCHITECTURE_FEASIBLE
+Shell v1
+→ Shell v2
 ```
 
-已验证：
+不得迫使：
 
 ```text
-Capability 可以在 Standalone World 独立成立
-共享语义组件表达真实重叠
-Composite World 只保留一个 active provider
-Becsy 根据组件访问形成执行先后
-无业务适配器 / 映射器 / 桥接器
-新增 Capability 不要求修改旧 Capability
-坏组合启动前拒绝
+Capability 重写
+Workflow 重写
+Durable data 因视觉改版迁移
+```
+
+如果业务正确性藏在 React / Vue / Panel 私有状态里，判为架构违规。
+
+---
+
+# 12. 自定义 Canvas 与语义树
+
+DCF 可以使用 DOM、Canvas、WebGL / WebGPU 或其他自由绘制技术。
+
+但：
+
+> **视觉自由不得以语义消失为代价。**
+
+若 Canvas 使标准 AX / Accessibility 语义不能自动生成，必须保留独立 Surface Semantic Model 或 Accessibility Projection。
+
+目标：
+
+```text
+Capability / Surface Semantic Model
+          │
+     ┌────┴────┐
+     ▼         ▼
+Visual UI    AX / AI Semantic Projection
 ```
 
 ---
 
-## 公共设施消歧实验 E0–E5
+# 13. 已收敛公共设施与专项证据
 
-远端实验分支：
-
-```text
-experiment/prebuild-public-facilities-v1
-```
-
-完整证据基准：
+以下历史实验和专项结论继续保留其作用域内的证据价值：
 
 ```text
-159d579d586934bd798d36f62bc7f48faef2a8bf
-```
-
-报告元数据修订：
-
-```text
-2959fd0c55009110c50c5eb1ce1f0da89badc439
-```
-
-总体裁决：
-
-```text
-READY_WITH_EXPLICIT_EXCEPTIONS
-```
-
-六项实验：
-
-```text
-E0 WORLD_EXTERNAL_OPERATION_PASS
-E1 ACP_STANDARD_CORE
-E2 AI_SDK_CORE_ADOPT_WITH_THIN_DCF_LAYER
-E3 SQLITE_AUTHORITY_PLUS_LANCEDB_DERIVED
-E4 BORROW_PATTERNS_BUILD_THIN_INTAKE
-E5 E5_REALITY_LOOP_PASS
-```
-
-仍有 7 项非阻塞 finding：
-
-```text
-CJK_FTS_TOKENIZER_PENDING
-PERMISSION_EXERCISE_INSUFFICIENT
-TOOL_EVENT_COVERAGE_PARTIAL
-E4 B/C 只有 structural assessment
-LanceDB teardown / handle lifecycle
-Codex custom-provider / ACP model enumeration 兼容缺口
-SECOND_PROVIDER_LOCAL_ONLY
-```
-
-不得在正式实现报告中写成“全部解决”。
-
----
-
-# 10. 已收敛的公共设施
-
-当前已被实验支持的核心公共设施：
-
-```text
-Evidence Intake Facility（证据接入公共设施）
-AI Turn Facility（AI 单轮调用公共设施）
-Agent Execution Facility（Agent 执行公共设施）
-Cognition Data Facility（认知数据公共设施）
-World / ExternalOperation runtime（运行设施）
-```
-
-当前重要结构：
-
-```text
-AI Turn
+AI Turn Facility
 → Vercel AI SDK Core + 薄 DCF 语义层
 
-Agent Execution
+Agent Execution Facility
 → ACP + 薄 DCF Agent 语义
 
-Cognition Data
-→ SQLite 权威层 + 可替换 / 可删除 / 可重建的派生检索层
+Cognition Data Facility
+→ SQLite Authority + 可重建派生检索
 
-Evidence Intake
-→ 借鉴 Home Assistant 生命周期、OpenTelemetry 确认 / 时间语义、Redpanda 游标 / 检查点
+Evidence Intake Facility
+→ 继续吸收来源生命周期 / ack / cursor / checkpoint 等输入侧复杂度
 ```
 
-公共设施只吸收重复专业机制，不拥有个人叙事、Wiki、项目叙事等上层产品意义。
+旧 `World / ExternalOperation runtime` 中依赖 Becsy World 作为唯一全局运行主权的部分需要按 08-08 新架构重新设计；其已验证的外部操作状态与失败语义证据不自动失效。
 
 ---
 
-# 11. 当前专项能力边界
+# 14. 当前施工状态
 
-证据链前两个 Capability 的专项规范：
+Capability Registry 身份与 Envelope 施工状态继续分离。
 
-```text
-docs/spec/2026-08-07-DCF-证据采集与多源证据编译增量规范.md
-```
-
-当前已经收敛：
-
-```text
-证据源采集管理
-→ 输入侧复杂度
-
-多源证据编译
-→ 已到达证据的输出侧确定性加工
-```
-
-两者以及后续 Capability 优先通过 ECS 公共语义状态与声明匹配组合，而不是私有调用链。
-
----
-
-# 12. 当前施工状态与下一步
-
-Capability Registry 身份与 Envelope 施工状态正式分离。
-
-建议施工状态：
+建议状态仍可使用：
 
 ```text
 REGISTERED
@@ -489,51 +455,65 @@ READY_FOR_COMPOSITE
 COMPOSITE_PASS
 PASSED
 DESIGN_BLOCKED
-```
-
-暂缓 Discovery：
-
-```text
 DISCOVERY_DEFERRED
 ```
 
-当前正确顺序：
+但旧 `Standalone World / Composite World` 若特指 Becsy World，不再是所有 Capability 的强制施工形态。
+
+后续验收应围绕：
 
 ```text
-Capability Registry v1
-↓
-选择一个已登记 Capability
-↓
-关闭 Capability Envelope
-↓
-冻结 Shared Semantic requires / provides
-↓
-冻结 Public Facility 依赖 / Provider / fallback
-↓
-冻结用户可观察行为、失败语义和验收
-↓
-Standalone World
-↓
-Composite World
-↓
-正式实现与行为验收
+独立功能行为
+稳定契约
+长期 Workflow 边界
+组合接缝
+持久事实
+UI 可替换性
 ```
 
-不再继续开放式 Capability Discovery，也不先人工重画大 DAG。
+重新定义具体测试形态。
 
 ---
 
-# 13. 当前最重要的设计纪律
+# 15. 当前下一步
+
+当前优先顺序：
+
+```text
+1. Go + DBOS + PostgreSQL workflow-kernel 行为验证
+2. 明确普通外部 Step 的 at-least-once / 幂等 / transaction 边界
+3. 以全景沉浸交互作为第一批正式 Surface 实现之一
+4. 验证 Capability Surface 动态发现 / 挂载 / 卸载
+5. 验证 Frontend Deletion Test / Shell Replacement Test
+6. 继续逐项关闭 Capability Envelope
+```
+
+当前**不**把 Arrow、Bitmap、SIMD、ECS、Solver 等机器 P0 作为前置施工要求。
+
+真实瓶颈没有出现：
+
+> **不优化。**
+
+---
+
+# 16. 当前最重要的设计纪律
 
 1. **Capability 看产品主权，不看独占代码量。**
-2. **原生能力与涌现能力运行地位相同。**
-3. **四刀净化职责：ECS 切关系、World 切运行、Bun 切宿主、Public Facility 切重复专业机制。**
-4. **上游不指定消费者；下游不指定生产者；通过共享世界状态声明匹配。**
-5. **World 管当前运行现实，长期权威历史留在持久层。**
-6. **不要让第三方轮子定义 DCF 世界。**
-7. **不要让不确定 AI 做确定机制已经能做的事。**
-8. **功能可以增加，运行权威和接缝不能同比增加。**
-9. **Registry 身份 ≠ Envelope 已关闭 ≠ 已实现 ≠ 已验收。**
-10. **现实闭环行动本阶段暂缓，不为了 Registry 数量完整而强迫成熟。**
-11. **旧认知与旧设计保留为历史；新裁决通过显式版本追加，不静默改写过去。**
-12. **面向用户判断与架构选择的文档，中文优先；必须保留英文原名时，第一次同时给出中文含义。**
+2. **Capability Registry v1 不因运行时变化重新 Discovery。**
+3. **Workflow 是长期过程横切语义，不是新的 Capability。**
+4. **长期过程进入 DBOS；即时逻辑留在 Go。**
+5. **Go 是默认执行宿主与未知问题退路。**
+6. **先让 Go 承担未知，再让 P0 吸收已知。**
+7. **机器优化按真实证据晋升，不提前建模未来。**
+8. **不预先穷举 Effect，不预先建立中央物理优化器。**
+9. **ECS 降级为局部 P0 候选，不再是全局世界观。**
+10. **P0 Backend 不拥有 durable truth。**
+11. **DBOS 使用 PostgreSQL 不静默改写既有 SQLite cognition authority。**
+12. **功能硬化，界面软化。**
+13. **UI 层没有不可替换组件。**
+14. **禁止伪自定义 UI。**
+15. **能力热插拔优先于 Shell 零帧热更新。**
+16. **整个 frontend 应允许删除重做而不破坏 Capability / Workflow / durable truth。**
+17. **视觉可以自由；语义模型必须继续存在。**
+18. **不要让不确定 AI 做确定机制已经能做的事。**
+19. **旧认知与旧设计保留为历史；新裁决通过显式版本追加，不静默覆写过去。**
