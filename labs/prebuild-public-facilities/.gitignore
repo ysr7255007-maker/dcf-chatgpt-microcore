@@ -1,0 +1,7 @@
+.env.local
+node_modules/
+*.db
+derived/
+raw-logs/*.log
+**/scratch/codex-home-e0/
+**/scratch/*.log

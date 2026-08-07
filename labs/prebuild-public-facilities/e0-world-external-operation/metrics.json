@@ -1,0 +1,72 @@
+{
+  "experiment": "e0-world-external-operation",
+  "generated_at": "2026-08-07",
+  "tests": {
+    "files": ["tests/scenarios.test.ts", "tests/real-turns.test.ts"],
+    "total": 20,
+    "pass": 20,
+    "fail": 0,
+    "independent_full_reruns": 2,
+    "run_command": "bun test tests/"
+  },
+  "bridge_metrics": {
+    "core_bridge_non_empty_loc": {
+      "contract.ts": 66,
+      "bridge.ts": 309,
+      "harness.ts": 136,
+      "total": 511
+    },
+    "provider_specific_loc_in_core": 0,
+    "provider_branching_in_core": 0,
+    "executor_adapter_loc": {
+      "synthetic-worker.ts": 213,
+      "http-turn-executor.ts": 88,
+      "acp-session-executor.ts": 158
+    },
+    "operation_states": 7,
+    "operation_state_list": [
+      "created", "running", "requires_action", "completed", "error", "cancelled", "orphaned"
+    ],
+    "executor_event_kinds": 6,
+    "event_kind_list": ["started", "progress", "requires_action", "result", "error", "terminated"],
+    "guard_reasons": 5,
+    "fault_recovery_paths": 4,
+    "fault_recovery_path_list": [
+      "terminated 事件 → error(crash/worker_lost) 立即可观察",
+      "lease 超时 → error(worker_lost)（执行器沉默死亡的兜底）",
+      "World 重建 → 非终态显式 orphaned（禁止伪装 running）",
+      "执行器重启 + 重试 op（新 opId）恢复服务"
+    ]
+  },
+  "hard_gates": {
+    "G1_world_loop_not_blocked": {
+      "status": "PASS",
+      "evidence": "长挂起外部 op 存在期间 40 帧 world.execute 最大耗时 <10ms（测试 G1）；真实 HTTP Turn 期间世界持续跑帧（R1）"
+    },
+    "G2_no_parallel_lifecycle": {
+      "status": "PASS",
+      "evidence": "R1/R2 同一 ExternalExecutor 接口 + 同一 WorldHost；执行器源码不 import/重定义生命周期状态（测试 G2 结构扫描）"
+    },
+    "G3_late_result_after_cancel": {
+      "status": "PASS",
+      "evidence": "S4：取消后注入迟到结果 + 剧本自然结果均被拒；状态保持 cancelled；resultApplyCount=0"
+    },
+    "G4_duplicate_no_double_result": {
+      "status": "PASS",
+      "evidence": "S5：同 eventId 重放被 ignored_duplicate_result；resultApplyCount=1"
+    },
+    "G5_worker_death_observable": {
+      "status": "PASS",
+      "evidence": "S6 crash → error(crash)；S13 沉默死亡 → lease → error(worker_lost)"
+    },
+    "G6_no_entity_id_identity": {
+      "status": "PASS",
+      "evidence": "一切索引/台账以 opId 为准；ledgerSnapshot 字段集测试断言；跨 World 重建身份连续（G6 测试）"
+    },
+    "G7_no_provider_branch_in_core": {
+      "status": "PASS",
+      "evidence": "核心四文件源码扫描零 provider 关键词、零 provider== 分支（G7 测试）"
+    }
+  },
+  "wall_clock_note": "耗时类数字仅为诊断参考，不作为确定性证据；逻辑行为以帧序列与状态迁移为准"
+}

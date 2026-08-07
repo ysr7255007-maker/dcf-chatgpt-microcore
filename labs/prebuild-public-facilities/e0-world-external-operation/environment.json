@@ -1,0 +1,40 @@
+{
+  "experiment": "e0-world-external-operation",
+  "taskbook": "DCF 正式功能施工前：公共能力架构消歧实验任务书 v1 §4",
+  "generated_at": "2026-08-07",
+  "repo_base_commit": "732a0b6 (origin/main)",
+  "branch": "experiment/prebuild-public-facilities-v1",
+  "runtime": {
+    "os": "darwin 26.5.2 (arm64)",
+    "bun": "1.3.14",
+    "node": "v22.22.3"
+  },
+  "dependencies": {
+    "@lastolivegames/becsy": {
+      "version": "0.16.0",
+      "pin": "exact",
+      "license": "MIT",
+      "note": "沿用上一轮实验 Phase 0 核实的版本事实；npm latest dist-tag 滞后问题已记录"
+    },
+    "@agentclientprotocol/sdk": {
+      "version": "1.3.0",
+      "pin": "exact",
+      "role": "ACP JSON-RPC 编解码（仅 AcpSessionExecutor 使用）"
+    },
+    "@agentclientprotocol/codex-acp": {
+      "version": "1.1.13",
+      "pin": "exact",
+      "role": "真实 ACP Agent（R2）"
+    }
+  },
+  "external_processes": {
+    "synthetic_scenarios": 0,
+    "r1_http_turn": "0 常驻进程（出站 HTTPS）",
+    "r2_acp_session": "1 个子进程（codex-acp，会话结束即 kill）+ 其内部拉起的 codex app-server"
+  },
+  "credentials": "凭据仅存在于 gitignored 的 ../../.env.local 与本机 ~/.codex 登录态；不入 Git、不入报告",
+  "real_agents": {
+    "r1": "真实异步 AI HTTP Turn（DeepSeek 兼容端点，模型 ID 经 /v1/models 核实）",
+    "r2": "真实 ACP Codex Session（隔离 CODEX_HOME，见 failures.md F1）"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "e0-world-external-operation",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@agentclientprotocol/codex-acp": "1.1.13",
+    "@agentclientprotocol/sdk": "1.3.0",
+    "@lastolivegames/becsy": "0.16.0"
+  }
+}
