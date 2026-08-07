@@ -5,3 +5,6 @@ derived/
 raw-logs/*.log
 **/scratch/codex-home-e0/
 **/scratch/*.log
+**/fixtures/task-repo/
+**/fixtures/run/
+**/fixtures/runs/

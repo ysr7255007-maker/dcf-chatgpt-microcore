@@ -1,0 +1,22 @@
+{
+  "generated_at": "2026-08-07T02:56:04.577Z",
+  "happy_path": {
+    "execution": "completed",
+    "reality": "PASS",
+    "evidence": 2
+  },
+  "negative_agent_lies": {
+    "execution": "completed",
+    "reality": "FAIL"
+  },
+  "negative_session_abnormal": {
+    "agent_execution_status": "error",
+    "reality_effect_status": "PASS"
+  },
+  "glue": {
+    "loop_non_empty_loc": 60,
+    "cross_facility_imports": 7,
+    "provider_branches": 0,
+    "duplicate_authorities": 0
+  }
+}
