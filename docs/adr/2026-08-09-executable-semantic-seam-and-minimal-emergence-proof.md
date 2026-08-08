@@ -553,7 +553,229 @@ Full Runtime Proof
 
 ---
 
-# 14. 施工纪律
+# 14. 决策十三：Seam 在运行故障时负责显影断裂边界
+
+Executable Semantic Seam 的价值不止存在于设计、Standalone 和组合验证阶段。
+
+因为同一个 Seam 在正式运行中本来就知道自己的两侧是否存在真实参与者，所以当真实链路发生**硬掉线 / 拓扑断裂**时，它可以自然从 Pass-through 角色退回 Source 或 Sink / Probe 角色。
+
+例如正常链路：
+
+```text
+A ─ X1 ─ B ─ X2 ─ C
+```
+
+如果 B 整体失联：
+
+```text
+A ─ X1   ×   B   ×   X2 ─ C
+```
+
+那么两侧 Seam 会得到互补观察：
+
+```text
+X1
+→ downstream_missing = B
+→ 从 Pass-through 退为 Sink / Probe
+
+X2
+→ upstream_missing = B
+→ 从 Pass-through 退为 Diagnostic Source
+```
+
+X2 此时允许启动自己的 Minimal Realization，向下游发出一个**语义真实但诊断来源显式**的最小实践。
+
+这样做的目的不是让系统假装 B 仍然正常，而是：
+
+> **让故障后的剩余链路继续携带一个可识别的最小真实信号，从而观察故障之后的下游是否仍然成立，并把断裂位置显影出来。**
+
+因此，Minimal Realization 应主动朝“易诊断、易追踪、易显影”的方向设计，而不是只满足“随便产生一个合法值”。
+
+推荐至少携带可机器识别的诊断来源：
+
+```text
+semantic_payload = 合法的最小真实业务值
+provenance = synthetic_diagnostic
+seam_id = X2
+reason = upstream_missing
+expected_provider = B
+trace_id = ...
+observed_at = ...
+```
+
+其中：
+
+```text
+semantic_payload
+→ 必须继续满足该 Seam 的真实业务语义
+
+synthetic_diagnostic provenance
+→ 必须明确说明它不是现实 Provider 的正式业务产物
+```
+
+正式原则：
+
+> **Seam 在正常状态负责连接；在断裂状态负责显影。**
+
+## 14.1 硬掉线可以由相邻 Seam 自动夹逼故障位置
+
+如果某个 Capability 整体消失，其前后两个 Seam 通常能够形成一对互补证据：
+
+```text
+上游 Seam：下游端消失
+下游 Seam：上游端消失
+```
+
+二者共同出现时，可以把故障范围直接夹逼到这个 Capability 或其连接边界，而无需先从全局日志中猜测。
+
+如果只有一侧链路断裂，则只有对应一侧 Seam 改变角色，故障范围仍可以缩小到该连接边界。
+
+因此运行时可以把 Seam 的拓扑角色变化本身作为一等诊断事实：
+
+```text
+PASS_THROUGH
+→ SOURCE_DIAGNOSTIC
+
+PASS_THROUGH
+→ SINK_DIAGNOSTIC
+```
+
+这类变化必须可观察、可追踪、可关联，而不能静默发生。
+
+## 14.2 Diagnostic Minimal Realization 只能显影故障，不能掩盖故障
+
+这是硬约束。
+
+Seam 在真实 Provider 缺失时产生的最小实践，不得静默冒充真实数据继续进入正式事实链。
+
+禁止：
+
+```text
+真实采集 / Provider 已掉线
+↓
+Seam 自动补最小实践
+↓
+上层把它当真实世界事实持久化
+↓
+用户看到“系统仍然正常”
+```
+
+必须：
+
+```text
+Minimal Realization
+=
+真实语义
++
+显式 synthetic_diagnostic 来源
++
+不可冒充正式事实权威
+```
+
+对于 DCF 的 Reality Canon、Evidence、用户确认事实等硬事实层：
+
+> **Diagnostic Minimal Realization 不得在没有显式转换与证据标记的情况下写入正式事实。**
+
+它的职责是保持**诊断链路**活着，而不是保持**业务假象**活着。
+
+## 14.3 半故障 / 软故障不能靠拓扑角色切换自动接管
+
+另一类故障是：
+
+```text
+A → X1 → B → X2 → C
+```
+
+B 的连接仍然存在，但内部行为已经异常，例如：
+
+```text
+收到输入但不产生输出
+产生非法输出
+死锁
+内部规则执行错误
+超时
+状态损坏
+```
+
+此时 X1、X2 从拓扑看仍然“两端连接”，因此 Seam **不得仅凭猜测自动切换到 Minimal Realization 并替代 B**。
+
+否则可能把真正的业务故障掩盖掉。
+
+这时 Seam 的职责退回为边界观测点：
+
+```text
+X1
+→ 记录：合法输入已经进入 B
+
+X2
+→ 记录：对应输出缺失 / 非法 / 未在契约允许窗口出现
+```
+
+如果两侧证据能够关联，就可以把故障范围从“整条系统链”缩小为：
+
+> **B 的内部行为或 B 与相邻边界之间。**
+
+然后由 B 自身的：
+
+```text
+错误状态
+健康检查
+内部诊断
+结构化日志 / trace
+行为断言
+```
+
+继续下钻。
+
+因此形成清晰分工：
+
+```text
+拓扑断裂 / 真实端消失
+→ Seam 自动显影并可启用 Diagnostic Minimal Realization
+
+连接仍在但行为错误
+→ Seam 负责夹逼故障边界
+→ Capability 自身负责解释内部故障
+```
+
+“无输出”是否构成异常必须由具体 Semantic Contract 的时序、基数和生命周期规则决定，不能由 Seam 使用统一固定 timeout 粗暴判断。
+
+## 14.4 最小实践因此同时承担四个阶段的同一份真值
+
+Minimal Realization 不再只是测试夹具。
+
+它在不同阶段承担的是同一份最小真实语义：
+
+```text
+设计期
+→ 把边界语义做成可执行对象
+
+Standalone 施工期
+→ 补齐缺失环境
+
+能力组合探索期
+→ 组成 Minimal Emergence Proof
+
+运行故障期
+→ 在真实端消失时形成 Diagnostic Minimal Realization，显影断点并测试剩余链路
+```
+
+因此最小实践的长期设计目标应该同时满足：
+
+```text
+业务语义真实
+规模足够小
+来源可识别
+传播可追踪
+故障时易显影
+不得冒充现实事实
+```
+
+这使 Seam 成为一种长期存在的**可执行边界真值 + 运行诊断测试点**，而不是完成单元测试后即可丢弃的 Mock。
+
+---
+
+# 15. 施工纪律
 
 以后逐项 Capability 施工，默认顺序调整为：
 
@@ -591,11 +813,11 @@ Composer 业务化
 
 ---
 
-# 15. 错误组合与负控制
+# 16. 错误组合与负控制
 
 以下必须继续作为常设拒绝条件：
 
-## 15.1 语义假重叠
+## 16.1 语义假重叠
 
 ```text
 Schema 相同
@@ -603,7 +825,7 @@ Schema 相同
 → REJECT
 ```
 
-## 15.2 多运行权威
+## 16.2 多运行权威
 
 ```text
 single-provider Seam
@@ -611,7 +833,7 @@ single-provider Seam
 → REJECT
 ```
 
-## 15.3 Fixture 泄漏到正式运行
+## 16.3 Fixture 泄漏到正式运行
 
 ```text
 已有真实 Provider
@@ -619,7 +841,7 @@ single-provider Seam
 → REJECT
 ```
 
-## 15.4 Mock 冒充最小真实实践
+## 16.4 Mock 冒充最小真实实践
 
 ```text
 只传字符串 / nonce
@@ -629,9 +851,19 @@ single-provider Seam
 
 允许 token continuity test 作为诊断工具，但不得冒充最小真实能力涌现证明。
 
+## 16.5 Diagnostic Minimal Realization 冒充现实事实
+
+```text
+provenance = synthetic_diagnostic
+却被当作真实 Provider 产物写入 Reality Canon / 正式 Evidence
+→ REJECT
+```
+
+故障显影数据必须保持来源标签和证据层级，不得通过“系统仍能产生合法 Schema”来掩盖真实 Provider 已失效这一事实。
+
 ---
 
-# 16. 对旧 ADR 的关系
+# 17. 对旧 ADR 的关系
 
 本 ADR **不删除** 2026-08-07 的结论：
 
@@ -651,6 +883,7 @@ Standalone 用最小真实实践补齐环境
 Composite 收敛唯一运行权威
 Runtime 用共享 World 吸收执行接缝
 Solver 在 Seam World 中探索组合
+Seam 在运行断裂时显影故障边界
 真实世界做最终兑现
 ```
 
@@ -658,7 +891,7 @@ Solver 在 Seam World 中探索组合
 
 ---
 
-# 17. Non-decisions
+# 18. Non-decisions
 
 本 ADR 没有决定：
 
@@ -670,6 +903,7 @@ Solver 在 Seam World 中探索组合
 - 所有 Capability 都必须线性串联；
 - 所有业务转换都必须放进 Seam；
 - Seam 可以取代完整现实验收；
+- Seam 可以自动解释 Capability 内部软故障；
 - 所有普通代码都必须写成 ECS System。
 
 ---
@@ -678,8 +912,8 @@ Solver 在 Seam World 中探索组合
 
 DCF 对 Capability 组合的当前正式原则：
 
-> **先把 Capability 边界做成同一份可执行语义接缝；Standalone 时由接缝的最小真实实践补齐缺失环境，Composite 时真实 Provider 自动取得唯一运行权威；多个接缝可以脱离完整程序组成最小真实能力世界，供 Solver 和 AI 低成本探索能力组合与涌现，最终再由完整现实运行证明兑现。**
+> **先把 Capability 边界做成同一份可执行语义接缝；Standalone 时由接缝的最小真实实践补齐缺失环境，Composite 时真实 Provider 自动取得唯一运行权威；多个接缝可以脱离完整程序组成最小真实能力世界，供 Solver 和 AI 低成本探索能力组合与涌现；正式运行发生拓扑断裂时，同一份 Seam 又作为诊断测试点显影故障边界，但不得用诊断最小实践冒充真实业务事实；最终仍由完整现实运行证明兑现。**
 
 压缩表达：
 
-> **Seam First；最小实践保真；组合自动收敛；影子世界探索，真实世界兑现。**
+> **Seam First；最小实践保真；组合自动收敛；影子世界探索；断裂自动显影；真实世界兑现。**
