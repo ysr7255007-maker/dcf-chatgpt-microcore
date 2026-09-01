@@ -59,12 +59,12 @@
         "version": "1.0.0-rc.2-local-agent-dialogue.27"
       },
       {
-        "artifact_id": "sha256:68ac4f7a44a98f1f90021b40bbe7caf240c6833d128c31fa5f67bdd48c545ca4",
+        "artifact_id": "sha256:8ea6df13d371b966fc7e1449bc37fa74de69096303b1f1d65613da6c45131254",
         "enabled": true,
-        "hash": "68ac4f7a44a98f1f90021b40bbe7caf240c6833d128c31fa5f67bdd48c545ca4",
+        "hash": "8ea6df13d371b966fc7e1449bc37fa74de69096303b1f1d65613da6c45131254",
         "id": "dcf.firstparty.qoder-watch",
         "phase": 58,
-        "version": "1.0.0-rc.2-qoder-watch.1"
+        "version": "1.0.0-rc.2-qoder-watch.2"
       },
       {
         "artifact_id": "sha256:3d354c37183a8a4eb4640ae7d04f0c94c7c0ec1d8457dfc210391faf06b7ea34",
@@ -99,7 +99,7 @@
         "version": "1.0.0-rc.2-page-diagnostics.3"
       }
     ],
-    "id": "sha256:0a26f3820f6cc7db891c9559abeaa7317f807475b1cfcc18282c867b644acadf",
+    "id": "sha256:71203b1b71ae17fdf745dcac0b77c4fd5d49be5cae40dd64dd58106e89b8d496",
     "reason": "official-default",
     "schema": "dcf.startup.snapshot.v3"
   },
@@ -254,11 +254,11 @@
       "world_id": "dcf-firstparty-local-agent-dialogue"
     },
     {
-      "artifact_id": "sha256:68ac4f7a44a98f1f90021b40bbe7caf240c6833d128c31fa5f67bdd48c545ca4",
+      "artifact_id": "sha256:8ea6df13d371b966fc7e1449bc37fa74de69096303b1f1d65613da6c45131254",
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/qoder-watch/main.js",
       "default_enabled": true,
       "description": "领取本机 Qoder watcher 完成事件，并将短触发消息发送到当前可见 ChatGPT 对话。",
-      "hash": "68ac4f7a44a98f1f90021b40bbe7caf240c6833d128c31fa5f67bdd48c545ca4",
+      "hash": "8ea6df13d371b966fc7e1449bc37fa74de69096303b1f1d65613da6c45131254",
       "host_api": "3",
       "id": "dcf.firstparty.qoder-watch",
       "matches": [
@@ -269,7 +269,7 @@
       "required": true,
       "run_at": "document_idle",
       "title": "Qoder 完成通知",
-      "version": "1.0.0-rc.2-qoder-watch.1",
+      "version": "1.0.0-rc.2-qoder-watch.2",
       "world_id": "dcf-firstparty-qoder-watch"
     },
     {

@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.qoder-watch';
-  const UNIT_VERSION = '1.0.0-rc.2-qoder-watch.1';
+  const UNIT_VERSION = '1.0.0-rc.2-qoder-watch.2';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_QODER_WATCH__';
   const BASE_URL = 'http://127.0.0.1:4937';
   const POLL_MS = 1500;
@@ -35,12 +35,18 @@
     return String(target ? ('value' in target ? target.value || '' : target.innerText || target.textContent || '') : '');
   }
 
-  function dispatchInput(target, text) {
-    try {
-      target.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));
-    } catch (_) {
-      target.dispatchEvent(new Event('input', { bubbles: true }));
-    }
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  const isStreaming = () => Boolean(document.querySelector(
+    '[data-testid="stop-button"],button[aria-label*="Stop"],button[aria-label*="停止"]'
+  ));
+
+  function dispatchComposerEvents(target, text) {
+    try { target.dispatchEvent(new Event('compositionstart', { bubbles: true })); } catch (_) {}
+    try { target.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, inputType: 'insertText', data: text })); } catch (_) {}
+    try { target.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text })); }
+    catch (_) { target.dispatchEvent(new Event('input', { bubbles: true })); }
+    try { target.dispatchEvent(new Event('compositionend', { bubbles: true })); } catch (_) {}
   }
 
   function setComposerText(target, text) {
@@ -50,11 +56,11 @@
       if (descriptor?.set) descriptor.set.call(target, text);
       else target.value = text;
       if (typeof target.setSelectionRange === 'function') target.setSelectionRange(text.length, text.length);
-      dispatchInput(target, text);
+      dispatchComposerEvents(target, text);
       return;
     }
     target.textContent = text;
-    dispatchInput(target, text);
+    dispatchComposerEvents(target, text);
   }
 
   function sendButton() {
@@ -64,16 +70,44 @@
       || document.querySelector('form button[type="submit"]');
   }
 
+  async function clickSend() {
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      const button = sendButton();
+      if (!isStreaming() && button && !button.disabled && button.getAttribute?.('aria-disabled') !== 'true') {
+        button.click();
+        return;
+      }
+      await sleep(50);
+    }
+    throw new Error('ChatGPT send button unavailable after composer fill');
+  }
+
+  function countUserMessages() {
+    return document.querySelectorAll('[data-message-author-role="user"]').length;
+  }
+
+  async function confirmDelivery(text, baselineUsers) {
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      await sleep(500);
+      const userNodes = Array.from(document.querySelectorAll('[data-message-author-role="user"]'));
+      if (userNodes.length <= baselineUsers) continue;
+      for (let i = userNodes.length - 1; i >= Math.max(0, userNodes.length - 3); i -= 1) {
+        const nodeText = String(userNodes[i].innerText || userNodes[i].textContent || '');
+        if (nodeText.includes(text)) return true;
+      }
+    }
+    return false;
+  }
+
   async function sendText(text) {
     const target = composer();
     if (!target) throw new Error('ChatGPT composer not found');
     const existing = composerValue(target).trim();
     if (existing && existing !== text) throw new Error('composer contains an existing draft');
+    const baselineUsers = countUserMessages();
     setComposerText(target, text);
-    await new Promise((resolve) => setTimeout(resolve, 80));
-    const button = sendButton();
-    if (!button || button.disabled) throw new Error('ChatGPT send button unavailable');
-    button.click();
+    await clickSend();
+    if (!await confirmDelivery(text, baselineUsers)) throw new Error('ChatGPT delivery not confirmed');
   }
 
   async function request(path, options = {}) {
