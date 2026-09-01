@@ -61,6 +61,12 @@
         "1.0.0-rc.2-plugin-manager.6": "1da02452063981312738baf964e7669b4c0829966c2e1903658bcdb35192dcb2"
       }
     },
+    "dcf.firstparty.qoder-watch": {
+      "legacy_collisions": [],
+      "versions": {
+        "1.0.0-rc.2-qoder-watch.1": "68ac4f7a44a98f1f90021b40bbe7caf240c6833d128c31fa5f67bdd48c545ca4"
+      }
+    },
     "dcf.firstparty.shell": {
       "legacy_collisions": [
         {
