@@ -31,6 +31,12 @@
         "1.0.0-rc.2-conversation-performance.1": "daae8c34c58af037d6ba7f9f05a39ce9e40c7500f915fdb2a4e1b1380100cfdb"
       }
     },
+    "dcf.firstparty.conversation-state": {
+      "legacy_collisions": [],
+      "versions": {
+        "1.0.0-rc.2-conversation-state.1": "5173a01edf1eda7ca85c9afc000527fcbb610659b27e3f3c1b3eabf025a2f10b"
+      }
+    },
     "dcf.firstparty.diagnostics": {
       "legacy_collisions": [],
       "versions": {
