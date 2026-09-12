@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.conversation-state';
-  const UNIT_VERSION = '1.0.0-rc.2-conversation-state.2';
+  const UNIT_VERSION = '1.0.0-rc.2-conversation-state.3';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_CONVERSATION_STATE__';
   const COMPANION = 'http://127.0.0.1:8472/rpc/events/ingest';
   const POLL_MS = 2000;
@@ -20,6 +20,19 @@
   ];
 
   globalThis[GLOBAL_KEY]?.destroy?.();
+
+  function mark(fields) {
+    // Cross-world observability: the unit's own world is not inspectable from
+    // the page, so it must leave a marker any world (and any operator) can read.
+    try {
+      const root = document.documentElement;
+      if (!root) return;
+      for (const [key, value] of Object.entries(fields)) {
+        root.dataset[key] = String(value);
+      }
+    } catch (_) {}
+  }
+
 
   const host = (message) => {
     if (typeof chrome === 'undefined' || !chrome.runtime || typeof chrome.runtime.sendMessage !== 'function') {
@@ -56,18 +69,6 @@
   let ticks = 0;
   let lastReported = 0;
   const ring = [];
-
-  function mark(fields) {
-    // Cross-world observability: the unit's own world is not inspectable from
-    // the page, so it must leave a marker any world (and any operator) can read.
-    try {
-      const root = document.documentElement;
-      if (!root) return;
-      for (const [key, value] of Object.entries(fields)) {
-        root.dataset[key] = String(value);
-      }
-    } catch (_) {}
-  }
 
   const composer = () => document.querySelector('#prompt-textarea');
   const assistantNodes = () => [...document.querySelectorAll('[data-message-author-role="assistant"]')];

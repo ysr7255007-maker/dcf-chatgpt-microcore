@@ -35,7 +35,8 @@
       "legacy_collisions": [],
       "versions": {
         "1.0.0-rc.2-conversation-state.1": "5173a01edf1eda7ca85c9afc000527fcbb610659b27e3f3c1b3eabf025a2f10b",
-        "1.0.0-rc.2-conversation-state.2": "4bf6c1bf23d63a5ca1177b94f19ec95513cee79fca3dbc778b6cb58c20adc94b"
+        "1.0.0-rc.2-conversation-state.2": "4bf6c1bf23d63a5ca1177b94f19ec95513cee79fca3dbc778b6cb58c20adc94b",
+        "1.0.0-rc.2-conversation-state.3": "de8d9d211867305e28ec8817d0141501be5efc717ad321b89fe8a412b3a7d7d4"
       }
     },
     "dcf.firstparty.diagnostics": {
