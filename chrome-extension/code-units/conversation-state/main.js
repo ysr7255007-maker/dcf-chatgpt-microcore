@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.conversation-state';
-  const UNIT_VERSION = '1.0.0-rc.2-conversation-state.6';
+  const UNIT_VERSION = '1.0.0-rc.2-conversation-state.7';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_CONVERSATION_STATE__';
   const COMPANION = 'http://127.0.0.1:8472/rpc/events/ingest';
   const POLL_MS = 2000;
@@ -77,8 +77,7 @@
   let lastError = '';
   let lastState = null;
   let ticks = 0;
-  let lastReported = 0;
-  let lastPublished = 0;
+  let published = 0;
   const ring = [];
 
   const composer = () => document.querySelector('#prompt-textarea');
@@ -206,9 +205,9 @@
       if (changed || now - lastPublishedAt > HEARTBEAT_MS) {
         await publish(value, changed ? 'transition' : 'heartbeat');
         lastPublishedAt = now;
-        lastPublished += 1;
+        published += 1;
         lastError = '';
-        mark({ dcfConversationReported: lastReported, dcfConversationError: '' });
+        mark({ dcfConversationReported: published, dcfConversationError: '' });
       }
     } catch (error) {
       lastError = String((error && error.message) || error);
@@ -249,7 +248,7 @@
       last_error: lastError,
       last_published_at: lastPublishedAt ? new Date(lastPublishedAt).toISOString() : null,
       ticks,
-      reported: lastReported,
+      reported: published,
       current: lastState,
       transitions: ring.slice(-20)
     })
@@ -260,6 +259,6 @@
          dcfConversationAt: new Date().toISOString(), dcfConversationTicks: 0 });
   schedule();
   host({ type: 'unit.started', unit_id: UNIT_ID, version: UNIT_VERSION })
-    .then(() => mark({ dcfConversationHandshake: 'ok' }))
-    .catch((error) => mark({ dcfConversationHandshake: 'failed: ' + String((error && error.message) || error).slice(0, 120) }));
+    .then(() => { if (!destroyed) mark({ dcfConversationHandshake: 'ok' }); })
+    .catch((error) => { if (!destroyed) mark({ dcfConversationHandshake: 'failed: ' + String((error && error.message) || error).slice(0, 120) }); });
 })();
