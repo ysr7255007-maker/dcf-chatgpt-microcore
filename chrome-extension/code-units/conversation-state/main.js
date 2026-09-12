@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.conversation-state';
-  const UNIT_VERSION = '1.0.0-rc.2-conversation-state.3';
+  const UNIT_VERSION = '1.0.0-rc.2-conversation-state.4';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_CONVERSATION_STATE__';
   const COMPANION = 'http://127.0.0.1:8472/rpc/events/ingest';
   const POLL_MS = 2000;
@@ -20,6 +20,16 @@
   ];
 
   globalThis[GLOBAL_KEY]?.destroy?.();
+
+  function clearStaleMarkers() {
+    try {
+      const root = document.documentElement;
+      if (!root) return;
+      for (const key of Object.keys(root.dataset)) {
+        if (key.startsWith('dcfConversation')) delete root.dataset[key];
+      }
+    } catch (_) {}
+  }
 
   function mark(fields) {
     // Cross-world observability: the unit's own world is not inspectable from
@@ -210,7 +220,12 @@
     timer = null;
     if (destroyed) return;
     timer = setTimeout(async () => {
-      await tick();
+      try {
+        await tick();
+      } catch (error) {
+        lastError = 'scheduler: ' + String((error && error.message) || error);
+        mark({ dcfConversationError: lastError.slice(0, 180) });
+      }
       schedule();
     }, POLL_MS);
   }
@@ -237,6 +252,7 @@
     })
   };
 
+  clearStaleMarkers();
   mark({ dcfConversationState: 'loaded', dcfConversationVersion: UNIT_VERSION,
          dcfConversationAt: new Date().toISOString(), dcfConversationTicks: 0 });
   schedule();

@@ -67,12 +67,12 @@
         "version": "1.0.0-rc.2-qoder-watch.2"
       },
       {
-        "artifact_id": "sha256:de8d9d211867305e28ec8817d0141501be5efc717ad321b89fe8a412b3a7d7d4",
+        "artifact_id": "sha256:f0b8f4903feb68d9a65e0fd7a1a52c854559f112bcaa7101368f9799443b2d79",
         "enabled": true,
-        "hash": "de8d9d211867305e28ec8817d0141501be5efc717ad321b89fe8a412b3a7d7d4",
+        "hash": "f0b8f4903feb68d9a65e0fd7a1a52c854559f112bcaa7101368f9799443b2d79",
         "id": "dcf.firstparty.conversation-state",
         "phase": 59,
-        "version": "1.0.0-rc.2-conversation-state.3"
+        "version": "1.0.0-rc.2-conversation-state.4"
       },
       {
         "artifact_id": "sha256:3d354c37183a8a4eb4640ae7d04f0c94c7c0ec1d8457dfc210391faf06b7ea34",
@@ -107,7 +107,7 @@
         "version": "1.0.0-rc.2-page-diagnostics.3"
       }
     ],
-    "id": "sha256:1b248df7e10346b2873d44bfbb5114d006527d2fb2700d7fe234b2bfef021130",
+    "id": "sha256:25a18bf8f587a3f8e665971f113b6ecf7823eb1d62f05d3cca780ee3d4fab8f7",
     "reason": "official-default",
     "schema": "dcf.startup.snapshot.v3"
   },
@@ -282,11 +282,11 @@
       "world_id": "dcf-firstparty-qoder-watch"
     },
     {
-      "artifact_id": "sha256:de8d9d211867305e28ec8817d0141501be5efc717ad321b89fe8a412b3a7d7d4",
+      "artifact_id": "sha256:f0b8f4903feb68d9a65e0fd7a1a52c854559f112bcaa7101368f9799443b2d79",
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/conversation-state/main.js",
       "default_enabled": true,
       "description": "把当前对话页的状态（生成中/已中断等待/上下文超限/草稿/空闲）作为 DCF 事件上报 companion，供本机执行侧读取，不做任何页面写入。",
-      "hash": "de8d9d211867305e28ec8817d0141501be5efc717ad321b89fe8a412b3a7d7d4",
+      "hash": "f0b8f4903feb68d9a65e0fd7a1a52c854559f112bcaa7101368f9799443b2d79",
       "host_api": "3",
       "id": "dcf.firstparty.conversation-state",
       "matches": [
@@ -297,7 +297,7 @@
       "required": true,
       "run_at": "document_idle",
       "title": "对话状态上报",
-      "version": "1.0.0-rc.2-conversation-state.3",
+      "version": "1.0.0-rc.2-conversation-state.4",
       "world_id": "dcf-firstparty-conversation-state"
     },
     {
