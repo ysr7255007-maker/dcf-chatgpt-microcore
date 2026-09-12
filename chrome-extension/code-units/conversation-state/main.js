@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.conversation-state';
-  const UNIT_VERSION = '1.0.0-rc.2-conversation-state.1';
+  const UNIT_VERSION = '1.0.0-rc.2-conversation-state.2';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_CONVERSATION_STATE__';
   const COMPANION = 'http://127.0.0.1:8472/rpc/events/ingest';
   const POLL_MS = 2000;
@@ -53,7 +53,21 @@
   let lastFingerprint = '';
   let lastError = '';
   let lastState = null;
+  let ticks = 0;
+  let lastReported = 0;
   const ring = [];
+
+  function mark(fields) {
+    // Cross-world observability: the unit's own world is not inspectable from
+    // the page, so it must leave a marker any world (and any operator) can read.
+    try {
+      const root = document.documentElement;
+      if (!root) return;
+      for (const [key, value] of Object.entries(fields)) {
+        root.dataset[key] = String(value);
+      }
+    } catch (_) {}
+  }
 
   const composer = () => document.querySelector('#prompt-textarea');
   const assistantNodes = () => [...document.querySelectorAll('[data-message-author-role="assistant"]')];
@@ -161,6 +175,7 @@
   async function tick() {
     if (destroyed || busy) return;
     busy = true;
+    ticks += 1;
     try {
       const value = sample();
       const mark = fingerprint(value);
@@ -172,13 +187,18 @@
                    last_len: value.lastLen, draft_len: value.draftLen, signals: value.signals });
         lastFingerprint = mark;
       }
+      mark({ dcfConversationState: value.state, dcfConversationAt: new Date().toISOString(),
+             dcfConversationTicks: ticks });
       if (changed || now - lastPublishedAt > HEARTBEAT_MS) {
         await publish(value, changed ? 'transition' : 'heartbeat');
         lastPublishedAt = now;
+        lastPublished++ ;
         lastError = '';
+        mark({ dcfConversationReported: lastReported, dcfConversationError: '' });
       }
     } catch (error) {
       lastError = String((error && error.message) || error);
+      mark({ dcfConversationError: lastError.slice(0, 180) });
     } finally {
       busy = false;
     }
@@ -209,11 +229,17 @@
       version: UNIT_VERSION,
       last_error: lastError,
       last_published_at: lastPublishedAt ? new Date(lastPublishedAt).toISOString() : null,
+      ticks,
+      reported: lastReported,
       current: lastState,
       transitions: ring.slice(-20)
     })
   };
 
+  mark({ dcfConversationState: 'loaded', dcfConversationVersion: UNIT_VERSION,
+         dcfConversationAt: new Date().toISOString(), dcfConversationTicks: 0 });
   schedule();
-  host({ type: 'unit.started', unit_id: UNIT_ID, version: UNIT_VERSION }).catch(() => {});
+  host({ type: 'unit.started', unit_id: UNIT_ID, version: UNIT_VERSION })
+    .then(() => mark({ dcfConversationHandshake: 'ok' }))
+    .catch((error) => mark({ dcfConversationHandshake: 'failed: ' + String((error && error.message) || error).slice(0, 120) }));
 })();
