@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.conversation-state';
-  const UNIT_VERSION = '1.0.0-rc.2-conversation-state.5';
+  const UNIT_VERSION = '1.0.0-rc.2-conversation-state.6';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_CONVERSATION_STATE__';
   const COMPANION = 'http://127.0.0.1:8472/rpc/events/ingest';
   const POLL_MS = 2000;
@@ -78,6 +78,7 @@
   let lastState = null;
   let ticks = 0;
   let lastReported = 0;
+  let lastPublished = 0;
   const ring = [];
 
   const composer = () => document.querySelector('#prompt-textarea');
@@ -154,6 +155,8 @@
       event_type: 'conversation.state.observed',
       created_at: new Date().toISOString(),
       payload_json: {
+        title: '对话状态 · ' + value.state,
+        body_text: `state=${value.state} generating=${value.generating} users=${value.users} assistants=${value.assistants} draft=${value.draftLen}`,
         reason,
         state: value.state,
         generating: value.generating,
@@ -203,7 +206,7 @@
       if (changed || now - lastPublishedAt > HEARTBEAT_MS) {
         await publish(value, changed ? 'transition' : 'heartbeat');
         lastPublishedAt = now;
-        lastPublished++ ;
+        lastPublished += 1;
         lastError = '';
         mark({ dcfConversationReported: lastReported, dcfConversationError: '' });
       }

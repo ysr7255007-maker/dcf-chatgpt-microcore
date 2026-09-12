@@ -38,7 +38,8 @@
         "1.0.0-rc.2-conversation-state.2": "4bf6c1bf23d63a5ca1177b94f19ec95513cee79fca3dbc778b6cb58c20adc94b",
         "1.0.0-rc.2-conversation-state.3": "de8d9d211867305e28ec8817d0141501be5efc717ad321b89fe8a412b3a7d7d4",
         "1.0.0-rc.2-conversation-state.4": "f0b8f4903feb68d9a65e0fd7a1a52c854559f112bcaa7101368f9799443b2d79",
-        "1.0.0-rc.2-conversation-state.5": "52ead851433ae0ad55a77160e7e648448ea04256e62472e320d5461428afc3f9"
+        "1.0.0-rc.2-conversation-state.5": "52ead851433ae0ad55a77160e7e648448ea04256e62472e320d5461428afc3f9",
+        "1.0.0-rc.2-conversation-state.6": "73bb3aa3e1d03b836cc60347a4b471998ee1cb6cc10e17f19d33c0e662b1c00b"
       }
     },
     "dcf.firstparty.diagnostics": {
