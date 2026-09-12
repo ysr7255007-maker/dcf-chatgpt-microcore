@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.conversation-state';
-  const UNIT_VERSION = '1.0.0-rc.2-conversation-state.4';
+  const UNIT_VERSION = '1.0.0-rc.2-conversation-state.5';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_CONVERSATION_STATE__';
   const COMPANION = 'http://127.0.0.1:8472/rpc/events/ingest';
   const POLL_MS = 2000;
@@ -189,14 +189,14 @@
     ticks += 1;
     try {
       const value = sample();
-      const mark = fingerprint(value);
+      const stateMark = fingerprint(value);
       const now = Date.now();
-      const changed = mark !== lastFingerprint;
+      const changed = stateMark !== lastFingerprint;
       lastState = value;
       if (changed) {
         pushRing({ at: new Date().toISOString(), state: value.state, generating: value.generating,
                    last_len: value.lastLen, draft_len: value.draftLen, signals: value.signals });
-        lastFingerprint = mark;
+        lastFingerprint = stateMark;
       }
       mark({ dcfConversationState: value.state, dcfConversationAt: new Date().toISOString(),
              dcfConversationTicks: ticks });
