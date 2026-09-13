@@ -11,7 +11,7 @@ const code = fs.readFileSync(pluginPath, 'utf8');
 const index = JSON.parse(fs.readFileSync(path.join(root, 'releases/chrome/official-index.json'), 'utf8'));
 const ref = index.units.find((unit) => unit.id === 'dcf.firstparty.qoder-watch');
 assert(ref, 'qoder watch plugin missing from release index');
-assert.strictEqual(ref.version, '1.0.0-rc.2-qoder-watch.2');
+assert.strictEqual(ref.version, '1.0.0-rc.2-qoder-watch.9');
 assert.strictEqual(ref.phase, 58);
 assert.strictEqual(crypto.createHash('sha256').update(code).digest('hex'), ref.hash);
 
@@ -20,6 +20,10 @@ for (const token of [
   '127.0.0.1:4937',
   '/events/claim',
   '/ack',
+  '/observe',
+  '/clients/heartbeat',
+  'already_visible',
+  'verify_visible',
   "document.visibilityState !== 'visible'",
   'composer contains an existing draft',
   "type: 'unit.started'"
@@ -29,30 +33,56 @@ function response(payload, ok = true) {
   return { ok, status: ok ? 200 : 500, json: async () => payload };
 }
 
-async function runBehavior() {
-  let sendClicks = 0;
-  let claimCalls = 0;
-  let ackCalls = 0;
-  let userMessages = 0;
-  let submissionPending = false;
-  let buttonReadyCountdown = null;
-  let ackObservedUserMessages = -1;
+function newHarness() {
+  const state = {
+    sendClicks: 0,
+    claimCalls: 0,
+    ackCalls: 0,
+    observeCalls: [],
+    heartbeatCalls: [],
+    claimQueries: [],
+    transcript: [],
+    ackObservedTranscript: null,
+    submitted: null,
+    pendingSubmission: false,
+    buttonReadyCountdown: null,
+    claimedEvent: null,
+    claimReason: ''
+  };
   const inputEvents = [];
-  let claimedEvent = { id: 'evt-1', type: 'complete', message: 'Qoder 完成' };
-  const composer = { textContent: '', focus() {}, dispatchEvent(event) { inputEvents.push(event.type); if (event.type === 'beforeinput') buttonReadyCountdown = 2; } };
-  const sendButton = { disabled: true, getAttribute(name) { return name === 'aria-disabled' && this.disabled ? 'true' : null; }, click() { sendClicks += 1; submissionPending = true; composer.textContent = ''; } };
+  const composer = {
+    textContent: '',
+    focus() {},
+    dispatchEvent(event) {
+      inputEvents.push(event.type);
+      if (event.type === 'beforeinput') state.buttonReadyCountdown = 2;
+    }
+  };
+  const sendButton = {
+    disabled: true,
+    getAttribute(name) { return name === 'aria-disabled' && this.disabled ? 'true' : null; },
+    click() {
+      state.sendClicks += 1;
+      state.submitted = composer.textContent;
+      state.pendingSubmission = true;
+      composer.textContent = '';
+    }
+  };
   const document = {
     visibilityState: 'hidden',
+    documentElement: { dataset: {} },
     addEventListener() {},
     removeEventListener() {},
     querySelector(selector) {
       if (selector.includes('prompt-textarea') || selector.includes('composer-text-input') || selector.includes('textarea') || selector.includes('contenteditable')) return composer;
       if (selector.includes('stop-button') || selector.includes('Stop') || selector.includes('停止')) return null;
-      if (selector.includes('send-button') || selector.includes('Send') || selector.includes('发送') || selector.includes('type=\"submit\"')) return sendButton;
+      if (selector.includes('send-button') || selector.includes('Send') || selector.includes('发送') || selector.includes('type="submit"')) return sendButton;
       return null;
     },
     querySelectorAll(selector) {
-      if (selector === '[data-message-author-role=\"user\"]') return Array.from({ length: userMessages }, (_, i) => ({ innerText: i === userMessages - 1 ? 'Qoder 完成' : 'old' }));
+      if (selector === '[data-message-author-role="user"]') {
+        return state.transcript.map((text) => ({ innerText: text }));
+      }
       return [];
     }
   };
@@ -63,11 +93,14 @@ async function runBehavior() {
     chrome: { runtime: { sendMessage: async () => ({ ok: true }) } },
     crypto: { randomUUID: () => 'client-1' },
     setTimeout: (fn, ms) => {
-      if (buttonReadyCountdown !== null && buttonReadyCountdown > 0) {
-        buttonReadyCountdown -= 1;
-        if (buttonReadyCountdown === 0) sendButton.disabled = false;
+      if (state.buttonReadyCountdown !== null && state.buttonReadyCountdown > 0) {
+        state.buttonReadyCountdown -= 1;
+        if (state.buttonReadyCountdown === 0) sendButton.disabled = false;
       }
-      if (submissionPending) { userMessages += 1; submissionPending = false; }
+      if (state.pendingSubmission) {
+        state.transcript.push(state.submitted);
+        state.pendingSubmission = false;
+      }
       if (ms <= 500) fn();
       return 1;
     },
@@ -75,13 +108,24 @@ async function runBehavior() {
     InputEvent: class InputEvent { constructor(type) { this.type = type; } },
     Event: class Event { constructor(type) { this.type = type; } },
     fetch: async (url, options = {}) => {
-      if (String(url).includes('/events/claim')) {
-        claimCalls += 1;
-        return response({ ok: true, event: claimedEvent });
+      const target = String(url);
+      if (target.includes('/events/claim')) {
+        state.claimCalls += 1;
+        state.claimQueries.push(target);
+        return response({ ok: true, event: state.claimedEvent, reason: state.claimReason });
       }
-      if (String(url).includes('/ack')) {
-        ackCalls += 1;
-        ackObservedUserMessages = userMessages;
+      if (target.includes('/observe')) {
+        const body = JSON.parse(options.body);
+        state.observeCalls.push(body);
+        return response({ ok: true, event: {} });
+      }
+      if (target.includes('/clients/heartbeat')) {
+        state.heartbeatCalls.push(JSON.parse(options.body));
+        return response({ ok: true, client: {} });
+      }
+      if (target.includes('/ack')) {
+        state.ackCalls += 1;
+        state.ackObservedTranscript = state.transcript.slice();
         assert.strictEqual(options.method, 'POST');
         return response({ ok: true });
       }
@@ -91,37 +135,116 @@ async function runBehavior() {
   context.globalThis = context;
   vm.createContext(context);
   vm.runInContext(code, context);
-  const api = context.__DCF_FIRSTPARTY_QODER_WATCH__;
-  assert(api && typeof api.pollNow === 'function');
-  await api.pollNow();
-  assert.strictEqual(claimCalls, 0, 'hidden page must not claim events');
+  return { state, api: context.__DCF_FIRSTPARTY_QODER_WATCH__, document, composer, inputEvents };
+}
 
-  document.visibilityState = 'visible';
-  await api.pollNow();
-  assert.strictEqual(claimCalls, 1);
-  assert(inputEvents.includes('beforeinput'), 'contenteditable delivery must emit beforeinput so ChatGPT internal composer state updates');
-  assert.strictEqual(sendClicks, 1);
-  assert.strictEqual(ackCalls, 1);
-  assert.strictEqual(ackObservedUserMessages, 1, 'event must be ACKed only after the user message is visibly delivered');
-  assert.strictEqual(composer.textContent, '', 'successful delivery should leave the composer cleared by submission');
+async function runBehavior() {
+  // --- 1. a hidden page never claims -------------------------------------
+  const h = newHarness();
+  assert(h.api && typeof h.api.pollNow === 'function');
+  await h.api.pollNow();
+  assert.strictEqual(h.state.claimCalls, 0, 'hidden page must not claim events');
 
-  composer.textContent = 'existing draft';
-  claimedEvent = { id: 'evt-2', type: 'complete', message: 'second' };
-  await api.pollNow();
-  assert.strictEqual(claimCalls, 2);
-  assert.strictEqual(sendClicks, 1, 'occupied composer must not send');
-  assert.strictEqual(ackCalls, 1, 'failed send must not ack');
+  // --- 2. a fresh event is typed, sent, confirmed and then ACKed ---------
+  h.document.visibilityState = 'visible';
+  h.state.claimedEvent = { id: 'evt-1', type: 'complete', message: 'Qoder 完成', deliver: true };
+  await h.api.pollNow();
+  assert.strictEqual(h.state.claimCalls, 1);
+  assert(h.inputEvents.includes('beforeinput'), 'contenteditable delivery must emit beforeinput so ChatGPT internal composer state updates');
+  assert.strictEqual(h.state.sendClicks, 1);
+  assert.strictEqual(h.state.ackCalls, 1);
+  assert.deepStrictEqual(h.state.ackObservedTranscript, ['Qoder 完成'],
+    'event must be ACKed only after the user message is visibly delivered');
+  assert.strictEqual(h.composer.textContent, '', 'successful delivery should leave the composer cleared by submission');
+  const phases = h.state.observeCalls.map((call) => call.phase);
+  assert(phases.includes('claim_received'), 'claim must be observed');
+  assert(phases.includes('send_clicked'), 'send must be observed');
+  assert(phases.includes('delivery_observed'), 'visible delivery must be observed before ACK');
+  assert(phases.indexOf('delivery_observed') < phases.length, 'delivery observation must precede ACK');
+  const claimQuery = h.state.claimQueries[0];
+  for (const field of ['client_id', 'visible=1', 'conversation_path=', 'streaming=0', 'composer=1', 'last_error=']) {
+    assert(claimQuery.includes(field), `claim must carry client health field ${field}`);
+  }
 
-  api.destroy();
+  // --- 3. an occupied composer is never overwritten and never ACKed ------
+  h.composer.textContent = 'existing draft';
+  h.state.claimedEvent = { id: 'evt-2', type: 'complete', message: 'second', deliver: true };
+  await h.api.pollNow();
+  assert.strictEqual(h.state.claimCalls, 2);
+  assert.strictEqual(h.state.sendClicks, 1, 'occupied composer must not send');
+  assert.strictEqual(h.state.ackCalls, 1, 'failed send must not ack');
+  const failurePhases = h.state.observeCalls.map((call) => call.phase);
+  assert(failurePhases.includes('delivery_failed'), 'page-side failure must be reported to the adapter');
+  assert.strictEqual(h.state.heartbeatCalls.length >= 1, true, 'a page-side failure must also heartbeat its real state');
+
+  // --- 4. an event the transport already knows is visible is ACKed without sending
+  const h2 = newHarness();
+  h2.document.visibilityState = 'visible';
+  h2.state.claimedEvent = {
+    id: 'evt-3', type: 'complete', message: 'Qoder 完成', deliver: false,
+    already_visible: true, state: 'visible_pending_ack', visible_at: '2026-09-13T08:00:00+0800'
+  };
+  await h2.api.pollNow();
+  assert.strictEqual(h2.state.sendClicks, 0, 'an already-visible delivery must never be re-sent');
+  assert.strictEqual(h2.state.ackCalls, 1, 'an already-visible delivery must still be ACKed');
+  const already = h2.state.observeCalls.find((call) => call.phase === 'delivery_already_visible');
+  assert(already, 'the ACK-without-send decision must be recorded');
+  assert.strictEqual(already.details.acked_without_send, true);
+
+  // --- 5. an unconfirmed earlier send is resolved from the transcript -----
+  const h3 = newHarness();
+  h3.document.visibilityState = 'visible';
+  h3.state.transcript = ['older message', 'Qoder 完成'];
+  h3.state.claimedEvent = {
+    id: 'evt-4', type: 'complete', message: 'Qoder 完成', deliver: false, verify_visible: true,
+    state: 'blocked', blocker: 'send_unconfirmed'
+  };
+  await h3.api.pollNow();
+  assert.strictEqual(h3.state.sendClicks, 0, 'a possibly-sent message must not be sent again');
+  assert.strictEqual(h3.state.ackCalls, 1);
+  const recovered = h3.state.observeCalls.find((call) => call.phase === 'delivery_already_visible');
+  assert(recovered, 'the transcript must be able to prove the earlier send landed');
+  assert.strictEqual(recovered.details.proof, 'transcript_text');
+  assert.strictEqual(recovered.details.acked_without_send, true);
+
+  // --- 6. an unconfirmed send that is really absent is released ----------
+  const h4 = newHarness();
+  h4.document.visibilityState = 'visible';
+  h4.state.claimedEvent = {
+    id: 'evt-5', type: 'complete', message: 'Qoder 完成', deliver: false, verify_visible: true,
+    state: 'blocked', blocker: 'send_unconfirmed'
+  };
+  await h4.api.pollNow();
+  const absentIndex = h4.state.observeCalls.findIndex((call) => call.phase === 'delivery_absent');
+  assert(absentIndex >= 0, 'a proven absence must be reported to the adapter');
+  assert.strictEqual(h4.state.sendClicks, 1, 'a proven absence may then be delivered normally');
+  assert.strictEqual(h4.state.ackCalls, 1, 'the delivery is ACKed only after it is really visible');
+  const observedIndex = h4.state.observeCalls.findIndex((call) => call.phase === 'delivery_observed');
+  assert(observedIndex > absentIndex, 'absence is established before the first real send');
+
+  // --- 7. the transcript helpers stay pure and testable -------------------
+  assert.strictEqual(h.api.transcript.normalizeText('  a\u00a0 b '), 'a b');
+  assert.strictEqual(
+    JSON.stringify(h.api.transcript.identityAnchors('CONTINUATION_ID: reentry:x#1\nNEXT_ACTION: go')),
+    JSON.stringify(['reentry:x#1']));
+
+  h.api.destroy();
+  h2.api.destroy();
+  h3.api.destroy();
+  h4.api.destroy();
 }
 
 runBehavior().then(() => {
   console.log(JSON.stringify({
     ok: true,
     visible_only_claim: true,
-    successful_send_is_acked: true,
+    successful_send_is_acked_after_visible_delivery: true,
     occupied_composer_is_not_overwritten: true,
-    failed_send_is_not_acked: true
+    failed_send_is_not_acked: true,
+    already_visible_is_acked_without_resending: true,
+    unconfirmed_send_is_resolved_from_the_transcript: true,
+    proven_absence_is_reported_then_delivered: true,
+    client_health_is_reported: true
   }, null, 2));
 }).catch((error) => {
   console.error(error);

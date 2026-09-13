@@ -23,11 +23,11 @@ assert.strictEqual(manifest.version, '1.0.0.3');
 assert.strictEqual(config.schema, 'dcf.chrome.config.v2');
 assert(config.plugin_index_url.includes('/rebuild/chrome-native-host-v2/'));
 assert.strictEqual(index.schema, 'dcf.plugin_index.v2');
-assert.strictEqual(index.units.length, 12);
-assert.strictEqual(index.defaults.length, 12);
+assert.strictEqual(index.units.length, 13);
+assert.strictEqual(index.defaults.length, 13);
 assert(index.default_snapshot);
 assert(index.default_snapshot.id.startsWith('sha256:'));
-assert.strictEqual(index.default_snapshot.entries.length, 12);
+assert.strictEqual(index.default_snapshot.entries.length, 13);
 assert.strictEqual(releaseManifest.default_snapshot_id, index.default_snapshot.id);
 assert.strictEqual(releaseManifest.code_unit_version_ledger, 'releases/chrome/code-unit-version-ledger.json');
 assert.strictEqual(versionLedger.schema, 'dcf.code_unit.version_ledger.v1');
@@ -60,7 +60,7 @@ assert.strictEqual(dialogue.phase, 57);
 
 const qoderWatch = index.units.find((unit) => unit.id === 'dcf.firstparty.qoder-watch');
 assert(qoderWatch);
-assert.strictEqual(qoderWatch.version, '1.0.0-rc.2-qoder-watch.2');
+assert.strictEqual(qoderWatch.version, '1.0.0-rc.2-qoder-watch.9');
 assert.strictEqual(qoderWatch.default_enabled, true);
 assert.strictEqual(qoderWatch.phase, 58);
 
@@ -105,7 +105,7 @@ console.log(JSON.stringify({
   ok: true,
   chrome_base_version: '1.0.0-rc.3',
   pure_base: true,
-  independent_plugins: 12,
+  independent_plugins: 13,
   content_addressed_release: true,
   generated_default_snapshot: true,
   desired_observed_committed_reconcile: true,
