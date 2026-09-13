@@ -60,7 +60,7 @@ assert.strictEqual(dialogue.phase, 57);
 
 const qoderWatch = index.units.find((unit) => unit.id === 'dcf.firstparty.qoder-watch');
 assert(qoderWatch);
-assert.strictEqual(qoderWatch.version, '1.0.0-rc.2-qoder-watch.9');
+assert.strictEqual(qoderWatch.version, '1.0.0-rc.2-qoder-watch.10');
 assert.strictEqual(qoderWatch.default_enabled, true);
 assert.strictEqual(qoderWatch.phase, 58);
 

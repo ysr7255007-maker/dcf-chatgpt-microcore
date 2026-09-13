@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.qoder-watch';
-  const UNIT_VERSION = '1.0.0-rc.2-qoder-watch.9';
+  const UNIT_VERSION = '1.0.0-rc.2-qoder-watch.10';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_QODER_WATCH__';
   const BASE_URL = 'http://127.0.0.1:4937';
   const POLL_MS = 1500;
@@ -16,14 +16,14 @@
   // Reserved `KEY: value` markers that identify one logical re-entry event
   // independently of its transport id. A retry of the same terminal event
   // reuses the same continuation id, so these values are the dedupe identity.
-  const IDENTITY_KEYS = ['CONTINUATION_ID', 'CONTINUATION-ID', 'continuation_id', 'task_id', 'TASK_ID'];
+  const IDENTITY_KEYS = ['CONTINUATION_ID', 'CONTINUATION-ID', 'continuation_id', 'EXPERIENCE_RUN_ID', 'EXPERIENCE_REF', 'task_id', 'TASK_ID'];
   // Keys that may follow an identity key inside the same re-entry payload.
   // They bound a captured value, so ordinary prose after an identity line
   // cannot be swallowed into it. Deliberately NOT full sentence keys such as
   // NEXT_ACTION, whose lower-case value could otherwise be mistaken for a
   // second identity marker.
   const PAYLOAD_MARKERS = [
-    'CONTINUATION_ID', 'CONTINUATION-ID', 'continuation_id', 'task_id', 'TASK_ID',
+    'CONTINUATION_ID', 'CONTINUATION-ID', 'continuation_id', 'EXPERIENCE_RUN_ID', 'EXPERIENCE_REF', 'task_id', 'TASK_ID',
     'result_status', 'delivery_status', 'delivery_ref', 'narrative_debt_id',
     'narrative_checkpoint_ref', 'evidence_ref', 'final_path'
   ];
@@ -238,7 +238,11 @@
   function guardComposer(target, text) {
     if (!target) throw new Error('ChatGPT composer not found');
     const existing = composerValue(target).trim();
-    if (existing && existing !== text.trim()) throw new Error('composer contains an existing draft');
+    if (!existing) return { empty: true, same_event_text: false };
+    if (normalizeText(existing) === normalizeText(text)) {
+      return { empty: false, same_event_text: true };
+    }
+    throw new Error('composer contains an existing draft');
   }
 
   async function sendText(event) {
@@ -272,8 +276,23 @@
       return;
     }
 
+    // Re-check eligibility after claim and before mutating the composer. The
+    // page can begin streaming between heartbeat/claim and delivery. Never
+    // stage our text into a composer that cannot be submitted yet.
+    if (isStreaming()) {
+      const error = new Error('ChatGPT is streaming; refusing to stage re-entry text');
+      await observeTransport(event.id, 'delivery_failed', {
+        ...identity,
+        error: error.message,
+        composer_draft_chars: composerValue(target).trim().length,
+        mounted_user_nodes: readUserTranscript().mounted
+      });
+      throw error;
+    }
+
+    let composerGuard;
     try {
-      guardComposer(target, text);
+      composerGuard = guardComposer(target, text);
     } catch (error) {
       // A page-side blocker must reach the adapter by name; leaving it in this
       // page's JS state is what made the first generation unobservable.
@@ -312,7 +331,10 @@
 
     await observeTransport(event.id, 'send_attempt', { ...identity, mounted_user_nodes: already.mounted });
     try {
-      setComposerText(target, text);
+      // If a previous attempt staged this same logical message but could not
+      // click Send, resume from that state. Do not rewrite the editor and do
+      // not confuse harmless DOM whitespace normalization with a user draft.
+      if (!composerGuard?.same_event_text) setComposerText(target, text);
       await clickSend();
       await observeTransport(event.id, 'send_clicked', { ...identity, mounted_user_nodes: readUserTranscript().mounted });
       const verdict = await verifyDelivery(text);
@@ -392,6 +414,13 @@
     busy = true;
     try {
       const health = pageHealth();
+      // A streaming ChatGPT page cannot accept a new turn. Do not lease work
+      // only to fail it milliseconds later; report health and wait locally.
+      if (health.streaming) {
+        lastError = '';
+        await reportHealth();
+        return;
+      }
       const query = `?client_id=${encodeURIComponent(clientId)}&visible=1`
         + `&conversation_path=${encodeURIComponent(health.conversation_path)}`
         + `&streaming=${health.streaming ? 1 : 0}`

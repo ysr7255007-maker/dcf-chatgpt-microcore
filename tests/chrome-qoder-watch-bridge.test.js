@@ -11,7 +11,7 @@ const code = fs.readFileSync(pluginPath, 'utf8');
 const index = JSON.parse(fs.readFileSync(path.join(root, 'releases/chrome/official-index.json'), 'utf8'));
 const ref = index.units.find((unit) => unit.id === 'dcf.firstparty.qoder-watch');
 assert(ref, 'qoder watch plugin missing from release index');
-assert.strictEqual(ref.version, '1.0.0-rc.2-qoder-watch.9');
+assert.strictEqual(ref.version, '1.0.0-rc.2-qoder-watch.10');
 assert.strictEqual(ref.phase, 58);
 assert.strictEqual(crypto.createHash('sha256').update(code).digest('hex'), ref.hash);
 
@@ -47,7 +47,8 @@ function newHarness() {
     pendingSubmission: false,
     buttonReadyCountdown: null,
     claimedEvent: null,
-    claimReason: ''
+    claimReason: '',
+    streaming: false
   };
   const inputEvents = [];
   const composer = {
@@ -75,8 +76,11 @@ function newHarness() {
     removeEventListener() {},
     querySelector(selector) {
       if (selector.includes('prompt-textarea') || selector.includes('composer-text-input') || selector.includes('textarea') || selector.includes('contenteditable')) return composer;
-      if (selector.includes('stop-button') || selector.includes('Stop') || selector.includes('停止')) return null;
-      if (selector.includes('send-button') || selector.includes('Send') || selector.includes('发送') || selector.includes('type="submit"')) return sendButton;
+      if (selector.includes('stop-button') || selector.includes('Stop') || selector.includes('停止')) return state.streaming ? { disabled: false } : null;
+      if (selector.includes('send-button') || selector.includes('Send') || selector.includes('发送') || selector.includes('type="submit"')) {
+        if (composer.textContent && !state.streaming) sendButton.disabled = false;
+        return sendButton;
+      }
       return null;
     },
     querySelectorAll(selector) {
@@ -222,7 +226,31 @@ async function runBehavior() {
   const observedIndex = h4.state.observeCalls.findIndex((call) => call.phase === 'delivery_observed');
   assert(observedIndex > absentIndex, 'absence is established before the first real send');
 
-  // --- 7. the transcript helpers stay pure and testable -------------------
+  // --- 7. a streaming page does not claim or touch the composer -----------
+  const h5 = newHarness();
+  h5.document.visibilityState = 'visible';
+  h5.state.streaming = true;
+  h5.state.claimedEvent = { id: 'evt-6', type: 'complete', message: 'must wait', deliver: true };
+  await h5.api.pollNow();
+  assert.strictEqual(h5.state.claimCalls, 0, 'streaming page must not claim delivery work');
+  assert.strictEqual(h5.composer.textContent, '', 'streaming page must not stage re-entry text');
+  assert.strictEqual(h5.state.sendClicks, 0);
+
+  // --- 8. a semantically identical staged draft belongs to this event -----
+  const h6 = newHarness();
+  h6.document.visibilityState = 'visible';
+  h6.composer.textContent = 'same\u00a0message';
+  h6.state.claimedEvent = { id: 'evt-7', type: 'complete', message: 'same message', deliver: true };
+  await h6.api.pollNow();
+  assert.strictEqual(h6.state.sendClicks, 1, 'same-event staged text must be resumed, not treated as a foreign draft');
+  assert.strictEqual(h6.state.ackCalls, 1);
+
+  // --- 9. direct Experience exposes a stable transcript identity -----------
+  assert.deepStrictEqual(
+    Array.from(h.api.transcript.identityAnchors('EXPERIENCE_RUN_ID: run-123\nNEXT_ACTION: continue')),
+    ['run-123']);
+
+  // --- 10. the transcript helpers stay pure and testable ------------------
   assert.strictEqual(h.api.transcript.normalizeText('  a\u00a0 b '), 'a b');
   assert.strictEqual(
     JSON.stringify(h.api.transcript.identityAnchors('CONTINUATION_ID: reentry:x#1\nNEXT_ACTION: go')),
@@ -232,6 +260,8 @@ async function runBehavior() {
   h2.api.destroy();
   h3.api.destroy();
   h4.api.destroy();
+  h5.api.destroy();
+  h6.api.destroy();
 }
 
 runBehavior().then(() => {
