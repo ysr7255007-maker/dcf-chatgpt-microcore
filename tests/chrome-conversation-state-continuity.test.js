@@ -10,7 +10,7 @@ const code = fs.readFileSync(codePath, 'utf8');
 const index = JSON.parse(fs.readFileSync(path.join(root, 'releases/chrome/official-index.json'), 'utf8'));
 const ref = index.units.find((u) => u.id === 'dcf.firstparty.conversation-state');
 assert(ref);
-assert.strictEqual(ref.version, '1.0.0-rc.2-conversation-state.11');
+assert.strictEqual(ref.version, '1.0.0-rc.2-conversation-state.12');
 assert.strictEqual(ref.hash, crypto.createHash('sha256').update(code).digest('hex'));
 
 for (const token of [
@@ -56,6 +56,15 @@ assert(code.includes('observer = new MutationObserver((records)'),
   'mutation records must feed terminal detection directly');
 assert(!code.includes('document.body.innerText'),
   'continuity detection must never scan the whole long conversation body');
+
+assert(code.includes('HARD_CUTOFF_GRACE_MS'),
+  'structural hard cutoff must use a bounded one-shot grace');
+assert(code.includes('structuralHardCutoffCandidate'),
+  'hard cutoff must be inferable from an unclosed latest request when explicit timeout UI is missed');
+assert(code.includes('cutoff-confirmed'),
+  'confirmed structural cutoff must re-enter the normal continuity evaluator');
+assert(!/setInterval\s*\(/.test(code),
+  'hard-cutoff confirmation must not introduce polling');
 
 console.log(JSON.stringify({
   ok: true,

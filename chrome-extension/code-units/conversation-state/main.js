@@ -2,12 +2,13 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.conversation-state';
-  const UNIT_VERSION = '1.0.0-rc.2-conversation-state.11';
+  const UNIT_VERSION = '1.0.0-rc.2-conversation-state.12';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_CONVERSATION_STATE__';
   const CONTINUITY = 'http://127.0.0.1:4937/continuity/observe';
   const CONTINUITY_BASE = 'http://127.0.0.1:4937/continuity/';
   const PENDING_KEY = 'renzhi.webgpt.continuity.pending.v1';
   const DEBOUNCE_MS = 120;
+  const HARD_CUTOFF_GRACE_MS = 3000;
   const RING = 40;
 
   const TIMEOUT_TEXT = [
@@ -41,6 +42,8 @@
   let lastError = '';
   let lastState = null;
   let latchedTerminal = null;
+  let cutoffTimer = null;
+  let cutoffCandidateId = '';
   let evaluations = 0;
   let actions = 0;
   const ring = [];
@@ -203,6 +206,59 @@
       return '';
     }
     return '';
+  }
+
+  function structuralHardCutoffCandidate() {
+    const turns = allTurns();
+    const turn = turns.at(-1);
+    if (!turn || turn.getAttribute('data-turn') !== 'assistant') return null;
+    const turnId = String(turn.getAttribute('data-turn-id') || '');
+    if (!turnId.startsWith('request-')) return null;
+    const formal = turn.querySelector('[data-message-author-role="assistant"][data-message-id]');
+    if (formal) return null;
+    if (turn.querySelector('[data-message-id^="request-placeholder-"]')) return null;
+    const box = composer();
+    if (!box || composerValue(box).trim()) return null;
+    if (document.querySelector('[data-testid="stop-button"],button[aria-label*="Stop"],button[aria-label*="停止"]')) return null;
+    if (!normalizeText(turn.innerText || turn.textContent || '')) return null;
+    return {
+      kind: 'delivery_timeout',
+      text: 'structural_unclosed_request',
+      turnId,
+      turnTestId: turn.getAttribute('data-testid') || ''
+    };
+  }
+
+  function cancelCutoffConfirmation() {
+    if (cutoffTimer) clearTimeout(cutoffTimer);
+    cutoffTimer = null;
+    cutoffCandidateId = '';
+  }
+
+  function reconcileCutoffConfirmation(value) {
+    if (value.terminal_error || value.state !== 'active_request') {
+      cancelCutoffConfirmation();
+      return;
+    }
+    const candidate = structuralHardCutoffCandidate();
+    if (!candidate) {
+      cancelCutoffConfirmation();
+      return;
+    }
+    if (cutoffTimer && cutoffCandidateId === candidate.turnId) return;
+    cancelCutoffConfirmation();
+    cutoffCandidateId = candidate.turnId;
+    cutoffTimer = setTimeout(() => {
+      cutoffTimer = null;
+      const fresh = structuralHardCutoffCandidate();
+      if (!fresh || fresh.turnId !== cutoffCandidateId) {
+        cutoffCandidateId = '';
+        return;
+      }
+      latchedTerminal = fresh;
+      cutoffCandidateId = '';
+      schedule('cutoff-confirmed');
+    }, HARD_CUTOFF_GRACE_MS);
   }
 
   function sample() {
@@ -417,6 +473,7 @@
       await verifyPending();
       const value = sample();
       lastState = value; mark(value);
+      reconcileCutoffConfirmation(value);
       const nextFingerprint = fingerprint(value);
       const changed = nextFingerprint !== lastFingerprint;
       if (changed) { lastFingerprint = nextFingerprint; pushRing(value, reason); }
@@ -439,6 +496,7 @@
   function destroy() {
     destroyed = true;
     clearTimeout(debounceTimer); debounceTimer = null;
+    cancelCutoffConfirmation();
     observer?.disconnect?.(); observer = null;
     document.removeEventListener('visibilitychange', onVisibility);
     window.removeEventListener('popstate', onHistory);
