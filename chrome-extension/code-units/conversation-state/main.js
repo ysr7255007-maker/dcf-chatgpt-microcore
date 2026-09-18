@@ -2,12 +2,14 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.conversation-state';
-  const UNIT_VERSION = '1.0.0-rc.2-conversation-state.13';
+  const UNIT_VERSION = '1.0.0-rc.2-conversation-state.14';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_CONVERSATION_STATE__';
   const CONTINUITY = 'http://127.0.0.1:4937/continuity/observe';
   const CONTINUITY_BASE = 'http://127.0.0.1:4937/continuity/';
   const PENDING_KEY = 'renzhi.webgpt.continuity.pending.v1';
   const DEBOUNCE_MS = 120;
+  const HARD_CUTOFF_GRACE_MS = 5000;
+  const STOP_SUPPRESSION_MS = 15000;
   const RING = 40;
 
   const TIMEOUT_TEXT = [
@@ -41,6 +43,9 @@
   let lastError = '';
   let lastState = null;
   let latchedTerminal = null;
+  let cutoffTimer = null;
+  let cutoffCandidateId = '';
+  let lastStopIntent = { requestId: '', at: 0 };
   let evaluations = 0;
   let actions = 0;
   const ring = [];
@@ -80,6 +85,12 @@
       || document.querySelector('button[aria-label*="Send"]')
       || document.querySelector('button[aria-label*="发送"]')
       || document.querySelector('form button[type="submit"]');
+  }
+
+  function stopButton() {
+    return document.querySelector(
+      '[data-testid="stop-button"],button[aria-label*="Stop"],button[aria-label*="停止"]'
+    );
   }
 
   function projectInfo(pathname = location.pathname) {
@@ -205,6 +216,87 @@
     return '';
   }
 
+  function hasToolEvidence(turn) {
+    if (!turn) return false;
+    if (turn.querySelector('iframe[title^="ui://"],iframe[src*="web-sandbox.oaiusercontent.com"]')) return true;
+    return [...turn.querySelectorAll('button')].some((button) =>
+      /(?:工具|tool)/i.test(normalizeText(button.innerText || button.getAttribute('aria-label') || ''))
+    );
+  }
+
+  function recentStopFor(requestId) {
+    return !!requestId && lastStopIntent.requestId === requestId
+      && (Date.now() - lastStopIntent.at) < STOP_SUPPRESSION_MS;
+  }
+
+  function structuralHardCutoffCandidate() {
+    const turns = allTurns();
+    const turn = turns.at(-1);
+    if (!turn || turn.getAttribute('data-turn') !== 'assistant') return null;
+    const turnId = String(turn.getAttribute('data-turn-id') || '');
+    if (!turnId.startsWith('request-')) return null;
+    if (turn.querySelector('[data-message-author-role="assistant"][data-message-id]')) return null;
+    if (turn.querySelector('[data-message-id^="request-placeholder-"]')) return null;
+    const box = composer();
+    if (!box || composerValue(box).trim()) return null;
+    if (stopButton()) return null;
+    if (!hasToolEvidence(turn)) return null;
+    if (recentStopFor(turnId)) return null;
+    if (!normalizeText(turn.innerText || turn.textContent || '')) return null;
+    return {
+      kind: 'delivery_timeout',
+      text: 'structural_unclosed_tool_request',
+      turnId,
+      turnTestId: turn.getAttribute('data-testid') || ''
+    };
+  }
+
+  function cancelCutoffConfirmation() {
+    if (cutoffTimer) clearTimeout(cutoffTimer);
+    cutoffTimer = null;
+    cutoffCandidateId = '';
+  }
+
+  function recordStopIntent() {
+    const requestId = activeRequestId(allTurns());
+    if (!requestId) return;
+    lastStopIntent = { requestId, at: Date.now() };
+    cancelCutoffConfirmation();
+  }
+
+  function onControlClick(event) {
+    const target = event?.target;
+    if (target?.closest?.('[data-testid="stop-button"],button[aria-label*="Stop"],button[aria-label*="停止"]')) {
+      recordStopIntent();
+    }
+  }
+
+  function reconcileCutoffConfirmation(value) {
+    if (value.terminal_error || value.state !== 'active_request') {
+      cancelCutoffConfirmation();
+      return;
+    }
+    const candidate = structuralHardCutoffCandidate();
+    if (!candidate) {
+      cancelCutoffConfirmation();
+      return;
+    }
+    if (cutoffTimer && cutoffCandidateId === candidate.turnId) return;
+    cancelCutoffConfirmation();
+    cutoffCandidateId = candidate.turnId;
+    cutoffTimer = setTimeout(() => {
+      cutoffTimer = null;
+      const fresh = structuralHardCutoffCandidate();
+      if (!fresh || fresh.turnId !== cutoffCandidateId) {
+        cutoffCandidateId = '';
+        return;
+      }
+      latchedTerminal = fresh;
+      cutoffCandidateId = '';
+      schedule('cutoff-confirmed');
+    }, HARD_CUTOFF_GRACE_MS);
+  }
+
   function sample() {
     const turns = allTurns();
     const users = formalUsers();
@@ -213,9 +305,7 @@
     const project = projectInfo();
     const error = terminalErrorSurface();
     const requestId = error?.turnId || activeRequestId(turns);
-    const stop = !!document.querySelector(
-      '[data-testid="stop-button"],button[aria-label*="Stop"],button[aria-label*="停止"]'
-    );
+    const stop = !!stopButton();
     const projectBlank = project.blank && users.length === 0 && !!box;
     let state = 'idle';
     if (error?.kind === 'delivery_timeout') state = 'delivery_timeout';
@@ -417,6 +507,7 @@
       await verifyPending();
       const value = sample();
       lastState = value; mark(value);
+      reconcileCutoffConfirmation(value);
       const nextFingerprint = fingerprint(value);
       const changed = nextFingerprint !== lastFingerprint;
       if (changed) { lastFingerprint = nextFingerprint; pushRing(value, reason); }
@@ -439,7 +530,9 @@
   function destroy() {
     destroyed = true;
     clearTimeout(debounceTimer); debounceTimer = null;
+    cancelCutoffConfirmation();
     observer?.disconnect?.(); observer = null;
+    document.removeEventListener('click', onControlClick, true);
     document.removeEventListener('visibilitychange', onVisibility);
     window.removeEventListener('popstate', onHistory);
   }
@@ -452,6 +545,7 @@
     schedule('mutation');
   });
   if (document.documentElement) observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+  document.addEventListener('click', onControlClick, true);
   document.addEventListener('visibilitychange', onVisibility);
   window.addEventListener('popstate', onHistory);
 

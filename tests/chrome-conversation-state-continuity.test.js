@@ -10,7 +10,7 @@ const code = fs.readFileSync(codePath, 'utf8');
 const index = JSON.parse(fs.readFileSync(path.join(root, 'releases/chrome/official-index.json'), 'utf8'));
 const ref = index.units.find((u) => u.id === 'dcf.firstparty.conversation-state');
 assert(ref);
-assert.strictEqual(ref.version, '1.0.0-rc.2-conversation-state.13');
+assert.strictEqual(ref.version, '1.0.0-rc.2-conversation-state.14');
 assert.strictEqual(ref.hash, crypto.createHash('sha256').update(code).digest('hex'));
 
 for (const token of [
@@ -56,6 +56,21 @@ assert(code.includes('observer = new MutationObserver((records)'),
   'mutation records must feed terminal detection directly');
 assert(!code.includes('document.body.innerText'),
   'continuity detection must never scan the whole long conversation body');
+
+assert(code.includes('HARD_CUTOFF_GRACE_MS'),
+  'structural hard cutoff must use one bounded grace timer');
+assert(code.includes('STOP_SUPPRESSION_MS'),
+  'recent explicit Stop must suppress structural recovery');
+assert(code.includes('recordStopIntent'),
+  'Stop button control events must be recorded before structural inference');
+assert(code.includes('structuralHardCutoffCandidate'),
+  'tool-heavy unclosed requests need a structural fallback when explicit timeout UI is missed');
+assert(code.includes('hasToolEvidence'),
+  'structural fallback must be scoped to tool-bearing assistant requests');
+assert(code.includes("document.addEventListener('click', onControlClick, true)"),
+  'Stop intent must be captured before ChatGPT handlers mutate the request');
+assert(!/setInterval\s*\(/.test(code),
+  'hard-cutoff confirmation must not introduce polling');
 
 
 console.log(JSON.stringify({
