@@ -10,7 +10,7 @@ const code = fs.readFileSync(codePath, 'utf8');
 const index = JSON.parse(fs.readFileSync(path.join(root, 'releases/chrome/official-index.json'), 'utf8'));
 const ref = index.units.find((u) => u.id === 'dcf.firstparty.conversation-state');
 assert(ref);
-assert.strictEqual(ref.version, '1.0.0-rc.2-conversation-state.10');
+assert.strictEqual(ref.version, '1.0.0-rc.2-conversation-state.11');
 assert.strictEqual(ref.hash, crypto.createHash('sha256').update(code).digest('hex'));
 
 for (const token of [
@@ -46,6 +46,16 @@ assert(code.includes("closest('[data-message-author-role]')"),
   'formal transcript content must be excluded from terminal error surfaces');
 assert(code.includes('laterUserTurn'),
   'an old error with a newer user turn must be considered superseded');
+assert(code.includes('terminalFromMutationRecords'),
+  'exact terminal text must be recognized directly from mutation records');
+assert(code.includes('tailTerminalSurface'),
+  'initial attach must inspect a bounded recent-turn tail for pre-existing terminal UI');
+assert(code.includes('turns.slice(-2)'),
+  'pre-existing terminal scan must be bounded to the last two turns');
+assert(code.includes('observer = new MutationObserver((records)'),
+  'mutation records must feed terminal detection directly');
+assert(!code.includes('document.body.innerText'),
+  'continuity detection must never scan the whole long conversation body');
 
 console.log(JSON.stringify({
   ok: true,

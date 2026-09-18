@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.conversation-state';
-  const UNIT_VERSION = '1.0.0-rc.2-conversation-state.10';
+  const UNIT_VERSION = '1.0.0-rc.2-conversation-state.11';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_CONVERSATION_STATE__';
   const CONTINUITY = 'http://127.0.0.1:4937/continuity/observe';
   const CONTINUITY_BASE = 'http://127.0.0.1:4937/continuity/';
@@ -40,6 +40,7 @@
   let lastFingerprint = '';
   let lastError = '';
   let lastState = null;
+  let latchedTerminal = null;
   let evaluations = 0;
   let actions = 0;
   const ring = [];
@@ -111,30 +112,82 @@
     return '';
   }
 
+  function candidateFromNode(node, turns = allTurns()) {
+    const element = node?.nodeType === 3 ? node.parentElement : node;
+    if (!element || typeof element.closest !== 'function') return null;
+    // Transcript prose can legitimately discuss timeout/context-limit words.
+    // A formal user/assistant message is content, never a terminal UI signal.
+    if (element.closest('[data-message-author-role]')) return null;
+    const text = normalizeText(element.innerText || element.textContent || '');
+    const kind = textKind(text);
+    if (!kind) return null;
+    const turn = element.closest('section[data-testid^="conversation-turn-"]');
+    const turnIndex = turn ? turns.indexOf(turn) : -1;
+    const laterUserTurn = turnIndex >= 0 && turns.slice(turnIndex + 1).some((candidate) =>
+      !!candidate.querySelector('[data-message-author-role="user"][data-message-id]'));
+    if (laterUserTurn) return null;
+    return {
+      kind, text: text.slice(0, 240),
+      turnId: turn?.getAttribute('data-turn-id') || '',
+      turnTestId: turn?.getAttribute('data-testid') || ''
+    };
+  }
+
+  function terminalFromMutationRecords(records) {
+    const turns = allTurns();
+    for (let r = records.length - 1; r >= 0; r -= 1) {
+      const record = records[r];
+      const roots = record.type === 'characterData' ? [record.target] : [...(record.addedNodes || [])];
+      for (let index = roots.length - 1; index >= 0; index -= 1) {
+        const root = roots[index];
+        const direct = candidateFromNode(root, turns);
+        if (direct) return direct;
+        const element = root?.nodeType === 1 ? root : null;
+        if (!element?.querySelectorAll) continue;
+        // Inspect only this changed subtree. Cap the walk so a giant historical
+        // re-render cannot turn one mutation into a full-conversation scan.
+        const descendants = [...element.querySelectorAll('div,p,span,button')].slice(-80);
+        for (let i = descendants.length - 1; i >= 0; i -= 1) {
+          const candidate = candidateFromNode(descendants[i], turns);
+          if (candidate) return candidate;
+        }
+      }
+    }
+    return null;
+  }
+
+  function tailTerminalSurface() {
+    const turns = allTurns();
+    const recentTurns = turns.slice(-2);
+    for (let t = recentTurns.length - 1; t >= 0; t -= 1) {
+      const turn = recentTurns[t];
+      const candidates = [turn, ...turn.querySelectorAll('div,p,span,button')].slice(-120);
+      for (let i = candidates.length - 1; i >= 0; i -= 1) {
+        const candidate = candidateFromNode(candidates[i], turns);
+        if (candidate) return candidate;
+      }
+    }
+    return null;
+  }
+
   function terminalErrorSurface() {
     const turns = allTurns();
-    let nodes = [];
-    try { nodes = [...document.querySelectorAll(ERROR_SURFACES)]; } catch (_) {}
-    for (let index = nodes.length - 1; index >= 0; index -= 1) {
-      const node = nodes[index];
-      // Transcript prose can legitimately discuss timeout/context-limit words.
-      // A formal user/assistant message is content, never a terminal UI signal.
-      if (node.closest('[data-message-author-role]')) continue;
-      const kind = textKind(node.innerText || node.textContent || '');
-      if (!kind) continue;
-      const turn = node.closest('section[data-testid^="conversation-turn-"]');
+    if (latchedTerminal) {
+      const turn = latchedTerminal.turnTestId
+        ? document.querySelector(`section[data-testid="${latchedTerminal.turnTestId}"]`) : null;
       const turnIndex = turn ? turns.indexOf(turn) : -1;
       const laterUserTurn = turnIndex >= 0 && turns.slice(turnIndex + 1).some((candidate) =>
         !!candidate.querySelector('[data-message-author-role="user"][data-message-id]'));
-      if (laterUserTurn) continue;
-      return {
-        kind,
-        text: normalizeText(node.innerText || node.textContent || '').slice(0, 240),
-        turnId: turn?.getAttribute('data-turn-id') || '',
-        turnTestId: turn?.getAttribute('data-testid') || ''
-      };
+      if (!laterUserTurn) return latchedTerminal;
+      latchedTerminal = null;
     }
-    return null;
+    let nodes = [];
+    try { nodes = [...document.querySelectorAll(ERROR_SURFACES)]; } catch (_) {}
+    for (let index = nodes.length - 1; index >= 0; index -= 1) {
+      const candidate = candidateFromNode(nodes[index], turns);
+      if (candidate) return candidate;
+    }
+    return tailTerminalSurface();
   }
 
   function activeRequestId(turns) {
@@ -393,7 +446,11 @@
   function onVisibility() { schedule('visibilitychange'); }
   function onHistory() { schedule('history'); }
 
-  observer = new MutationObserver(() => schedule('mutation'));
+  observer = new MutationObserver((records) => {
+    const terminal = terminalFromMutationRecords(records);
+    if (terminal) latchedTerminal = terminal;
+    schedule('mutation');
+  });
   if (document.documentElement) observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
   document.addEventListener('visibilitychange', onVisibility);
   window.addEventListener('popstate', onHistory);
