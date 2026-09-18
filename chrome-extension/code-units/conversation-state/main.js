@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.conversation-state';
-  const UNIT_VERSION = '1.0.0-rc.2-conversation-state.9';
+  const UNIT_VERSION = '1.0.0-rc.2-conversation-state.10';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_CONVERSATION_STATE__';
   const CONTINUITY = 'http://127.0.0.1:4937/continuity/observe';
   const CONTINUITY_BASE = 'http://127.0.0.1:4937/continuity/';
@@ -234,11 +234,16 @@
     } catch (_) {}
   }
 
-  function lastUserProof(message) {
+  function lastUserProof(message, incidentId = '') {
     const users = formalUsers();
     const target = normalizeText(message);
+    const marker = incidentId ? `INCIDENT_ID: ${incidentId}` : '';
     for (let index = users.length - 1; index >= 0; index -= 1) {
-      if (normalizeText(users[index].innerText || users[index].textContent || '') === target) {
+      const candidate = normalizeText(users[index].innerText || users[index].textContent || '');
+      // Long ChatGPT user turns may append UI chrome such as “展开” to
+      // innerText.  The unique incident marker is the delivery identity; it is
+      // stronger and more stable than full rendered-text equality.
+      if (candidate === target || (marker && candidate.includes(marker))) {
         return { visible: true, id: users[index].getAttribute('data-message-id') || '' };
       }
     }
@@ -259,7 +264,7 @@
   async function verifyPending() {
     const pending = readPending();
     if (!pending?.incident_id || !pending?.message) return false;
-    const proof = lastUserProof(pending.message);
+    const proof = lastUserProof(pending.message, pending.incident_id);
     if (!proof.visible || !proof.id) return false;
     await ackPending(pending, proof);
     return true;
@@ -326,7 +331,7 @@
     const pending = { incident_id: action.incident_id, message: action.message,
       message_sha256: action.message_sha256, kind: action.kind };
     writePending(pending);
-    const already = lastUserProof(action.message);
+    const already = lastUserProof(action.message, action.incident_id);
     if (already.visible) return ackPending(pending, already);
     if (!existing) setComposerText(target, action.message);
     await clickSend();

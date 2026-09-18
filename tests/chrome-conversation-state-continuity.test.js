@@ -10,7 +10,7 @@ const code = fs.readFileSync(codePath, 'utf8');
 const index = JSON.parse(fs.readFileSync(path.join(root, 'releases/chrome/official-index.json'), 'utf8'));
 const ref = index.units.find((u) => u.id === 'dcf.firstparty.conversation-state');
 assert(ref);
-assert.strictEqual(ref.version, '1.0.0-rc.2-conversation-state.9');
+assert.strictEqual(ref.version, '1.0.0-rc.2-conversation-state.10');
 assert.strictEqual(ref.hash, crypto.createHash('sha256').update(code).digest('hex'));
 
 for (const token of [
@@ -31,7 +31,9 @@ for (const token of [
   'send_project_handoff',
   'verify_only',
   '/release',
-  'releaseUnstarted'
+  'releaseUnstarted',
+  'INCIDENT_ID: ${incidentId}',
+  'candidate.includes(marker)'
 ]) assert(code.includes(token), `missing continuity mechanism: ${token}`);
 
 assert(!code.includes('127.0.0.1:8472'), 'dead legacy companion must not remain');
