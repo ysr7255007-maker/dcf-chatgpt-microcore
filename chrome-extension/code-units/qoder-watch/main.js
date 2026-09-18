@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.qoder-watch';
-  const UNIT_VERSION = '1.0.0-rc.2-qoder-watch.10';
+  const UNIT_VERSION = '1.0.0-rc.2-qoder-watch.12';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_QODER_WATCH__';
   const BASE_URL = 'http://127.0.0.1:4937';
   const POLL_MS = 1500;
@@ -65,9 +65,25 @@
 
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  const isStreaming = () => Boolean(document.querySelector(
-    '[data-testid="stop-button"],button[aria-label*="Stop"],button[aria-label*="停止"]'
-  ));
+  function isStreaming() {
+    if (document.querySelector(
+      '[data-testid="stop-button"],button[aria-label*="Stop"],button[aria-label*="停止"]'
+    )) return true;
+
+    // Tool/thinking phases may temporarily replace Stop with Send even though
+    // the same request is still active.  A tail assistant segment without a
+    // real assistant message (or with a client request placeholder) is not an
+    // idle conversation and must never be interrupted by automatic re-entry.
+    const assistantTurns = document.querySelectorAll(
+      'section[data-turn="assistant"][data-turn-id]'
+    );
+    const tail = assistantTurns[assistantTurns.length - 1];
+    if (!tail) return false;
+    const formal = tail.querySelector('[data-message-author-role="assistant"]');
+    if (!formal) return true;
+    const messageId = String(formal.getAttribute?.('data-message-id') || formal.dataset?.messageId || '');
+    return messageId.startsWith('request-placeholder-');
+  }
 
   function dispatchComposerEvents(target, text) {
     try { target.dispatchEvent(new Event('compositionstart', { bubbles: true })); } catch (_) {}
@@ -387,12 +403,15 @@
   // client, in which conversation, and is it blocked by streaming / a foreign
   // draft / a missing composer" without anyone reading this page's JS state.
   function pageHealth() {
+    const target = composer();
+    const streaming = isStreaming();
     return {
       conversation_path: location.pathname || '/',
       visible: document.visibilityState === 'visible',
-      streaming: isStreaming(),
-      composer: !!composer(),
-      draft_chars: composerValue(composer()).trim().length,
+      eligible: !!target && !streaming,
+      streaming,
+      composer: !!target,
+      draft_chars: composerValue(target).trim().length,
       last_error: lastError
     };
   }
@@ -410,7 +429,7 @@
   }
 
   async function pollNow() {
-    if (destroyed || busy || document.visibilityState !== 'visible') return;
+    if (destroyed || busy) return;
     busy = true;
     try {
       const health = pageHealth();
@@ -421,7 +440,9 @@
         await reportHealth();
         return;
       }
-      const query = `?client_id=${encodeURIComponent(clientId)}&visible=1`
+      const query = `?client_id=${encodeURIComponent(clientId)}`
+        + `&visible=${health.visible ? 1 : 0}`
+        + `&eligible=${health.eligible ? 1 : 0}`
         + `&conversation_path=${encodeURIComponent(health.conversation_path)}`
         + `&streaming=${health.streaming ? 1 : 0}`
         + `&composer=${health.composer ? 1 : 0}`
@@ -486,7 +507,7 @@
   };
 
   visibilityListener = () => {
-    if (document.visibilityState === 'visible') pollNow().catch(() => {});
+    pollNow().catch(() => {});
   };
   document.addEventListener('visibilitychange', visibilityListener);
   schedule();

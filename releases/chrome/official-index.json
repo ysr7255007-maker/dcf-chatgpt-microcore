@@ -59,12 +59,12 @@
         "version": "1.0.0-rc.2-local-agent-dialogue.27"
       },
       {
-        "artifact_id": "sha256:65c5bdbe8ebb868952cfdd1abb161ad791475b2c11b13e7ad1766d842c92c659",
+        "artifact_id": "sha256:8e4f9adad75c48f35956b809f93ab2799f152cab31e9969aa0c33e0a3f2c8edf",
         "enabled": true,
-        "hash": "65c5bdbe8ebb868952cfdd1abb161ad791475b2c11b13e7ad1766d842c92c659",
+        "hash": "8e4f9adad75c48f35956b809f93ab2799f152cab31e9969aa0c33e0a3f2c8edf",
         "id": "dcf.firstparty.qoder-watch",
         "phase": 58,
-        "version": "1.0.0-rc.2-qoder-watch.10"
+        "version": "1.0.0-rc.2-qoder-watch.12"
       },
       {
         "artifact_id": "sha256:293a8d1e5c850975de464146badc2ccb204a8c5ddd72d93770b0b055c5a2ac2c",
@@ -107,7 +107,7 @@
         "version": "1.0.0-rc.2-page-diagnostics.3"
       }
     ],
-    "id": "sha256:d80b2982a14c1c5d7d2f83f1b8cc08c4abb0d5de496583603019bac2176457ee",
+    "id": "sha256:2bffa54b5db950f46b98e76131306bcd1135d23bdd57aa22f481b2011dc937e5",
     "reason": "official-default",
     "schema": "dcf.startup.snapshot.v3"
   },
@@ -263,11 +263,11 @@
       "world_id": "dcf-firstparty-local-agent-dialogue"
     },
     {
-      "artifact_id": "sha256:65c5bdbe8ebb868952cfdd1abb161ad791475b2c11b13e7ad1766d842c92c659",
+      "artifact_id": "sha256:8e4f9adad75c48f35956b809f93ab2799f152cab31e9969aa0c33e0a3f2c8edf",
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/qoder-watch/main.js",
       "default_enabled": true,
-      "description": "领取本机 Qoder watcher 完成事件，并将短触发消息发送到当前可见 ChatGPT 对话。",
-      "hash": "65c5bdbe8ebb868952cfdd1abb161ad791475b2c11b13e7ad1766d842c92c659",
+      "description": "领取本机 Qoder watcher 完成事件，并将短触发消息发送到语义匹配且可执行的 ChatGPT 对话；标签页可见性只作为观察事实。",
+      "hash": "8e4f9adad75c48f35956b809f93ab2799f152cab31e9969aa0c33e0a3f2c8edf",
       "host_api": "3",
       "id": "dcf.firstparty.qoder-watch",
       "matches": [
@@ -278,7 +278,7 @@
       "required": true,
       "run_at": "document_idle",
       "title": "Qoder 完成通知",
-      "version": "1.0.0-rc.2-qoder-watch.10",
+      "version": "1.0.0-rc.2-qoder-watch.12",
       "world_id": "dcf-firstparty-qoder-watch"
     },
     {

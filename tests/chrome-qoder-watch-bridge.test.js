@@ -11,7 +11,7 @@ const code = fs.readFileSync(pluginPath, 'utf8');
 const index = JSON.parse(fs.readFileSync(path.join(root, 'releases/chrome/official-index.json'), 'utf8'));
 const ref = index.units.find((unit) => unit.id === 'dcf.firstparty.qoder-watch');
 assert(ref, 'qoder watch plugin missing from release index');
-assert.strictEqual(ref.version, '1.0.0-rc.2-qoder-watch.10');
+assert.strictEqual(ref.version, '1.0.0-rc.2-qoder-watch.12');
 assert.strictEqual(ref.phase, 58);
 assert.strictEqual(crypto.createHash('sha256').update(code).digest('hex'), ref.hash);
 
@@ -24,7 +24,7 @@ for (const token of [
   '/clients/heartbeat',
   'already_visible',
   'verify_visible',
-  "document.visibilityState !== 'visible'",
+  'eligible=${health.eligible ? 1 : 0}',
   'composer contains an existing draft',
   "type: 'unit.started'"
 ]) assert(code.includes(token), `missing ${token}`);
@@ -48,7 +48,8 @@ function newHarness() {
     buttonReadyCountdown: null,
     claimedEvent: null,
     claimReason: '',
-    streaming: false
+    streaming: false,
+    activeRequestWithoutStop: false
   };
   const inputEvents = [];
   const composer = {
@@ -86,6 +87,11 @@ function newHarness() {
     querySelectorAll(selector) {
       if (selector === '[data-message-author-role="user"]') {
         return state.transcript.map((text) => ({ innerText: text }));
+      }
+      if (selector.includes('section[data-turn="assistant"]')) {
+        return state.activeRequestWithoutStop ? [{
+          querySelector() { return null; }
+        }] : [];
       }
       return [];
     }
@@ -143,13 +149,20 @@ function newHarness() {
 }
 
 async function runBehavior() {
-  // --- 1. a hidden page never claims -------------------------------------
-  const h = newHarness();
-  assert(h.api && typeof h.api.pollNow === 'function');
-  await h.api.pollNow();
-  assert.strictEqual(h.state.claimCalls, 0, 'hidden page must not claim events');
+  // --- 1. a hidden but executable page still participates -----------------
+  const hidden = newHarness();
+  assert(hidden.api && typeof hidden.api.pollNow === 'function');
+  await hidden.api.pollNow();
+  assert.strictEqual(hidden.state.claimCalls, 1,
+    'background tab must keep polling when its page execution context is alive');
+  assert(hidden.state.claimQueries[0].includes('visible=0'),
+    'visibility remains an observed fact; the page must not lie that it is visible');
+  assert(hidden.state.claimQueries[0].includes('eligible=1'),
+    'execution eligibility must be independent from tab visibility');
+  hidden.api.destroy();
 
   // --- 2. a fresh event is typed, sent, confirmed and then ACKed ---------
+  const h = newHarness();
   h.document.visibilityState = 'visible';
   h.state.claimedEvent = { id: 'evt-1', type: 'complete', message: 'Qoder 完成', deliver: true };
   await h.api.pollNow();
@@ -166,7 +179,7 @@ async function runBehavior() {
   assert(phases.includes('delivery_observed'), 'visible delivery must be observed before ACK');
   assert(phases.indexOf('delivery_observed') < phases.length, 'delivery observation must precede ACK');
   const claimQuery = h.state.claimQueries[0];
-  for (const field of ['client_id', 'visible=1', 'conversation_path=', 'streaming=0', 'composer=1', 'last_error=']) {
+  for (const field of ['client_id', 'visible=1', 'eligible=1', 'conversation_path=', 'streaming=0', 'composer=1', 'last_error=']) {
     assert(claimQuery.includes(field), `claim must carry client health field ${field}`);
   }
 
@@ -236,6 +249,18 @@ async function runBehavior() {
   assert.strictEqual(h5.composer.textContent, '', 'streaming page must not stage re-entry text');
   assert.strictEqual(h5.state.sendClicks, 0);
 
+  // --- 8. an active tool/thinking request stays blocked without Stop ------
+  const activeNoStop = newHarness();
+  activeNoStop.document.visibilityState = 'hidden';
+  activeNoStop.state.activeRequestWithoutStop = true;
+  activeNoStop.state.claimedEvent = { id: 'evt-active', type: 'complete', message: 'must not interrupt', deliver: true };
+  await activeNoStop.api.pollNow();
+  assert.strictEqual(activeNoStop.state.claimCalls, 0,
+    'an active assistant request must not be interrupted merely because Stop is absent');
+  assert.strictEqual(activeNoStop.state.heartbeatCalls.length >= 1, true,
+    'active request must report health while waiting');
+  activeNoStop.api.destroy();
+
   // --- 8. a semantically identical staged draft belongs to this event -----
   const h6 = newHarness();
   h6.document.visibilityState = 'visible';
@@ -267,7 +292,7 @@ async function runBehavior() {
 runBehavior().then(() => {
   console.log(JSON.stringify({
     ok: true,
-    visible_only_claim: true,
+    background_tab_claim: true,
     successful_send_is_acked_after_visible_delivery: true,
     occupied_composer_is_not_overwritten: true,
     failed_send_is_not_acked: true,
