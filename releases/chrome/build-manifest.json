@@ -1,6 +1,6 @@
 {
   "code_unit_version_ledger": "releases/chrome/code-unit-version-ledger.json",
-  "default_snapshot_id": "sha256:f759f620aeb8f7380b02f2f0e14ca8e1bdb1612066d40a9294ea5c5ab690fea6",
+  "default_snapshot_id": "sha256:09cac0aee9c21a4cd3aa84a43eb0535f3ce381dd29f1265b5e4728eac1c20dbc",
   "plugin_artifacts": [
     {
       "artifact_id": "sha256:7b389bdda948b25577461ff2b487e71b25689d4827a3f707c68ef4ff6737079e",
@@ -59,11 +59,11 @@
       "version": "1.0.0-rc.2-qoder-watch.12"
     },
     {
-      "artifact_id": "sha256:ba702c844505ab39d9b4abe738a024f5849c30bd7dcd6e7aee3e824ec4cb6d31",
+      "artifact_id": "sha256:88ab4937357f49480e9a72cb5854699f1a0bf745ccc8efbd738be9909b0088a2",
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/conversation-state/main.js",
-      "hash": "ba702c844505ab39d9b4abe738a024f5849c30bd7dcd6e7aee3e824ec4cb6d31",
+      "hash": "88ab4937357f49480e9a72cb5854699f1a0bf745ccc8efbd738be9909b0088a2",
       "id": "dcf.firstparty.conversation-state",
-      "version": "1.0.0-rc.2-conversation-state.12"
+      "version": "1.0.0-rc.2-conversation-state.13"
     },
     {
       "artifact_id": "sha256:3d354c37183a8a4eb4640ae7d04f0c94c7c0ec1d8457dfc210391faf06b7ea34",
