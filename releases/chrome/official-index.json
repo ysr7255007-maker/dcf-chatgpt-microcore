@@ -67,12 +67,12 @@
         "version": "1.0.0-rc.2-qoder-watch.12"
       },
       {
-        "artifact_id": "sha256:8551f44f7e44a16f455ceca3845b2f6ea5a5b9555312180d13c3d78303ec01ec",
+        "artifact_id": "sha256:b81d48246a78cda97c89c70bd9e7651a5c3729f20558d811cbc2f944b14d0239",
         "enabled": true,
-        "hash": "8551f44f7e44a16f455ceca3845b2f6ea5a5b9555312180d13c3d78303ec01ec",
+        "hash": "b81d48246a78cda97c89c70bd9e7651a5c3729f20558d811cbc2f944b14d0239",
         "id": "dcf.firstparty.conversation-state",
         "phase": 59,
-        "version": "1.0.0-rc.2-conversation-state.8"
+        "version": "1.0.0-rc.2-conversation-state.9"
       },
       {
         "artifact_id": "sha256:3d354c37183a8a4eb4640ae7d04f0c94c7c0ec1d8457dfc210391faf06b7ea34",
@@ -107,7 +107,7 @@
         "version": "1.0.0-rc.2-page-diagnostics.3"
       }
     ],
-    "id": "sha256:62d343d9155dac08f6f2102ca78ba845997cb9098f8b08cf3c7aa553aca43831",
+    "id": "sha256:b2ebe19a6ff299b68668bb717baf88784a8156872264c1d88e751de19c9cd69b",
     "reason": "official-default",
     "schema": "dcf.startup.snapshot.v3"
   },
@@ -282,11 +282,11 @@
       "world_id": "dcf-firstparty-qoder-watch"
     },
     {
-      "artifact_id": "sha256:8551f44f7e44a16f455ceca3845b2f6ea5a5b9555312180d13c3d78303ec01ec",
+      "artifact_id": "sha256:b81d48246a78cda97c89c70bd9e7651a5c3729f20558d811cbc2f944b14d0239",
       "code_url": "https://raw.githubusercontent.com/ysr7255007-maker/dcf-chatgpt-microcore/rebuild/chrome-native-host-v2/chrome-extension/code-units/conversation-state/main.js",
       "default_enabled": true,
       "description": "事件化识别当前 ChatGPT request 的终态；明确超时则同会话接续，上下文上限则在同项目新会话恢复，并由 4937 持久化去重。",
-      "hash": "8551f44f7e44a16f455ceca3845b2f6ea5a5b9555312180d13c3d78303ec01ec",
+      "hash": "b81d48246a78cda97c89c70bd9e7651a5c3729f20558d811cbc2f944b14d0239",
       "host_api": "3",
       "id": "dcf.firstparty.conversation-state",
       "matches": [
@@ -297,7 +297,7 @@
       "required": true,
       "run_at": "document_idle",
       "title": "对话连续性",
-      "version": "1.0.0-rc.2-conversation-state.8",
+      "version": "1.0.0-rc.2-conversation-state.9",
       "world_id": "dcf-firstparty-conversation-state"
     },
     {

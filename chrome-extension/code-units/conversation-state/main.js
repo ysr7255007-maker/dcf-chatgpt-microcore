@@ -2,7 +2,7 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.conversation-state';
-  const UNIT_VERSION = '1.0.0-rc.2-conversation-state.8';
+  const UNIT_VERSION = '1.0.0-rc.2-conversation-state.9';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_CONVERSATION_STATE__';
   const CONTINUITY = 'http://127.0.0.1:4937/continuity/observe';
   const CONTINUITY_BASE = 'http://127.0.0.1:4937/continuity/';
@@ -295,14 +295,34 @@
     throw new Error('continuity send button unavailable');
   }
 
+  async function releaseUnstarted(action, reason) {
+    const result = await fetchJson(`${CONTINUITY_BASE}${encodeURIComponent(action.incident_id)}/release`, {
+      client_id: clientId, reason: String(reason || 'pre-send condition changed')
+    });
+    if (!result?.ok) throw new Error('continuity pre-send release rejected');
+    // Do not schedule a timer retry here.  The next real DOM change (for
+    // example the composer remounting) will re-evaluate the terminal surface.
+    // Clearing the fingerprint merely allows that event to re-claim the same
+    // durable incident.
+    lastFingerprint = '';
+    return result;
+  }
+
   async function sendAction(action) {
-    const value = sample();
     const requiredState = action.kind === 'same_chat_continue' ? 'delivery_timeout' : 'project_blank';
-    if (value.state !== requiredState) throw new Error(`continuity state changed: ${value.state}`);
-    const target = composer();
-    if (!target) throw new Error('continuity composer missing');
-    const existing = normalizeText(composerValue(target));
-    if (existing && existing !== normalizeText(action.message)) throw new Error('continuity composer contains foreign draft');
+    let target;
+    let existing;
+    try {
+      const value = sample();
+      if (value.state !== requiredState) throw new Error(`continuity state changed: ${value.state}`);
+      target = composer();
+      if (!target) throw new Error('continuity composer missing');
+      existing = normalizeText(composerValue(target));
+      if (existing && existing !== normalizeText(action.message)) throw new Error('continuity composer contains foreign draft');
+    } catch (error) {
+      await releaseUnstarted(action, error?.message || error);
+      throw error;
+    }
     const pending = { incident_id: action.incident_id, message: action.message,
       message_sha256: action.message_sha256, kind: action.kind };
     writePending(pending);
