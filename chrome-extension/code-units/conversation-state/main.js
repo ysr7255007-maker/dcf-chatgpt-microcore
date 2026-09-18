@@ -2,47 +2,49 @@
   'use strict';
 
   const UNIT_ID = 'dcf.firstparty.conversation-state';
-  const UNIT_VERSION = '1.0.0-rc.2-conversation-state.7';
+  const UNIT_VERSION = '1.0.0-rc.2-conversation-state.8';
   const GLOBAL_KEY = '__DCF_FIRSTPARTY_CONVERSATION_STATE__';
-  const COMPANION = 'http://127.0.0.1:8472/rpc/events/ingest';
-  const POLL_MS = 2000;
-  const HEARTBEAT_MS = 60000;
-  const RING = 60;
+  const CONTINUITY = 'http://127.0.0.1:4937/continuity/observe';
+  const CONTINUITY_BASE = 'http://127.0.0.1:4937/continuity/';
+  const PENDING_KEY = 'renzhi.webgpt.continuity.pending.v1';
+  const DEBOUNCE_MS = 120;
+  const RING = 40;
 
-  // A page state report is only useful if it can be read by the person watching
-  // and by the local executor. This unit therefore does two things and nothing
-  // else: it classifies what the conversation page is doing, and it publishes
-  // transitions to the DCF companion as durable events.
-  const SIGNALS = [
-    ['interrupted', ['已中断', '正在等待完整回复', '回复已中断']],
-    ['context_limit', ['上下文过长', '对话太长', '达到长度上限', '开启新对话', '内容过长']],
-    ['loading', ['请稍候', '正在加载']]
+  const TIMEOUT_TEXT = [
+    'Message delivery timed out. Please try again.',
+    '消息发送超时，请重试。',
+    '消息发送超时，请重试'
   ];
+  const CONTEXT_LIMIT_TEXT = [
+    'This conversation has reached its maximum length.',
+    'Start a new chat to continue.',
+    'This conversation is too long. Please start a new chat.',
+    '此对话已达到长度上限',
+    '当前对话已达到长度上限',
+    '上下文过长',
+    '对话太长',
+    '开启新对话'
+  ];
+  const ERROR_SURFACES = [
+    '[role="alert"]', '[role="status"]', '[aria-live="assertive"]',
+    '[aria-live="polite"]', '[data-testid*="error"]', '[data-testid*="retry"]',
+    '.text-token-text-error', '[class*="error"]'
+  ].join(',');
 
   globalThis[GLOBAL_KEY]?.destroy?.();
 
-  function clearStaleMarkers() {
-    try {
-      const root = document.documentElement;
-      if (!root) return;
-      for (const key of Object.keys(root.dataset)) {
-        if (key.startsWith('dcfConversation')) delete root.dataset[key];
-      }
-    } catch (_) {}
-  }
-
-  function mark(fields) {
-    // Cross-world observability: the unit's own world is not inspectable from
-    // the page, so it must leave a marker any world (and any operator) can read.
-    try {
-      const root = document.documentElement;
-      if (!root) return;
-      for (const [key, value] of Object.entries(fields)) {
-        root.dataset[key] = String(value);
-      }
-    } catch (_) {}
-  }
-
+  let destroyed = false;
+  let observer = null;
+  let debounceTimer = null;
+  let busy = false;
+  let lastFingerprint = '';
+  let lastError = '';
+  let lastState = null;
+  let evaluations = 0;
+  let actions = 0;
+  const ring = [];
+  const clientId = globalThis.crypto?.randomUUID?.()
+    || `conversation-state-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
   const host = (message) => {
     if (typeof chrome === 'undefined' || !chrome.runtime || typeof chrome.runtime.sendMessage !== 'function') {
@@ -54,211 +56,331 @@
     });
   };
 
-  const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
-  function ulid() {
-    let time = Date.now();
-    const timePart = new Array(10);
-    for (let i = 9; i >= 0; i -= 1) {
-      timePart[i] = CROCKFORD[time % 32];
-      time = Math.floor(time / 32);
+  function normalizeText(value) {
+    return String(value == null ? '' : value)
+      .replace(/[\u00a0\u2000-\u200b\u202f\u205f\u3000]/g, ' ')
+      .replace(/\r\n?/g, '\n')
+      .replace(/[ \t]+/g, ' ')
+      .replace(/ *\n */g, '\n')
+      .trim();
+  }
+
+  const composer = () => document.querySelector('#prompt-textarea')
+    || document.querySelector('[data-testid="composer-text-input"]')
+    || document.querySelector('form textarea')
+    || document.querySelector('main [contenteditable="true"]');
+
+  function composerValue(target) {
+    return String(target ? ('value' in target ? target.value || '' : target.innerText || target.textContent || '') : '');
+  }
+
+  function sendButton() {
+    return document.querySelector('[data-testid="send-button"]')
+      || document.querySelector('button[aria-label*="Send"]')
+      || document.querySelector('button[aria-label*="发送"]')
+      || document.querySelector('form button[type="submit"]');
+  }
+
+  function projectInfo(pathname = location.pathname) {
+    const match = String(pathname || '').match(/^\/g\/(g-p-[^/]+)\/(project|c\/[^/?#]+)/);
+    if (!match) return { slug: '', projectPath: '', inProject: false, blank: false };
+    return {
+      slug: match[1],
+      projectPath: `/g/${match[1]}/project`,
+      inProject: true,
+      blank: match[2] === 'project'
+    };
+  }
+
+  function allTurns() {
+    return [...document.querySelectorAll('section[data-testid^="conversation-turn-"]')];
+  }
+
+  function formalUsers() {
+    return [...document.querySelectorAll('[data-message-author-role="user"][data-message-id]')];
+  }
+
+  function formalAssistants() {
+    return [...document.querySelectorAll('[data-message-author-role="assistant"][data-message-id]')];
+  }
+
+  function textKind(text) {
+    const value = normalizeText(text);
+    if (TIMEOUT_TEXT.some((needle) => value === needle || value.startsWith(needle + '\n'))) return 'delivery_timeout';
+    if (CONTEXT_LIMIT_TEXT.some((needle) => value === needle || value.includes(needle))) return 'context_limit';
+    return '';
+  }
+
+  function terminalErrorSurface() {
+    const turns = allTurns();
+    let nodes = [];
+    try { nodes = [...document.querySelectorAll(ERROR_SURFACES)]; } catch (_) {}
+    for (let index = nodes.length - 1; index >= 0; index -= 1) {
+      const node = nodes[index];
+      // Transcript prose can legitimately discuss timeout/context-limit words.
+      // A formal user/assistant message is content, never a terminal UI signal.
+      if (node.closest('[data-message-author-role]')) continue;
+      const kind = textKind(node.innerText || node.textContent || '');
+      if (!kind) continue;
+      const turn = node.closest('section[data-testid^="conversation-turn-"]');
+      const turnIndex = turn ? turns.indexOf(turn) : -1;
+      const laterUserTurn = turnIndex >= 0 && turns.slice(turnIndex + 1).some((candidate) =>
+        !!candidate.querySelector('[data-message-author-role="user"][data-message-id]'));
+      if (laterUserTurn) continue;
+      return {
+        kind,
+        text: normalizeText(node.innerText || node.textContent || '').slice(0, 240),
+        turnId: turn?.getAttribute('data-turn-id') || '',
+        turnTestId: turn?.getAttribute('data-testid') || ''
+      };
     }
-    let randomPart = '';
-    const bytes = new Uint8Array(16);
-    (globalThis.crypto || {}).getRandomValues?.(bytes);
-    for (let i = 0; i < 16; i += 1) randomPart += CROCKFORD[bytes[i] % 32];
-    return timePart.join('') + randomPart;
+    return null;
   }
 
-  let destroyed = false;
-  let timer = null;
-  let busy = false;
-  let lastPublishedAt = 0;
-  let lastFingerprint = '';
-  let lastError = '';
-  let lastState = null;
-  let ticks = 0;
-  let published = 0;
-  const ring = [];
-
-  const composer = () => document.querySelector('#prompt-textarea');
-  const assistantNodes = () => [...document.querySelectorAll('[data-message-author-role="assistant"]')];
-  const userNodes = () => [...document.querySelectorAll('[data-message-author-role="user"]')];
-  const isGenerating = () => !!document.querySelector('[data-testid="stop-button"]')
-    || !!document.querySelector('button[aria-label*="停止"]');
-
-  function bodyText() {
-    return (document.body && document.body.innerText) || '';
-  }
-
-  function matchedSignals(text) {
-    const hits = [];
-    for (const [name, needles] of SIGNALS) {
-      for (const needle of needles) {
-        if (text.includes(needle)) {
-          hits.push(name);
-          break;
-        }
-      }
+  function activeRequestId(turns) {
+    for (let index = turns.length - 1; index >= 0; index -= 1) {
+      const turn = turns[index];
+      if (turn.getAttribute('data-turn') !== 'assistant') continue;
+      const id = String(turn.getAttribute('data-turn-id') || '');
+      if (!id.startsWith('request-')) continue;
+      const formal = turn.querySelector('[data-message-author-role="assistant"][data-message-id]');
+      if (!formal) return id;
+      const messageId = String(formal.getAttribute('data-message-id') || '');
+      if (messageId.startsWith('request-placeholder-')) return id;
+      return '';
     }
-    return hits;
-  }
-
-  function classify(sample) {
-    if (sample.signals.includes('interrupted')) return 'interrupted_waiting';
-    if (sample.signals.includes('context_limit')) return 'context_limit';
-    if (!sample.composer) return sample.signals.includes('loading') ? 'loading' : 'no_composer';
-    if (sample.generating) return 'generating';
-    if (sample.draftLen) return 'draft_present';
-    return 'idle';
+    return '';
   }
 
   function sample() {
+    const turns = allTurns();
+    const users = formalUsers();
+    const assistants = formalAssistants();
     const box = composer();
-    const assistants = assistantNodes();
-    const users = userNodes();
-    const last = assistants.length ? (assistants[assistants.length - 1].innerText || '') : '';
-    const text = bodyText();
-    const result = {
-      url: location.href,
-      title: document.title,
-      visible: document.visibilityState === 'visible',
+    const project = projectInfo();
+    const error = terminalErrorSurface();
+    const requestId = error?.turnId || activeRequestId(turns);
+    const stop = !!document.querySelector(
+      '[data-testid="stop-button"],button[aria-label*="Stop"],button[aria-label*="停止"]'
+    );
+    const projectBlank = project.blank && users.length === 0 && !!box;
+    let state = 'idle';
+    if (error?.kind === 'delivery_timeout') state = 'delivery_timeout';
+    else if (error?.kind === 'context_limit') state = 'context_limit';
+    else if (projectBlank) state = 'project_blank';
+    else if (requestId || stop) state = 'active_request';
+    else if (!box) state = 'no_composer';
+    else if (composerValue(box).trim()) state = 'draft_present';
+    return {
+      state,
+      client_id: clientId,
+      conversation_path: location.pathname,
+      project_slug: project.slug,
+      request_id: requestId,
+      last_user_message_id: users.at(-1)?.getAttribute('data-message-id') || '',
+      last_assistant_message_id: assistants.at(-1)?.getAttribute('data-message-id') || '',
       composer: !!box,
-      draftLen: (box && (box.innerText || '').length) || 0,
-      generating: isGenerating(),
-      users: users.length,
-      assistants: assistants.length,
-      lastLen: last.length,
-      lastTail: last.slice(-120),
-      alerts: [...document.querySelectorAll('[role="alert"]')].map((n) => (n.innerText || '').trim()).filter(Boolean).slice(0, 4),
-      bodyLen: text.length,
-      signals: matchedSignals(text)
+      draft_len: composerValue(box).length,
+      generating: state === 'active_request',
+      visible: document.visibilityState === 'visible',
+      terminal_error: error
     };
-    result.state = classify(result);
-    return result;
   }
 
   function fingerprint(value) {
-    return [value.state, value.generating, value.users, value.assistants,
-            Math.floor(value.lastLen / 40), value.draftLen ? 1 : 0].join('|');
+    return [value.state, value.conversation_path, value.project_slug, value.request_id,
+      value.last_user_message_id, value.terminal_error?.kind || ''].join('|');
   }
 
-  function pushRing(entry) {
-    ring.push(entry);
+  function mark(value) {
+    try {
+      const root = document.documentElement;
+      if (!root) return;
+      root.dataset.dcfConversationState = value.state;
+      root.dataset.dcfConversationVersion = UNIT_VERSION;
+      root.dataset.dcfConversationAt = new Date().toISOString();
+      root.dataset.dcfConversationEvaluations = String(evaluations);
+      root.dataset.dcfConversationError = lastError.slice(0, 180);
+    } catch (_) {}
+  }
+
+  function pushRing(value, reason) {
+    ring.push({ at: new Date().toISOString(), state: value.state, reason,
+      request_id: value.request_id, last_user_message_id: value.last_user_message_id });
     while (ring.length > RING) ring.shift();
   }
 
-  async function publish(value, reason) {
-    const event = {
-      event_id: ulid(),
-      source_id: ulid(),
-      event_type: 'conversation.state.observed',
-      created_at: new Date().toISOString(),
-      payload_json: {
-        title: '对话状态 · ' + value.state,
-        body_text: `state=${value.state} generating=${value.generating} users=${value.users} assistants=${value.assistants} draft=${value.draftLen}`,
-        reason,
-        state: value.state,
-        generating: value.generating,
-        draft_len: value.draftLen,
-        users: value.users,
-        assistants: value.assistants,
-        last_len: value.lastLen,
-        signals: value.signals,
-        alerts: value.alerts,
-        url: value.url,
-        title: value.title,
-        visible: value.visible,
-        unit: UNIT_ID,
-        unit_version: UNIT_VERSION,
-        observed_at: new Date().toISOString()
-      }
-    };
-    const response = await fetch(COMPANION, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ event }),
-      cache: 'no-store',
-      credentials: 'omit',
-      redirect: 'error'
-    });
-    if (!response.ok) throw new Error(`companion HTTP ${response.status}`);
-    return response.json();
-  }
-
-  async function tick() {
-    if (destroyed || busy) return;
-    busy = true;
-    ticks += 1;
+  async function fetchJson(url, body, timeoutMs = 5000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const value = sample();
-      const stateMark = fingerprint(value);
-      const now = Date.now();
-      const changed = stateMark !== lastFingerprint;
-      lastState = value;
-      if (changed) {
-        pushRing({ at: new Date().toISOString(), state: value.state, generating: value.generating,
-                   last_len: value.lastLen, draft_len: value.draftLen, signals: value.signals });
-        lastFingerprint = stateMark;
-      }
-      mark({ dcfConversationState: value.state, dcfConversationAt: new Date().toISOString(),
-             dcfConversationTicks: ticks });
-      if (changed || now - lastPublishedAt > HEARTBEAT_MS) {
-        await publish(value, changed ? 'transition' : 'heartbeat');
-        lastPublishedAt = now;
-        published += 1;
-        lastError = '';
-        mark({ dcfConversationReported: published, dcfConversationError: '' });
-      }
-    } catch (error) {
-      lastError = String((error && error.message) || error);
-      mark({ dcfConversationError: lastError.slice(0, 180) });
-    } finally {
-      busy = false;
-    }
+      const response = await fetch(url, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body), cache: 'no-store', credentials: 'omit',
+        redirect: 'error', signal: controller.signal
+      });
+      if (!response.ok) throw new Error(`continuity HTTP ${response.status}`);
+      return response.json();
+    } finally { clearTimeout(timer); }
   }
 
-  function schedule() {
-    clearTimeout(timer);
-    timer = null;
-    if (destroyed) return;
-    timer = setTimeout(async () => {
-      try {
-        await tick();
-      } catch (error) {
-        lastError = 'scheduler: ' + String((error && error.message) || error);
-        mark({ dcfConversationError: lastError.slice(0, 180) });
+  function readPending() {
+    try { return JSON.parse(sessionStorage.getItem(PENDING_KEY) || 'null'); } catch (_) { return null; }
+  }
+  function writePending(value) {
+    try {
+      if (value) sessionStorage.setItem(PENDING_KEY, JSON.stringify(value));
+      else sessionStorage.removeItem(PENDING_KEY);
+    } catch (_) {}
+  }
+
+  function lastUserProof(message) {
+    const users = formalUsers();
+    const target = normalizeText(message);
+    for (let index = users.length - 1; index >= 0; index -= 1) {
+      if (normalizeText(users[index].innerText || users[index].textContent || '') === target) {
+        return { visible: true, id: users[index].getAttribute('data-message-id') || '' };
       }
-      schedule();
-    }, POLL_MS);
+    }
+    return { visible: false, id: '' };
+  }
+
+  async function ackPending(pending, proof) {
+    const result = await fetchJson(`${CONTINUITY_BASE}${encodeURIComponent(pending.incident_id)}/ack`, {
+      client_id: clientId,
+      conversation_path: location.pathname,
+      visible_user_message_id: proof.id,
+      message_sha256: pending.message_sha256
+    });
+    if (result?.ok) writePending(null);
+    return result;
+  }
+
+  async function verifyPending() {
+    const pending = readPending();
+    if (!pending?.incident_id || !pending?.message) return false;
+    const proof = lastUserProof(pending.message);
+    if (!proof.visible || !proof.id) return false;
+    await ackPending(pending, proof);
+    return true;
+  }
+
+  function dispatchComposerEvents(target, text) {
+    try { target.dispatchEvent(new Event('compositionstart', { bubbles: true })); } catch (_) {}
+    try { target.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, inputType: 'insertText', data: text })); } catch (_) {}
+    try { target.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text })); }
+    catch (_) { target.dispatchEvent(new Event('input', { bubbles: true })); }
+    try { target.dispatchEvent(new Event('compositionend', { bubbles: true })); } catch (_) {}
+  }
+
+  function setComposerText(target, text) {
+    target.focus();
+    if ('value' in target) {
+      const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(target), 'value');
+      if (descriptor?.set) descriptor.set.call(target, text); else target.value = text;
+      if (typeof target.setSelectionRange === 'function') target.setSelectionRange(text.length, text.length);
+    } else target.textContent = text;
+    dispatchComposerEvents(target, text);
+  }
+
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  async function clickSend() {
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const button = sendButton();
+      if (button && !button.disabled && button.getAttribute?.('aria-disabled') !== 'true') {
+        button.click(); return;
+      }
+      await sleep(50);
+    }
+    throw new Error('continuity send button unavailable');
+  }
+
+  async function sendAction(action) {
+    const value = sample();
+    const requiredState = action.kind === 'same_chat_continue' ? 'delivery_timeout' : 'project_blank';
+    if (value.state !== requiredState) throw new Error(`continuity state changed: ${value.state}`);
+    const target = composer();
+    if (!target) throw new Error('continuity composer missing');
+    const existing = normalizeText(composerValue(target));
+    if (existing && existing !== normalizeText(action.message)) throw new Error('continuity composer contains foreign draft');
+    const pending = { incident_id: action.incident_id, message: action.message,
+      message_sha256: action.message_sha256, kind: action.kind };
+    writePending(pending);
+    const already = lastUserProof(action.message);
+    if (already.visible) return ackPending(pending, already);
+    if (!existing) setComposerText(target, action.message);
+    await clickSend();
+    actions += 1;
+  }
+
+  async function applyAction(action) {
+    if (!action?.kind) return;
+    if (action.kind === 'open_project_chat') {
+      const next = String(action.project_path || '');
+      if (!next || !next.startsWith('/g/')) throw new Error('invalid project continuity route');
+      if (location.pathname !== next) location.assign(location.origin + next);
+      return;
+    }
+    if (action.kind === 'verify_only') {
+      await verifyPending();
+      return;
+    }
+    if (action.kind === 'same_chat_continue' || action.kind === 'send_project_handoff') {
+      await sendAction(action);
+      return;
+    }
+    throw new Error(`unknown continuity action ${action.kind}`);
+  }
+
+  async function evaluate(reason) {
+    if (destroyed || busy) return;
+    busy = true; evaluations += 1;
+    try {
+      await verifyPending();
+      const value = sample();
+      lastState = value; mark(value);
+      const nextFingerprint = fingerprint(value);
+      const changed = nextFingerprint !== lastFingerprint;
+      if (changed) { lastFingerprint = nextFingerprint; pushRing(value, reason); }
+      if (!changed || !['delivery_timeout', 'context_limit', 'project_blank'].includes(value.state)) return;
+      const result = await fetchJson(CONTINUITY, value);
+      await applyAction(result?.action);
+      lastError = '';
+    } catch (error) {
+      lastError = String(error?.message || error);
+      if (lastState) mark(lastState);
+    } finally { busy = false; }
+  }
+
+  function schedule(reason) {
+    if (destroyed) return;
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => { debounceTimer = null; evaluate(reason).catch(() => {}); }, DEBOUNCE_MS);
   }
 
   function destroy() {
     destroyed = true;
-    clearTimeout(timer);
-    timer = null;
+    clearTimeout(debounceTimer); debounceTimer = null;
+    observer?.disconnect?.(); observer = null;
+    document.removeEventListener('visibilitychange', onVisibility);
+    window.removeEventListener('popstate', onHistory);
   }
+  function onVisibility() { schedule('visibilitychange'); }
+  function onHistory() { schedule('history'); }
+
+  observer = new MutationObserver(() => schedule('mutation'));
+  if (document.documentElement) observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+  document.addEventListener('visibilitychange', onVisibility);
+  window.addEventListener('popstate', onHistory);
 
   globalThis[GLOBAL_KEY] = {
-    version: UNIT_VERSION,
-    destroy,
-    tick,
-    diagnostics: () => ({
-      unit_id: UNIT_ID,
-      version: UNIT_VERSION,
-      last_error: lastError,
-      last_published_at: lastPublishedAt ? new Date(lastPublishedAt).toISOString() : null,
-      ticks,
-      reported: published,
-      current: lastState,
-      transitions: ring.slice(-20)
-    })
+    version: UNIT_VERSION, destroy, evaluate, sample, projectInfo,
+    diagnostics: () => ({ unit_id: UNIT_ID, version: UNIT_VERSION, last_error: lastError,
+      evaluations, actions, current: lastState, transitions: ring.slice(-20), pending: readPending() })
   };
 
-  clearStaleMarkers();
-  mark({ dcfConversationState: 'loaded', dcfConversationVersion: UNIT_VERSION,
-         dcfConversationAt: new Date().toISOString(), dcfConversationTicks: 0 });
-  schedule();
+  schedule('initial');
   host({ type: 'unit.started', unit_id: UNIT_ID, version: UNIT_VERSION })
-    .then(() => { if (!destroyed) mark({ dcfConversationHandshake: 'ok' }); })
-    .catch((error) => { if (!destroyed) mark({ dcfConversationHandshake: 'failed: ' + String((error && error.message) || error).slice(0, 120) }); });
+    .then(() => { try { document.documentElement.dataset.dcfConversationHandshake = 'ok'; } catch (_) {} })
+    .catch((error) => { lastError = String(error?.message || error); });
 })();

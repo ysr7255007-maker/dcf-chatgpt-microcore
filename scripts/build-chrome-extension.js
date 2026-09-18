@@ -104,7 +104,7 @@ const specs = [
   ['dcf.firstparty.local-agent', '本机 Agent', '纯插件直连 OpenCode，管理会话、任务、权限、结果与文件差异。', 'local-agent', 55],
   ['dcf.firstparty.local-agent-dialogue', '本机对话闭环', '将严格的对话委派工件交给本机 OpenCode，并把结构化结果自动送回当前对话。', 'local-agent-dialogue', 57],
   ['dcf.firstparty.qoder-watch', 'Qoder 完成通知', '领取本机 Qoder watcher 完成事件，并将短触发消息发送到语义匹配且可执行的 ChatGPT 对话；标签页可见性只作为观察事实。', 'qoder-watch', 58],
-  ['dcf.firstparty.conversation-state', '对话状态上报', '把当前对话页的状态（生成中/已中断等待/上下文超限/草稿/空闲）作为 DCF 事件上报 companion，供本机执行侧读取，不做任何页面写入。', 'conversation-state', 59],
+  ['dcf.firstparty.conversation-state', '对话连续性', '事件化识别当前 ChatGPT request 的终态；明确超时则同会话接续，上下文上限则在同项目新会话恢复，并由 4937 持久化去重。', 'conversation-state', 59],
   ['dcf.firstparty.backup', '备份恢复', '独立插件数据的一键备份与恢复。', 'backup', 60],
   ['dcf.firstparty.plugin-manager', '功能管理', '低频功能启停与统一 DCF 更新入口。', 'plugin-manager', 70],
   ['dcf.firstparty.diagnostics', '诊断', '正常时压缩状态，异常时自动回传本机 Agent 的隐私受限证据。', 'diagnostics', 90],
